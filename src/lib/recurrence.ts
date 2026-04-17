@@ -5,6 +5,8 @@ export type Occurrence = {
   title: string;
   start: Date;
   end: Date;
+  /** Copied from the parent event for UI (e.g. delete / badges). */
+  source: string;
 };
 
 function addMinutes(d: Date, minutes: number) {
@@ -56,7 +58,13 @@ export function generateOccurrences(
     const occEnd = addMinutes(occStart, duration);
     if (occEnd <= rangeStart) return;
     if (occStart >= rangeEnd) return;
-    out.push({ eventId: event.id, title: event.title, start: occStart, end: occEnd });
+    out.push({
+      eventId: event.id,
+      title: event.title,
+      start: occStart,
+      end: occEnd,
+      source: event.source ?? 'manual',
+    });
   };
 
   if (recurrence === 'none') {

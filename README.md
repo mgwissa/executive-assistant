@@ -35,6 +35,8 @@ npm install
    - `supabase/migrations/2026-04-17_002_profiles.sql`
    - `supabase/migrations/2026-04-17_003_tasks.sql`
    - `supabase/migrations/2026-04-17_004_events.sql`
+   - `supabase/migrations/2026-04-17_005_outlook_ics_sync.sql`
+   - `supabase/migrations/2026-04-17_006_profiles_timezone_if_missing.sql` (idempotent; fixes missing `profiles.timezone` if earlier migrations were skipped)
 3. In **Project Settings → API**, grab your **Project URL** and **anon public key**.
 4. Copy `.env.example` to `.env.local` and fill in:
 
@@ -52,6 +54,28 @@ npm run dev
 ```
 
 Open <http://localhost:5173>, sign up, and start writing.
+
+### 4. (Optional) Outlook published calendar → app
+
+1. In Outlook on the web, publish your calendar and copy the **ICS** URL (the one ending in `calendar.ics`), not the HTML link.
+2. After running migration `2026-04-17_005_outlook_ics_sync.sql`, open **Profile** in the app, paste the URL under **Outlook calendar**, click **Save URL**, then **Sync now**.
+3. Deploy the Edge Function so the server can fetch the ICS feed (avoids browser CORS):
+
+```bash
+# From the repo root, with Supabase CLI linked to your project
+supabase link --project-ref <your-project-ref>
+supabase functions deploy sync-outlook-calendar
+```
+
+`supabase/config.toml` sets **`verify_jwt = false`** for this function. That is intentional: if your project uses **ECC / ES256** JWT signing keys, the Edge Functions **gateway** can respond with `UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM` / “Unsupported JWT algorithm ES256” **before your code runs**. This app’s function still checks the caller by calling **`auth.getUser()`** with the `Authorization` header, so only valid sessions can sync.
+
+If you deploy from the Dashboard only, run the CLI command above once so hosted Supabase picks up `verify_jwt = false`, or pass **`--no-verify-jwt`** on deploy. Pure Dashboard edits do not read this repo’s `config.toml`.
+
+On hosted Supabase, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available to the function automatically. The function only accepts ICS URLs from known Microsoft hosts (`outlook.office365.com`, `outlook.live.com`, etc.).
+
+Each sync replaces previously imported rows (`events.source = 'outlook_ics'`) and leaves events you created in the app (`source = 'manual'`) untouched. The function only **stores occurrences for the current calendar week** (Monday 00:00 through Sunday, in your profile timezone), so regular Monday syncs stay small and fast.
+
+The **Calendar** page and client fetch use the same Monday–Sunday window.
 
 ## Scripts
 

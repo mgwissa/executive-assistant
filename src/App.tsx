@@ -14,6 +14,7 @@ import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useTasksStore } from './store/useTasksStore';
 import { useViewStore } from './store/useViewStore';
+import { eventsFetchIsoRange } from './lib/eventQueries';
 
 function NotesView() {
   return (
@@ -45,10 +46,8 @@ function Shell() {
       fetchAll(user.id);
       fetchProfile(user.id);
       fetchTasks(user.id);
-      const from = new Date();
-      const to = new Date();
-      to.setDate(to.getDate() + 90);
-      fetchEventsRange(user.id, from.toISOString(), to.toISOString());
+      const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
+      fetchEventsRange(user.id, fromIso, toIso);
     } else {
       clearNotes();
       clearProfile();
@@ -57,6 +56,7 @@ function Shell() {
     }
   }, [
     user,
+    profile?.timezone,
     fetchAll,
     clearNotes,
     fetchProfile,

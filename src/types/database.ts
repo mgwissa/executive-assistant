@@ -32,6 +32,8 @@ export type Database = {
           user_id: string;
           first_name: string | null;
           timezone: string | null;
+          outlook_ics_url: string | null;
+          outlook_ics_last_synced_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -39,6 +41,8 @@ export type Database = {
           user_id: string;
           first_name?: string | null;
           timezone?: string | null;
+          outlook_ics_url?: string | null;
+          outlook_ics_last_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -46,6 +50,8 @@ export type Database = {
           user_id?: string;
           first_name?: string | null;
           timezone?: string | null;
+          outlook_ics_url?: string | null;
+          outlook_ics_last_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -89,6 +95,7 @@ export type Database = {
           by_weekday: number[] | null;
           until_at: string | null;
           count: number | null;
+          source: string;
           created_at: string;
           updated_at: string;
         };
@@ -104,6 +111,7 @@ export type Database = {
           by_weekday?: number[] | null;
           until_at?: string | null;
           count?: number | null;
+          source?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -119,6 +127,7 @@ export type Database = {
           by_weekday?: number[] | null;
           until_at?: string | null;
           count?: number | null;
+          source?: string;
           created_at?: string;
           updated_at?: string;
         };

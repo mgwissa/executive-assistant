@@ -11,7 +11,11 @@ type ProfileState = {
   fetchProfile: (userId: string) => Promise<void>;
   updateProfile: (
     userId: string,
-    patch: { first_name?: string | null; timezone?: string | null },
+    patch: {
+      first_name?: string | null;
+      timezone?: string | null;
+      outlook_ics_url?: string | null;
+    },
   ) => Promise<void>;
   clear: () => void;
 };
@@ -57,7 +61,8 @@ export const useProfileStore = create<ProfileState>((set) => ({
     set({ saving: true, error: null });
     const { data, error } = await supabase
       .from('profiles')
-      .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' })
+      .update(patch)
+      .eq('user_id', userId)
       .select()
       .single();
 

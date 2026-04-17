@@ -24,7 +24,9 @@ export function EventComposer({
   open: boolean;
   timezone: string;
   onClose: () => void;
-  onCreate: (payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onCreate: (
+    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source'>,
+  ) => Promise<void>;
 }) {
   const now = useMemo(() => new Date(), []);
   const today = now.toISOString().slice(0, 10);
@@ -63,6 +65,7 @@ export function EventComposer({
           ? new Date(`${v.untilDate}T23:59:59`).toISOString()
           : null,
       count: v.endMode === 'count' ? v.count : null,
+      source: 'manual',
       created_at: startAtIso,
       updated_at: startAtIso,
     };

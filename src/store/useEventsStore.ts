@@ -12,12 +12,19 @@ type EventsState = {
   fetchRange: (userId: string, fromIso: string, toIso: string) => Promise<void>;
   createEvent: (
     userId: string,
-    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at'> & { id?: string },
+    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source'> & {
+      id?: string;
+      source?: string;
+    },
   ) => Promise<Event | null>;
   updateEvent: (id: string, patch: Partial<Event>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
+  deleteOutlookImports: (userId: string) => Promise<string | null>;
   clear: () => void;
 };
+
+/** PostgREST default max rows per request; without pagination only the first page is returned. */
+const EVENTS_PAGE_SIZE = 1000;
 
 export const useEventsStore = create<EventsState>((set, get) => ({
   events: [],
@@ -26,24 +33,69 @@ export const useEventsStore = create<EventsState>((set, get) => ({
 
   fetchRange: async (userId, fromIso, toIso) => {
     set({ loading: true, error: null });
-    // Recurring events can start before `from`, so we fetch all events that start before the end
-    // and rely on client-side occurrence generation to filter.
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('user_id', userId)
-      .lte('start_at', toIso)
-      .order('start_at', { ascending: true });
+    // `toIso` is exclusive (start of next Monday). Split query so recurring rows that begin
+    // before `fromIso` are still loaded, while one-off events stay inside the window.
+    const mergedById = new Map<string, Event>();
 
-    if (error) {
-      set({ loading: false, error: error.message });
+    const pullNoneRecurring = async () => {
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('recurrence', 'none')
+          .gte('start_at', fromIso)
+          .lt('start_at', toIso)
+          .order('start_at', { ascending: true })
+          .range(offset, offset + EVENTS_PAGE_SIZE - 1);
+        if (error) throw new Error(error.message);
+        const batch = data ?? [];
+        for (const e of batch) {
+          if (!e.until_at || e.until_at >= fromIso) mergedById.set(e.id, e);
+        }
+        if (batch.length < EVENTS_PAGE_SIZE) break;
+        offset += EVENTS_PAGE_SIZE;
+      }
+    };
+
+    const pullRecurring = async () => {
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('user_id', userId)
+          .neq('recurrence', 'none')
+          .lte('start_at', toIso)
+          .or(`until_at.is.null,until_at.gte.${fromIso}`)
+          .order('start_at', { ascending: true })
+          .range(offset, offset + EVENTS_PAGE_SIZE - 1);
+        if (error) throw new Error(error.message);
+        const batch = data ?? [];
+        for (const e of batch) {
+          if (!e.until_at || e.until_at >= fromIso) mergedById.set(e.id, e);
+        }
+        if (batch.length < EVENTS_PAGE_SIZE) break;
+        offset += EVENTS_PAGE_SIZE;
+      }
+    };
+
+    try {
+      await pullNoneRecurring();
+      await pullRecurring();
+    } catch (e) {
+      set({
+        loading: false,
+        error: e instanceof Error ? e.message : 'Failed to load events',
+      });
       return;
     }
 
-    // Extra safety: if until_at exists and is before range, drop it.
-    const filtered =
-      data?.filter((e) => !e.until_at || e.until_at >= fromIso) ?? [];
-    set({ events: filtered, loading: false });
+    const merged = [...mergedById.values()].sort(
+      (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+    );
+    set({ events: merged, loading: false });
   },
 
   createEvent: async (userId, payload) => {
@@ -60,6 +112,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       by_weekday: payload.by_weekday ?? null,
       until_at: payload.until_at ?? null,
       count: payload.count ?? null,
+      source: payload.source ?? 'manual',
       created_at: now,
       updated_at: now,
     };
@@ -78,6 +131,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
         by_weekday: payload.by_weekday ?? null,
         until_at: payload.until_at ?? null,
         count: payload.count ?? null,
+        source: payload.source ?? 'manual',
       })
       .select()
       .single();
@@ -114,6 +168,23 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('events').delete().eq('id', id);
     if (error) set({ events: prev, error: error.message });
+  },
+
+  deleteOutlookImports: async (userId) => {
+    set({ error: null });
+    const prev = get().events;
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('user_id', userId)
+      .eq('source', 'outlook_ics');
+    if (error) {
+      const msg = error.message;
+      set({ error: msg });
+      return msg;
+    }
+    set({ events: prev.filter((e) => e.source !== 'outlook_ics') });
+    return null;
   },
 
   clear: () => set({ events: [], loading: false, error: null }),

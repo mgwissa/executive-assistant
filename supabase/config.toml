@@ -1,0 +1,8 @@
+# Supabase local / CLI config — see https://supabase.com/docs/guides/functions/function-configuration
+#
+# ECC (ES256) access tokens are rejected by the Edge Functions API gateway when
+# verify_jwt is on (known limitation). This function already validates the user
+# via createClient(...).auth.getUser() with the Authorization header.
+
+[functions.sync-outlook-calendar]
+verify_jwt = false

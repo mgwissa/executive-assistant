@@ -22,6 +22,7 @@ import {
   NoteIcon,
   SparklesIcon,
   SquareIcon,
+  TrashIcon,
 } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
@@ -69,6 +70,7 @@ export function Dashboard() {
   const notes = useNotesStore((s) => s.notes);
   const loading = useNotesStore((s) => s.loading);
   const events = useEventsStore((s) => s.events);
+  const deleteEvent = useEventsStore((s) => s.deleteEvent);
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
@@ -207,9 +209,16 @@ export function Dashboard() {
                       className="flex items-start justify-between gap-3"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text">
-                          {o.title}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-medium text-text">
+                            {o.title}
+                          </p>
+                          {o.source === 'outlook_ics' ? (
+                            <Badge variant="subtle">Outlook</Badge>
+                          ) : (
+                            <Badge variant="purple">App</Badge>
+                          )}
+                        </div>
                         <p className="mt-0.5 text-xs text-text-muted">
                           {o.start.toLocaleTimeString(undefined, {
                             hour: 'numeric',
@@ -222,12 +231,31 @@ export function Dashboard() {
                           })}
                         </p>
                       </div>
-                      <Badge variant="blue" className="shrink-0">
-                        {o.start.toLocaleTimeString(undefined, {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </Badge>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Badge variant="blue">
+                          {o.start.toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </Badge>
+                        <button
+                          type="button"
+                          className="btn-danger flex h-8 w-8 items-center justify-center p-0"
+                          title={`Delete “${o.title}”`}
+                          aria-label={`Delete event ${o.title}`}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Delete “${o.title}”? This removes it from the app.`,
+                              )
+                            )
+                              return;
+                            void deleteEvent(o.eventId);
+                          }}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
                     </li>
                   ))}
                   {todaysSchedule.length > 8 && (
