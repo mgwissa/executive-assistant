@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNotesStore } from '../store/useNotesStore';
 import { formatRelative } from '../lib/format';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -10,35 +10,27 @@ export function Editor() {
   const { notes, activeId, updateNote, deleteNote } = useNotesStore();
   const note = notes.find((n) => n.id === activeId) ?? null;
 
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
   const [mode, setMode] = useState<Mode>('split');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    setTitle(note?.title ?? '');
-    setContent(note?.content ?? '');
-  }, [note?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const updatedAt = note?.updated_at ?? null;
+  const savedLabel = useMemo(
+    () => (updatedAt ? `Saved ${formatRelative(updatedAt)}` : ''),
+    [updatedAt],
+  );
 
-  useEffect(() => {
-    setMode((prev) => (prev ? prev : 'split'));
-  }, []);
+  const title = note?.title ?? '';
+  const content = note?.content ?? '';
 
   if (!note) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+      <div className="flex h-full items-center justify-center text-sm text-text-muted">
         Select or create a note to get started.
       </div>
     );
   }
 
-  const savedLabel = useMemo(
-    () => `Saved ${formatRelative(note.updated_at)}`,
-    [note.updated_at],
-  );
-
   const applyEdit = (next: string) => {
-    setContent(next);
     updateNote(note.id, { content: next });
   };
 
@@ -95,18 +87,17 @@ export function Editor() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/70 px-6 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60">
+      <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/70 px-6 py-3 backdrop-blur">
         <input
           value={title}
           onChange={(e) => {
-            setTitle(e.target.value);
             updateNote(note.id, { title: e.target.value });
           }}
           placeholder="Untitled"
-          className="w-full bg-transparent text-xl font-semibold tracking-tight outline-none placeholder:text-slate-400"
+          className="w-full bg-transparent text-xl font-semibold tracking-tight text-text outline-none placeholder:text-text-subtle"
         />
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-1 rounded-md bg-slate-100 p-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:flex">
+          <div className="hidden items-center gap-1 rounded-md bg-surface-sunken p-1 text-xs text-text-muted sm:flex">
             <ModeButton active={mode === 'write'} onClick={() => setMode('write')}>
               Write
             </ModeButton>
@@ -121,7 +112,7 @@ export function Editor() {
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as Mode)}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="focus-ring rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-card outline-none"
               aria-label="View mode"
             >
               <option value="write">Write</option>
@@ -129,14 +120,14 @@ export function Editor() {
               <option value="preview">Preview</option>
             </select>
           </div>
-          <span className="hidden whitespace-nowrap text-xs text-slate-400 md:inline">
+          <span className="hidden whitespace-nowrap text-xs text-text-subtle md:inline">
             {savedLabel}
           </span>
           <button
             onClick={() => {
               if (confirm('Delete this note?')) deleteNote(note.id);
             }}
-            className="btn-ghost h-8 w-8 p-0 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+            className="btn-ghost h-8 w-8 p-0 text-red-600 hover:bg-red-600/10 dark:text-red-300"
             aria-label="Delete note"
             title="Delete note"
           >
@@ -153,8 +144,8 @@ export function Editor() {
           ].join(' ')}
         >
           {(mode === 'write' || mode === 'split') && (
-            <div className="flex h-full flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 px-4 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+            <div className="flex h-full flex-col overflow-hidden border-r border-border bg-surface-raised">
+              <div className="flex flex-wrap items-center gap-1 border-b border-border bg-surface-sunken px-4 py-2">
                 <FormatButton onClick={() => insertAroundSelection('**')} title="Bold">
                   B
                 </FormatButton>
@@ -192,22 +183,22 @@ export function Editor() {
               </div>
 
               <div className="h-full overflow-auto px-6 py-5">
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  applyEdit(next);
-                }}
-                placeholder="Start writing…"
-                className="h-full w-full resize-none bg-transparent font-sans text-[15px] leading-7 text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
-              />
-            </div>
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    applyEdit(next);
+                  }}
+                  placeholder="Start writing…"
+                  className="h-full w-full resize-none bg-transparent font-sans text-[15px] leading-7 text-text outline-none placeholder:text-text-subtle"
+                />
+              </div>
             </div>
           )}
 
           {(mode === 'preview' || mode === 'split') && (
-            <div className="h-full overflow-auto bg-white px-6 py-5 dark:bg-slate-900">
+            <div className="h-full overflow-auto bg-surface-raised px-6 py-5">
               <MarkdownPreview content={content} />
             </div>
           )}
@@ -233,8 +224,8 @@ function ModeButton({
       className={[
         'rounded px-2 py-1 transition-colors',
         active
-          ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-50'
-          : 'text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-slate-700/60',
+          ? 'bg-surface-raised text-text shadow-card'
+          : 'text-text-muted hover:bg-surface-raised',
       ].join(' ')}
     >
       {children}
@@ -255,7 +246,7 @@ function FormatButton({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+      className="rounded-md border border-border bg-surface-raised px-2 py-1 text-xs font-medium text-text-muted shadow-card hover:bg-surface-sunken"
       title={title}
       aria-label={title}
     >
@@ -265,5 +256,5 @@ function FormatButton({
 }
 
 function Divider() {
-  return <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />;
+  return <span className="mx-1 h-5 w-px bg-border" />;
 }

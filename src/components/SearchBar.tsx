@@ -5,7 +5,7 @@ export function SearchBar() {
   const { query, setQuery } = useNotesStore();
   return (
     <div className="relative">
-      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
       <input
         type="search"
         value={query}

@@ -3,10 +3,11 @@ import { Auth } from './components/Auth';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
-import { NavRail } from './components/NavRail';
 import { Profile } from './components/Profile';
+import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
+import { TopBar } from './components/TopBar';
 import { useAuthStore } from './store/useAuthStore';
 import { useEventsStore } from './store/useEventsStore';
 import { useNotesStore } from './store/useNotesStore';
@@ -18,7 +19,7 @@ function NotesView() {
   return (
     <div className="flex h-full min-w-0 flex-1">
       <Sidebar />
-      <main className="min-w-0 flex-1 bg-white dark:bg-slate-900">
+      <main className="min-w-0 flex-1 bg-surface">
         <Editor />
       </main>
     </div>
@@ -76,14 +77,17 @@ function Shell() {
   }, [user, profile, updateProfile]);
 
   return (
-    <div className="flex h-full">
-      <NavRail />
-      <div className="flex min-w-0 flex-1">
-        {view === 'dashboard' && <Dashboard />}
-        {view === 'calendar' && <Calendar />}
-        {view === 'tasks' && <Tasks />}
-        {view === 'notes' && <NotesView />}
-        {view === 'profile' && <Profile />}
+    <div className="app-shell flex h-full">
+      <SideNav />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar />
+        <div className="min-h-0 flex-1">
+          {view === 'dashboard' && <Dashboard />}
+          {view === 'calendar' && <Calendar />}
+          {view === 'tasks' && <Tasks />}
+          {view === 'notes' && <NotesView />}
+          {view === 'profile' && <Profile />}
+        </div>
       </div>
     </div>
   );

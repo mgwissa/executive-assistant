@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
@@ -12,6 +13,7 @@ import {
   formatRelative,
   getGreeting,
 } from '../lib/format';
+import { generateOccurrences } from '../lib/recurrence';
 import type { Note } from '../types';
 import {
   ArrowRightIcon,
@@ -21,6 +23,11 @@ import {
   SparklesIcon,
   SquareIcon,
 } from './icons';
+import { Badge } from './ui/Badge';
+import { Card } from './ui/Card';
+import { EmptyState } from './ui/EmptyState';
+import { IconBadge } from './ui/IconBadge';
+import { SectionHeader } from './ui/SectionHeader';
 
 const RECENT_LIMIT = 5;
 const ACTION_ITEM_LIMIT = 8;
@@ -61,6 +68,7 @@ export function Dashboard() {
   const profile = useProfileStore((s) => s.profile);
   const notes = useNotesStore((s) => s.notes);
   const loading = useNotesStore((s) => s.loading);
+  const events = useEventsStore((s) => s.events);
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
@@ -78,6 +86,15 @@ export function Dashboard() {
   const actionItems = useMemo(() => extractActionItems(notes), [notes]);
   const visibleActions = actionItems.slice(0, ACTION_ITEM_LIMIT);
   const openTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+
+  const todaysSchedule = useMemo(() => {
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const all = events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 }));
+    all.sort((a, b) => a.start.getTime() - b.start.getTime());
+    return all;
+  }, [events, today]);
 
   const openNote = (id: string) => {
     setActive(id);
@@ -108,23 +125,23 @@ export function Dashboard() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-white dark:bg-slate-900">
+    <div className="h-full overflow-y-auto bg-surface">
       <div className="mx-auto w-full max-w-5xl px-8 py-10">
         <header className="mb-10">
-          <p className="text-sm font-medium uppercase tracking-wider text-brand-600 dark:text-brand-400">
+          <Badge variant="subtle" className="uppercase tracking-wider">
             {dateLabel}
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+          </Badge>
+          <h1 className="mt-2 text-3xl font-medium tracking-tight text-text">
             {greeting}, {name}.
           </h1>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-sm text-text-muted">
             Here's your workspace at a glance.
             {!profile?.first_name?.trim() && (
               <>
                 {' '}
                 <button
                   onClick={() => setView('profile')}
-                  className="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400"
+                  className="font-medium text-brand-700 hover:text-brand-600"
                 >
                   Set your name
                 </button>{' '}
@@ -136,20 +153,21 @@ export function Dashboard() {
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
           <section className="lg:col-span-3">
-            <SectionHeader icon={<SparklesIcon className="h-4 w-4" />} title="Your day" />
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-950/40">
+            <SectionHeader
+              icon={<SparklesIcon className="h-4 w-4" />}
+              title="Your day"
+              accent="purple"
+            />
+            <Card tone="sunken" className="card-pop card-pop-purple">
               <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-brand-600/10 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                <IconBadge size="lg" tone="purple">
                   <ClockIcon className="h-6 w-6" />
-                </div>
+                </IconBadge>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    Start a daily note
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Capture priorities and notes for today in one place. We'll
-                    title it{' '}
-                    <code className="rounded bg-slate-200 px-1 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <h3 className="text-base font-semibold text-text">Start a daily note</h3>
+                  <p className="mt-1 text-sm text-text-muted">
+                    Capture priorities and notes for today in one place. We'll title it{' '}
+                    <code className="rounded bg-surface-raised px-1 py-0.5 text-xs text-text-muted ring-1 ring-border">
                       {formatDailyNoteTitle(today)}
                     </code>
                     .
@@ -160,13 +178,73 @@ export function Dashboard() {
                   </button>
                 </div>
               </div>
-            </div>
+            </Card>
+          </section>
+
+          <section className="lg:col-span-2">
+            <SectionHeader
+              icon={<ClockIcon className="h-4 w-4" />}
+              title="Today's schedule"
+              accent="blue"
+              action={
+                <button
+                  onClick={() => setView('calendar')}
+                  className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
+                >
+                  Calendar
+                  <ArrowRightIcon className="h-3 w-3" />
+                </button>
+              }
+            />
+            <Card padded="sm" className="card-pop card-pop-blue">
+              {todaysSchedule.length === 0 ? (
+                <p className="text-sm text-text-muted">No events today.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {todaysSchedule.slice(0, 8).map((o) => (
+                    <li
+                      key={`${o.eventId}:${o.start.toISOString()}`}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-text">
+                          {o.title}
+                        </p>
+                        <p className="mt-0.5 text-xs text-text-muted">
+                          {o.start.toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}{' '}
+                          –{' '}
+                          {o.end.toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                      <Badge variant="blue" className="shrink-0">
+                        {o.start.toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </Badge>
+                    </li>
+                  ))}
+                  {todaysSchedule.length > 8 && (
+                    <li className="text-xs text-text-muted">
+                      +{todaysSchedule.length - 8} more
+                    </li>
+                  )}
+                </ul>
+              )}
+            </Card>
           </section>
 
           <section className="lg:col-span-2">
             <SectionHeader
               icon={<NoteIcon className="h-4 w-4" />}
               title="At a glance"
+              accent="green"
             />
             <div className="grid grid-cols-2 gap-3">
               <StatCard label="Notes" value={notes.length} />
@@ -179,17 +257,18 @@ export function Dashboard() {
               icon={<CheckSquareIcon className="h-4 w-4" />}
               title="Action items"
               count={openTasks.length + actionItems.length}
+              accent="amber"
               action={
                 <button
                   onClick={() => setView('tasks')}
-                  className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400"
+                  className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
                 >
                   Manage
                   <ArrowRightIcon className="h-3 w-3" />
                 </button>
               }
             />
-            <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+            <Card padded="none" className="card-pop card-pop-amber">
               <QuickAddTodo
                 disabled={!user}
                 onAdd={async (title) => {
@@ -200,28 +279,29 @@ export function Dashboard() {
 
               {openTasks.length === 0 && actionItems.length === 0 ? (
                 <EmptyState
+                  icon={<CheckSquareIcon className="h-5 w-5" />}
                   title="No open tasks"
                   message="Add a todo above, or write `- [ ] ...` in any note."
                 />
               ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                <ul className="divide-y divide-border">
                   {openTasks.slice(0, ACTION_ITEM_LIMIT).map((t) => (
                     <li key={t.id} className="flex items-start gap-3 px-4 py-3">
                       <button
                         onClick={() => toggleTaskDone(t.id, true)}
-                        className="mt-0.5 text-slate-400 hover:text-brand-600 dark:text-slate-500 dark:hover:text-brand-400"
+                        className="mt-0.5 text-text-subtle hover:text-brand-700"
                         aria-label="Mark done"
                         title="Mark done"
                       >
                         <SquareIcon className="h-4 w-4" />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-slate-800 dark:text-slate-100">
+                        <p className="truncate text-sm text-text">
                           {t.title}
                         </p>
                         <button
                           onClick={() => setView('tasks')}
-                          className="mt-0.5 truncate text-xs text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+                          className="mt-0.5 truncate text-xs text-text-muted hover:text-brand-700"
                           title="Open todos"
                         >
                           Todos
@@ -236,19 +316,19 @@ export function Dashboard() {
                     >
                       <button
                         onClick={() => toggleAction(item.noteId, item.line)}
-                        className="mt-0.5 text-slate-400 hover:text-brand-600 dark:text-slate-500 dark:hover:text-brand-400"
+                        className="mt-0.5 text-text-subtle hover:text-brand-700"
                         aria-label="Mark done"
                         title="Mark done"
                       >
                         <SquareIcon className="h-4 w-4" />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-slate-800 dark:text-slate-100">
+                        <p className="truncate text-sm text-text">
                           {item.text}
                         </p>
                         <button
                           onClick={() => openNote(item.noteId)}
-                          className="mt-0.5 truncate text-xs text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+                          className="mt-0.5 truncate text-xs text-text-muted hover:text-brand-700"
                           title="Open note"
                         >
                           {item.noteTitle}
@@ -257,24 +337,25 @@ export function Dashboard() {
                     </li>
                   ))}
                   {actionItems.length + openTasks.length > ACTION_ITEM_LIMIT && (
-                    <li className="px-4 py-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                    <li className="px-4 py-2 text-center text-xs text-text-muted">
                       +{actionItems.length + openTasks.length - ACTION_ITEM_LIMIT} more
                     </li>
                   )}
                 </ul>
               )}
-            </div>
+            </Card>
           </section>
 
           <section className="lg:col-span-2">
             <SectionHeader
               icon={<NoteIcon className="h-4 w-4" />}
               title="Recent notes"
+              accent="brand"
               action={
                 notes.length > 0 ? (
                   <button
                     onClick={() => setView('notes')}
-                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400"
+                    className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
                   >
                     View all
                     <ArrowRightIcon className="h-3 w-3" />
@@ -282,16 +363,21 @@ export function Dashboard() {
                 ) : null
               }
             />
-            <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+            <Card padded="none" className="card-pop card-pop-purple">
               {loading && notes.length === 0 ? (
-                <EmptyState title="Loading…" message="Fetching your notes." />
+                <EmptyState
+                  icon={<NoteIcon className="h-5 w-5" />}
+                  title="Loading…"
+                  message="Fetching your notes."
+                />
               ) : recent.length === 0 ? (
                 <EmptyState
+                  icon={<NoteIcon className="h-5 w-5" />}
                   title="No notes yet"
                   message="Create your first note to see it here."
                 />
               ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                <ul className="divide-y divide-border">
                   {recent.map((note) => (
                     <RecentNoteRow
                       key={note.id}
@@ -301,7 +387,7 @@ export function Dashboard() {
                   ))}
                 </ul>
               )}
-            </div>
+            </Card>
           </section>
         </div>
       </div>
@@ -309,56 +395,16 @@ export function Dashboard() {
   );
 }
 
-function SectionHeader({
-  icon,
-  title,
-  count,
-  action,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  count?: number;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-3 flex items-center justify-between">
-      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-        <span className="text-slate-400 dark:text-slate-500">{icon}</span>
-        <h2 className="text-sm font-semibold uppercase tracking-wider">
-          {title}
-        </h2>
-        {typeof count === 'number' && count > 0 && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {count}
-          </span>
-        )}
-      </div>
-      {action}
-    </div>
-  );
-}
-
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40">
-      <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+    <Card padded="sm">
+      <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-50">
+      <p className="mt-1 text-2xl font-semibold text-text">
         {value}
       </p>
-    </div>
-  );
-}
-
-function EmptyState({ title, message }: { title: string; message: string }) {
-  return (
-    <div className="px-4 py-10 text-center">
-      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        {title}
-      </p>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{message}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -368,21 +414,21 @@ function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
     <li>
       <button
         onClick={onOpen}
-        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-900"
+        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-surface-sunken"
       >
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
+          <p className="truncate text-sm font-medium text-text">
             {note.title || 'Untitled'}
           </p>
           {preview && (
-            <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 line-clamp-1 text-xs text-text-muted">
               {preview}
             </p>
           )}
         </div>
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <Badge variant="purple" className="shrink-0">
           {formatRelative(note.updated_at)}
-        </span>
+        </Badge>
       </button>
     </li>
   );
@@ -405,7 +451,7 @@ function QuickAddTodo({
         await onAdd(trimmed);
         setTitle('');
       }}
-      className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800"
+      className="flex items-center gap-2 border-b border-border px-4 py-3"
     >
       <input
         value={title}

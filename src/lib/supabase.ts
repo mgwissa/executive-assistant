@@ -9,7 +9,6 @@ const anonKey = rawKey && rawKey.trim() !== '' ? rawKey : undefined;
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
 if (!isSupabaseConfigured) {
-  // eslint-disable-next-line no-console
   console.warn(
     '[notes] Supabase env vars missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local',
   );

@@ -37,10 +37,10 @@ export function NavRail() {
         aria-current={active ? 'page' : undefined}
         title={label}
         className={[
-          'flex h-10 w-10 items-center justify-center rounded-md transition-colors',
+          'flex h-10 w-10 items-center justify-center rounded-md transition-colors focus-ring',
           active
-            ? 'bg-white text-brand-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-brand-400 dark:ring-slate-700'
-            : 'text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100',
+            ? 'bg-surface-raised text-brand-700 shadow-card ring-1 ring-border'
+            : 'text-text-subtle hover:bg-surface-raised hover:text-text',
         ].join(' ')}
       >
         <Icon className="h-5 w-5" />
@@ -49,15 +49,16 @@ export function NavRail() {
   };
 
   return (
-    <nav className="flex h-full w-14 flex-col items-center justify-between border-r border-slate-200 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-950">
+    <nav className="flex h-full w-14 flex-col items-center justify-between border-r border-border-strong bg-surface-sunken py-3">
       <div className="flex flex-col items-center gap-1">
-        <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white">
+        <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white shadow-card">
           <NoteIcon className="h-4 w-4" />
         </div>
         {topItems.map(renderItem)}
       </div>
 
       <div className="flex flex-col items-center gap-1">
+        <div className="divider my-2 w-8" />
         {renderItem({ id: 'profile', label: 'Profile', Icon: UserIcon })}
         <ThemeToggle />
         <button

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Event } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
+import { Card } from './ui/Card';
 
 export type ComposerValue = {
   title: string;
@@ -90,13 +91,12 @@ export function EventComposer({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-950">
+      <div className="relative w-full max-w-xl">
+        <Card tone="raised" className="rounded-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              New event
-            </h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <h2 className="text-lg font-semibold tracking-tight text-text">New event</h2>
+            <p className="mt-1 text-xs text-text-muted">
               Timezone: {timezone}
             </p>
           </div>
@@ -130,7 +130,7 @@ export function EventComposer({
           }}
         >
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+            <label className="block text-sm font-medium text-text">
               Title
             </label>
             <input
@@ -145,7 +145,7 @@ export function EventComposer({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              <label className="block text-sm font-medium text-text">
                 Date
               </label>
               <input
@@ -156,7 +156,7 @@ export function EventComposer({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              <label className="block text-sm font-medium text-text">
                 Time
               </label>
               <input
@@ -167,7 +167,7 @@ export function EventComposer({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              <label className="block text-sm font-medium text-text">
                 Duration (min)
               </label>
               <input
@@ -185,7 +185,7 @@ export function EventComposer({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              <label className="block text-sm font-medium text-text">
                 Repeat
               </label>
               <select
@@ -206,7 +206,7 @@ export function EventComposer({
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              <label className="block text-sm font-medium text-text">
                 Interval
               </label>
               <input
@@ -224,7 +224,7 @@ export function EventComposer({
           {v.recurrence !== 'none' && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5 sm:col-span-1">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                <label className="block text-sm font-medium text-text">
                   Ends
                 </label>
                 <select
@@ -242,7 +242,7 @@ export function EventComposer({
               <div className="space-y-1.5 sm:col-span-2">
                 {v.endMode === 'until' ? (
                   <>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                    <label className="block text-sm font-medium text-text">
                       Until
                     </label>
                     <input
@@ -254,7 +254,7 @@ export function EventComposer({
                   </>
                 ) : v.endMode === 'count' ? (
                   <>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                    <label className="block text-sm font-medium text-text">
                       Count
                     </label>
                     <input
@@ -267,7 +267,7 @@ export function EventComposer({
                     />
                   </>
                 ) : (
-                  <div className="pt-7 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="pt-7 text-xs text-text-muted">
                     This will repeat forever.
                   </div>
                 )}
@@ -275,20 +275,20 @@ export function EventComposer({
             </div>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <Card tone="sunken" padded="sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               Preview
             </p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+            <ul className="mt-2 space-y-1 text-sm text-text">
               {previewOccurrences.length === 0 ? (
-                <li className="text-xs text-slate-500 dark:text-slate-400">
+                <li className="text-xs text-text-muted">
                   No occurrences in the next two weeks.
                 </li>
               ) : (
                 previewOccurrences.map((o) => (
                   <li key={o.start.toISOString()} className="flex items-center justify-between gap-3">
                     <span className="truncate">{o.title}</span>
-                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="shrink-0 text-xs text-text-muted">
                       {o.start.toLocaleString(undefined, {
                         weekday: 'short',
                         month: 'short',
@@ -301,7 +301,7 @@ export function EventComposer({
                 ))
               )}
             </ul>
-          </div>
+          </Card>
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <button type="button" className="btn-ghost" onClick={onClose}>
@@ -312,6 +312,7 @@ export function EventComposer({
             </button>
           </div>
         </form>
+        </Card>
       </div>
     </div>
   );

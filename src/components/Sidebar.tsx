@@ -19,9 +19,9 @@ export function Sidebar() {
   }, [notes, query]);
 
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-      <div className="border-b border-slate-200 px-3 py-3 dark:border-slate-800">
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+    <aside className="flex h-full w-72 flex-col border-r border-border-strong bg-surface-sunken">
+      <div className="border-b border-border-strong px-3 py-3">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
           Notes
         </h2>
         <div className="space-y-2">
@@ -38,7 +38,7 @@ export function Sidebar() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {filtered.length === 0 ? (
-          <div className="px-3 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+          <div className="px-3 py-10 text-center text-xs text-text-muted">
             {query ? 'No matches.' : 'No notes yet. Create your first note.'}
           </div>
         ) : (
@@ -53,20 +53,20 @@ export function Sidebar() {
                     className={[
                       'w-full rounded-md px-3 py-2 text-left transition-colors',
                       isActive
-                        ? 'bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700'
-                        : 'hover:bg-white/60 dark:hover:bg-slate-900',
+                        ? 'border-l-2 border-brand-600 bg-brand-50 shadow-card ring-1 ring-border dark:border-brand-400 dark:bg-surface-raised dark:ring-border-strong'
+                        : 'hover:bg-surface-raised',
                     ].join(' ')}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="truncate text-sm font-medium">
+                      <span className="truncate text-sm font-medium text-text">
                         {note.title || 'Untitled'}
                       </span>
-                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-subtle">
                         {formatRelative(note.updated_at)}
                       </span>
                     </div>
                     {preview && (
-                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-0.5 line-clamp-2 text-xs text-text-muted">
                         {preview}
                       </p>
                     )}

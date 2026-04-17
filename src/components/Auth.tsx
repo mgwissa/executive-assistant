@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { ThemeToggle } from './ThemeToggle';
+import { Card } from './ui/Card';
 
 type Mode = 'signin' | 'signup';
 
@@ -36,14 +37,14 @@ export function Auth() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+    <div className="flex min-h-full items-center justify-center bg-surface-sunken p-4">
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card tone="raised" padded="lg" className="w-full max-w-sm">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Notes</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <h1 className="text-2xl font-semibold tracking-tight text-text">Notes</h1>
+          <p className="mt-1 text-sm text-text-muted">
             {mode === 'signin' ? 'Sign in to your workspace' : 'Create your workspace'}
           </p>
         </div>
@@ -58,7 +59,7 @@ export function Auth() {
 
         <form onSubmit={onSubmit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            <label className="mb-1 block text-xs font-medium text-text-muted">
               Email
             </label>
             <input
@@ -73,7 +74,7 @@ export function Auth() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            <label className="mb-1 block text-xs font-medium text-text-muted">
               Password
             </label>
             <input
@@ -108,7 +109,7 @@ export function Auth() {
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
+        <div className="mt-6 text-center text-sm text-text-muted">
           {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             type="button"
@@ -117,12 +118,12 @@ export function Auth() {
               setError(null);
               setInfo(null);
             }}
-            className="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400"
+            className="font-medium text-brand-700 hover:text-brand-600"
           >
             {mode === 'signin' ? 'Sign up' : 'Sign in'}
           </button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

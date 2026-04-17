@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { CheckSquareIcon, SquareIcon, TrashIcon } from './icons';
+import { Card } from './ui/Card';
+import { EmptyState } from './ui/EmptyState';
+import { IconBadge } from './ui/IconBadge';
+import { SectionHeader } from './ui/SectionHeader';
+import { Badge } from './ui/Badge';
 
 export function Tasks() {
   const user = useAuthStore((s) => s.user);
@@ -12,24 +17,22 @@ export function Tasks() {
   const open = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
   const done = useMemo(() => tasks.filter((t) => t.done), [tasks]);
 
-  useEffect(() => {
-    setTitle('');
-  }, [user?.id]);
-
   return (
-    <div className="h-full overflow-y-auto bg-white dark:bg-slate-900">
+    <div className="h-full overflow-y-auto bg-surface">
       <div className="mx-auto w-full max-w-3xl px-8 py-10">
         <header className="mb-8 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600/10 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+          <IconBadge tone="amber" size="md">
             <CheckSquareIcon className="h-5 w-5" />
-          </div>
+          </IconBadge>
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              Todos
-            </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <h1 className="text-2xl font-semibold tracking-tight text-text">Todos</h1>
+            <p className="mt-1 text-sm text-text-muted">
               Fast capture, always available. Great for calendar sync later.
             </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant="blue">{open.length} open</Badge>
+            <Badge variant="green">{done.length} done</Badge>
           </div>
         </header>
 
@@ -98,33 +101,26 @@ function TaskSection({
   onDelete: (id: string) => void;
   empty: string;
 }) {
+  const sectionIcon = title === 'Done' ? <CheckSquareIcon className="h-5 w-5" /> : <SquareIcon className="h-5 w-5" />;
+  const accent = title === 'Done' ? 'green' : 'blue';
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          {title}
-        </h2>
-        <span className="text-xs text-slate-400 dark:text-slate-500">
-          {tasks.length}
-        </span>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+      <SectionHeader title={title} count={tasks.length} accent={accent} />
+      <Card padded="none">
         {loading ? (
-          <div className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
-            Loading…
-          </div>
+          <EmptyState icon={sectionIcon} title="Loading…" message="Fetching your todos." />
         ) : tasks.length === 0 ? (
-          <div className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
-            {empty}
-          </div>
+          <EmptyState icon={sectionIcon} title="Nothing here" message={empty} />
         ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-border">
             {tasks.map((t) => (
               <li key={t.id} className="flex items-start gap-3 px-4 py-3">
                 <button
                   onClick={() => onToggle(t.id, !t.done)}
-                  className="mt-0.5 text-slate-400 hover:text-brand-600 dark:text-slate-500 dark:hover:text-brand-400"
+                  className={[
+                    'mt-0.5 text-text-subtle',
+                    t.done ? 'hover:text-emerald-300' : 'hover:text-blue-300',
+                  ].join(' ')}
                   aria-label={t.done ? 'Mark not done' : 'Mark done'}
                   title={t.done ? 'Mark not done' : 'Mark done'}
                 >
@@ -139,8 +135,8 @@ function TaskSection({
                     className={[
                       'text-sm',
                       t.done
-                        ? 'text-slate-500 line-through dark:text-slate-400'
-                        : 'text-slate-900 dark:text-slate-100',
+                        ? 'text-text-muted line-through'
+                        : 'text-text',
                     ].join(' ')}
                   >
                     {t.title}
@@ -148,7 +144,7 @@ function TaskSection({
                 </div>
                 <button
                   onClick={() => onDelete(t.id)}
-                  className="btn-ghost h-8 w-8 p-0 text-slate-500 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  className="btn-ghost h-8 w-8 p-0"
                   aria-label="Delete todo"
                   title="Delete todo"
                 >
@@ -158,7 +154,7 @@ function TaskSection({
             ))}
           </ul>
         )}
-      </div>
+      </Card>
     </section>
   );
 }
