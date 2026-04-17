@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-white text-slate-900 antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium
+           transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2
+           focus:ring-offset-white dark:focus:ring-offset-slate-950 disabled:opacity-50
+           disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-500;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-700 hover:bg-slate-100
+           dark:text-slate-300 dark:hover:bg-slate-800;
+  }
+  .input {
+    @apply w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm
+           placeholder-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2
+           focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-900
+           dark:placeholder-slate-500 dark:text-slate-100;
+  }
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300 dark:bg-slate-700;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* Notes markdown preview typography */
+.notes-prose {
+  @apply prose prose-slate max-w-none;
+  @apply prose-headings:tracking-tight prose-headings:font-semibold;
+  @apply prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl;
+  @apply prose-p:leading-7 prose-li:leading-7;
+  @apply prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline;
+  @apply prose-hr:border-slate-200;
+  @apply prose-blockquote:border-slate-200 prose-blockquote:text-slate-700;
+  @apply prose-strong:text-slate-900;
+  @apply prose-code:rounded prose-code:bg-slate-100 prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-[0.9em] prose-code:text-slate-900;
+  @apply prose-pre:rounded-xl prose-pre:bg-slate-950 prose-pre:text-slate-100 prose-pre:shadow-sm;
+  @apply prose-pre:border prose-pre:border-slate-800;
+}
+
+.dark .notes-prose {
+  @apply prose-invert;
+  @apply prose-a:text-brand-400;
+  @apply prose-hr:border-slate-800;
+  @apply prose-blockquote:border-slate-800 prose-blockquote:text-slate-200;
+  @apply prose-code:bg-slate-800 prose-code:text-slate-100;
+  @apply prose-pre:bg-slate-950 prose-pre:border-slate-800;
+}
+
+/* GFM task list polish */
+.notes-prose input[type='checkbox'] {
+  @apply mr-2 align-middle;
+}
+.notes-prose li:has(> input[type='checkbox']) {
+  @apply list-none;
+}
