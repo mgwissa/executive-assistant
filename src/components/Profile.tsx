@@ -4,7 +4,15 @@ import { useEventsStore } from '../store/useEventsStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { syncOutlookCalendar } from '../lib/calendarSync';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
-import { CalendarIcon, UserIcon } from './icons';
+import {
+  DEFAULT_ESCALATION_CONFIG,
+  escalationConfigForSave,
+  parseEscalationConfig,
+  type PriorityEscalationConfig,
+} from '../lib/priorityEscalation';
+import type { Json } from '../types/database';
+import type { ProfileUpdate } from '../types';
+import { CalendarIcon, CheckSquareIcon, UserIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -44,6 +52,18 @@ export function Profile() {
             }}
           />
 
+          {user && profile && (
+            <PriorityEscalationSection
+              key={`esc-${JSON.stringify(profile.priority_escalation)}`}
+              userId={user.id}
+              rawConfig={profile.priority_escalation}
+              loading={loading}
+              saving={saving}
+              updateProfile={updateProfile}
+              fetchProfile={fetchProfile}
+            />
+          )}
+
           {user && (
             <CalendarSyncSection
               key={`${user.id}:${profile?.outlook_ics_url ?? ''}:${profile?.outlook_ics_last_synced_at ?? ''}`}
@@ -64,6 +84,148 @@ export function Profile() {
   );
 }
 
+function PriorityEscalationSection({
+  userId,
+  rawConfig,
+  loading,
+  saving,
+  updateProfile,
+  fetchProfile,
+}: {
+  userId: string;
+  rawConfig: unknown;
+  loading: boolean;
+  saving: boolean;
+  updateProfile: (uid: string, patch: ProfileUpdate) => Promise<void>;
+  fetchProfile: (uid: string) => Promise<void>;
+}) {
+  const parsed = parseEscalationConfig(rawConfig);
+  const [enabled, setEnabled] = useState(parsed.enabled);
+  const [p4ToP3Days, setP4ToP3Days] = useState(String(parsed.p4ToP3Days));
+  const [p3ToP2Days, setP3ToP2Days] = useState(String(parsed.p3ToP2Days));
+  const [p2ToP1Days, setP2ToP1Days] = useState(String(parsed.p2ToP1Days));
+  const [message, setMessage] = useState<string | null>(null);
+
+  const dirty =
+    enabled !== parsed.enabled ||
+    String(parsed.p4ToP3Days) !== p4ToP3Days.trim() ||
+    String(parsed.p3ToP2Days) !== p3ToP2Days.trim() ||
+    String(parsed.p2ToP1Days) !== p2ToP1Days.trim();
+
+  const save = async () => {
+    setMessage(null);
+    const next: PriorityEscalationConfig = {
+      enabled,
+      p4ToP3Days: Number(p4ToP3Days) || DEFAULT_ESCALATION_CONFIG.p4ToP3Days,
+      p3ToP2Days: Number(p3ToP2Days) || DEFAULT_ESCALATION_CONFIG.p3ToP2Days,
+      p2ToP1Days: Number(p2ToP1Days) || DEFAULT_ESCALATION_CONFIG.p2ToP1Days,
+    };
+    await updateProfile(userId, {
+      priority_escalation: escalationConfigForSave(next) as Json,
+    });
+    await fetchProfile(userId);
+    setMessage('Saved.');
+    setTimeout(() => setMessage(null), 2500);
+  };
+
+  return (
+    <Card tone="sunken">
+      <div className="mb-4 flex items-start gap-3">
+        <IconBadge tone="amber" size="md">
+          <CheckSquareIcon className="h-5 w-5" />
+        </IconBadge>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text">Todo priority escalation</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Open tasks can move one step up after they stay at the same level for the number of days
+            you set (Later → Routine → Active → Important). Critical is never auto-promoted. The timer
+            resets when you change priority manually or after each bump.
+          </p>
+        </div>
+      </div>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          disabled={loading}
+          className="rounded border-border"
+        />
+        Enable automatic escalation
+      </label>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <Field
+          id="esc-p4-p3"
+          label="Later → Routine (days)"
+          hint="Stays at Later before bumping"
+        >
+          <input
+            id="esc-p4-p3"
+            type="number"
+            min={1}
+            max={365}
+            value={p4ToP3Days}
+            onChange={(e) => setP4ToP3Days(e.target.value)}
+            disabled={loading || !enabled}
+            className="input"
+          />
+        </Field>
+        <Field
+          id="esc-p3-p2"
+          label="Routine → Active (days)"
+          hint="Stays at Routine before bumping"
+        >
+          <input
+            id="esc-p3-p2"
+            type="number"
+            min={1}
+            max={365}
+            value={p3ToP2Days}
+            onChange={(e) => setP3ToP2Days(e.target.value)}
+            disabled={loading || !enabled}
+            className="input"
+          />
+        </Field>
+        <Field
+          id="esc-p2-p1"
+          label="Active → Important (days)"
+          hint="Stays at Active before bumping"
+        >
+          <input
+            id="esc-p2-p1"
+            type="number"
+            min={1}
+            max={365}
+            value={p2ToP1Days}
+            onChange={(e) => setP2ToP1Days(e.target.value)}
+            disabled={loading || !enabled}
+            className="input"
+          />
+        </Field>
+      </div>
+
+      {message && (
+        <p className="mt-3 text-sm text-text-muted" role="status">
+          {message}
+        </p>
+      )}
+
+      <div className="mt-4 flex justify-end border-t border-border pt-4">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={loading || saving || !dirty}
+          onClick={() => void save()}
+        >
+          {saving ? 'Saving…' : 'Save escalation settings'}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function CalendarSyncSection({
   userId,
   profileTimezone,
@@ -80,14 +242,7 @@ function CalendarSyncSection({
   outlookIcsUrl: string | null | undefined;
   lastSyncedAt: string | null | undefined;
   loading: boolean;
-  updateProfile: (
-    uid: string,
-    patch: {
-      first_name?: string | null;
-      timezone?: string | null;
-      outlook_ics_url?: string | null;
-    },
-  ) => Promise<void>;
+  updateProfile: (uid: string, patch: ProfileUpdate) => Promise<void>;
   fetchProfile: (uid: string) => Promise<void>;
   fetchEventsRange: (uid: string, fromIso: string, toIso: string) => Promise<void>;
   deleteOutlookImports: (uid: string) => Promise<string | null>;

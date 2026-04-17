@@ -105,8 +105,7 @@
 
   .card-pop-moss::after,
   .card-pop-blue::after,
-  .card-pop-purple::after,
-  .card-pop-amber::after {
+  .card-pop-purple::after {
     content: '';
     position: absolute;
     inset: -40px;
@@ -123,8 +122,19 @@
   .card-pop-purple::after {
     background: radial-gradient(closest-side at 20% 10%, rgb(168 85 247 / 0.68), transparent 68%);
   }
+  /* Amber glow: not in the shared ::after group so light/dark gradients + opacity stay tunable */
   .card-pop-amber::after {
+    content: '';
+    position: absolute;
+    inset: -40px;
+    pointer-events: none;
+    filter: blur(26px);
+    background: radial-gradient(closest-side at 18% 8%, rgb(245 158 11 / 0.78), transparent 70%);
+    opacity: 0.78;
+  }
+  .dark .card-pop-amber::after {
     background: radial-gradient(closest-side at 20% 10%, rgb(245 158 11 / 0.62), transparent 68%);
+    opacity: 0.62;
   }
 
   .dark .card-pop {

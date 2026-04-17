@@ -1,3 +1,11 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export type Database = {
   public: {
     Tables: {
@@ -34,6 +42,7 @@ export type Database = {
           timezone: string | null;
           outlook_ics_url: string | null;
           outlook_ics_last_synced_at: string | null;
+          priority_escalation: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -43,6 +52,7 @@ export type Database = {
           timezone?: string | null;
           outlook_ics_url?: string | null;
           outlook_ics_last_synced_at?: string | null;
+          priority_escalation?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -52,6 +62,7 @@ export type Database = {
           timezone?: string | null;
           outlook_ics_url?: string | null;
           outlook_ics_last_synced_at?: string | null;
+          priority_escalation?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -62,6 +73,8 @@ export type Database = {
           user_id: string;
           title: string;
           done: boolean;
+          priority: string;
+          priority_set_at: string;
           created_at: string;
           updated_at: string;
         };
@@ -70,6 +83,8 @@ export type Database = {
           user_id: string;
           title: string;
           done?: boolean;
+          priority?: string;
+          priority_set_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -78,6 +93,8 @@ export type Database = {
           user_id?: string;
           title?: string;
           done?: boolean;
+          priority?: string;
+          priority_set_at?: string;
           created_at?: string;
           updated_at?: string;
         };

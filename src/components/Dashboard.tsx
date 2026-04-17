@@ -1,18 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { useViewStore } from '../store/useViewStore';
+import type { ActionItem } from '../lib/format';
 import {
   extractActionItems,
   extractPreview,
-  formatDailyNoteTitle,
   formatLongDate,
   formatRelative,
   getGreeting,
+  toggleActionItemLine,
 } from '../lib/format';
+import type { TaskPriority } from '../lib/priority';
+import { PRIORITY_ORDER, PRIORITY_PILL, priorityRank } from '../lib/priority';
+import { priorityInlineLabelClass, priorityRowClass, priorityTitleClass } from '../lib/priorityUiClasses';
+import type { Task } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
 import type { Note } from '../types';
 import {
@@ -20,18 +25,122 @@ import {
   CheckSquareIcon,
   ClockIcon,
   NoteIcon,
-  SparklesIcon,
   SquareIcon,
   TrashIcon,
 } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
-import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
 
 const RECENT_LIMIT = 5;
 const ACTION_ITEM_LIMIT = 8;
+
+type DashboardWorkRow =
+  | {
+      kind: 'task';
+      id: string;
+      priority: TaskPriority;
+      title: string;
+      subtitle: string;
+      onSubtitleClick: () => void;
+      task: Task;
+    }
+  | {
+      kind: 'action';
+      id: string;
+      priority: TaskPriority;
+      title: string;
+      subtitle: string;
+      onSubtitleClick: () => void;
+      item: ActionItem;
+    };
+
+type WorkRowCtx = { openNote: (id: string) => void; openTasksView: () => void };
+
+function workRowStamp(row: DashboardWorkRow): number {
+  return row.kind === 'task'
+    ? new Date(row.task.updated_at).getTime()
+    : new Date(row.item.noteUpdatedAt).getTime();
+}
+
+function buildWorkRows(
+  openTasks: Task[],
+  actionItems: ActionItem[],
+  ctx: WorkRowCtx,
+): DashboardWorkRow[] {
+  const rows: DashboardWorkRow[] = [];
+  for (const t of openTasks) {
+    const priority = (t.priority as TaskPriority) ?? 'normal';
+    rows.push({
+      kind: 'task',
+      id: `task:${t.id}`,
+      priority,
+      title: t.title,
+      subtitle: 'Tasks',
+      onSubtitleClick: ctx.openTasksView,
+      task: t,
+    });
+  }
+  for (const a of actionItems) {
+    rows.push({
+      kind: 'action',
+      id: `action:${a.noteId}:${a.line}`,
+      priority: a.priority,
+      title: a.displayText,
+      subtitle: a.noteTitle,
+      onSubtitleClick: () => ctx.openNote(a.noteId),
+      item: a,
+    });
+  }
+  rows.sort((a, b) => {
+    const pr = priorityRank(a.priority) - priorityRank(b.priority);
+    if (pr !== 0) return pr;
+    return workRowStamp(b) - workRowStamp(a);
+  });
+  return rows;
+}
+
+function CriticalBlocker({ rows }: { rows: DashboardWorkRow[] }) {
+  const critical = rows.filter((r) => r.priority === 'critical');
+  if (critical.length === 0) return null;
+
+  return (
+    <div
+      className="mb-8 rounded-xl border-2 border-red-500/90 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-5 text-red-50 shadow-xl ring-1 ring-red-400/30 dark:border-red-500/75 dark:from-red-950/40 dark:via-zinc-950 dark:to-zinc-950 dark:ring-red-500/30"
+      role="region"
+      aria-label="Highest priority"
+    >
+      <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-red-400/95 dark:text-red-300">
+        Critical priority
+      </p>
+      <h2 className="mt-1.5 text-lg font-semibold leading-snug text-white dark:text-red-50">
+        Do nothing else until this is handled.
+      </h2>
+      <ul className="mt-4 space-y-3">
+        {critical.map((row) => (
+          <li
+            key={row.id}
+            className="flex items-start gap-3 rounded-lg bg-black/35 px-3 py-2.5 ring-1 ring-white/10 dark:bg-black/25 dark:ring-white/15"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="break-words font-semibold leading-snug text-white dark:text-red-50">
+                {row.title}
+              </p>
+              <button
+                type="button"
+                onClick={row.onSubtitleClick}
+                className="mt-1 text-left text-xs text-red-200/85 underline-offset-2 hover:text-red-50 hover:underline dark:text-red-200/90 dark:hover:text-white"
+              >
+                {row.subtitle}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function firstNameFromEmail(email: string | undefined | null): string {
   if (!email) return 'there';
@@ -50,20 +159,6 @@ function resolveName(
   return firstNameFromEmail(email);
 }
 
-function toggleActionItemLine(content: string, line: number): string {
-  const lines = content.split('\n');
-  const src = lines[line];
-  if (src == null) return content;
-  const replaced = src.replace(
-    /^(\s*[-*+]\s+\[)( |x|X)(\]\s+)/,
-    (_m, pre: string, state: string, post: string) =>
-      `${pre}${state === ' ' ? 'x' : ' '}${post}`,
-  );
-  if (replaced === src) return content;
-  lines[line] = replaced;
-  return lines.join('\n');
-}
-
 export function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
@@ -74,7 +169,6 @@ export function Dashboard() {
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
-  const createNote = useNotesStore((s) => s.createNote);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActive = useNotesStore((s) => s.setActive);
   const setView = useViewStore((s) => s.setView);
@@ -86,7 +180,6 @@ export function Dashboard() {
 
   const recent = useMemo(() => notes.slice(0, RECENT_LIMIT), [notes]);
   const actionItems = useMemo(() => extractActionItems(notes), [notes]);
-  const visibleActions = actionItems.slice(0, ACTION_ITEM_LIMIT);
   const openTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
 
   const todaysSchedule = useMemo(() => {
@@ -98,27 +191,23 @@ export function Dashboard() {
     return all;
   }, [events, today]);
 
-  const openNote = (id: string) => {
-    setActive(id);
-    setView('notes');
-  };
+  const openNote = useCallback(
+    (id: string) => {
+      setActive(id);
+      setView('notes');
+    },
+    [setActive, setView],
+  );
 
-  const openTodaysNote = async () => {
-    if (!user) return;
-    const title = formatDailyNoteTitle(today);
-    const existing = notes.find((n) => n.title === title);
-    if (existing) {
-      openNote(existing.id);
-      return;
-    }
-    const created = await createNote(user.id);
-    if (!created) return;
-    await updateNote(created.id, {
-      title,
-      content: `# ${dateLabel}\n\n## Focus\n\n- \n\n## Notes\n\n`,
-    });
-    setView('notes');
-  };
+  const workRows = useMemo(
+    () =>
+      buildWorkRows(openTasks, actionItems, {
+        openNote,
+        openTasksView: () => setView('tasks'),
+      }),
+    [openTasks, actionItems, openNote, setView],
+  );
+  const visibleWork = workRows.slice(0, ACTION_ITEM_LIMIT);
 
   const toggleAction = (noteId: string, line: number) => {
     const note = notes.find((n) => n.id === noteId);
@@ -153,37 +242,130 @@ export function Dashboard() {
           </p>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <section className="lg:col-span-3">
-            <SectionHeader
-              icon={<SparklesIcon className="h-4 w-4" />}
-              title="Your day"
-              accent="purple"
-            />
-            <Card tone="sunken" className="card-pop card-pop-purple">
-              <div className="flex items-start gap-4">
-                <IconBadge size="lg" tone="purple">
-                  <ClockIcon className="h-6 w-6" />
-                </IconBadge>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-text">Start a daily note</h3>
-                  <p className="mt-1 text-sm text-text-muted">
-                    Capture priorities and notes for today in one place. We'll title it{' '}
-                    <code className="rounded bg-surface-raised px-1 py-0.5 text-xs text-text-muted ring-1 ring-border">
-                      {formatDailyNoteTitle(today)}
-                    </code>
-                    .
-                  </p>
-                  <button onClick={openTodaysNote} className="btn-primary mt-4">
-                    Open today's note
-                    <ArrowRightIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </Card>
-          </section>
+        <CriticalBlocker rows={workRows} />
 
-          <section className="lg:col-span-2">
+        <section className="mb-6 flex min-h-0 min-w-0 flex-col lg:mb-8">
+          <SectionHeader
+            icon={<CheckSquareIcon className="h-4 w-4" />}
+            title="Action items"
+            count={openTasks.length + actionItems.length}
+            accent="amber"
+            action={
+              <button
+                onClick={() => setView('tasks')}
+                className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
+              >
+                Manage
+                <ArrowRightIcon className="h-3 w-3" />
+              </button>
+            }
+          />
+          <Card
+            padded="none"
+            className="card-pop card-pop-amber flex max-h-[min(50vh,30rem)] min-h-0 flex-col"
+          >
+            {/* Inner clips scroll; outer stays overflow-visible so card-pop ::after glow isn’t clipped */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card">
+            <QuickAddTodo
+              disabled={!user}
+              onAdd={async (title) => {
+                if (!user) return;
+                await createTask(user.id, title);
+              }}
+            />
+            <div className="shrink-0 space-y-2 border-b border-border bg-surface-raised/35 px-4 py-2.5">
+              <p className="text-[11px] leading-relaxed text-text-muted">
+                Sorted top to bottom. The left edge and label use the same color; change levels on{' '}
+                <button
+                  type="button"
+                  onClick={() => setView('tasks')}
+                  className="font-medium text-brand-700 hover:text-brand-600"
+                >
+                  Tasks
+                </button>
+                . In notes:{' '}
+                <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P0]</code>
+                –
+                <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P4]</code>
+                .
+              </p>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                {PRIORITY_ORDER.map((p, i) => (
+                  <span key={p} className="inline-flex items-center gap-1.5">
+                    {i > 0 ? (
+                      <span className="text-text-muted/50" aria-hidden>
+                        ·
+                      </span>
+                    ) : null}
+                    <span className={priorityInlineLabelClass(p)}>{PRIORITY_PILL[p]}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {workRows.length === 0 ? (
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <EmptyState
+                    icon={<CheckSquareIcon className="h-5 w-5" />}
+                    title="No open tasks"
+                    message="Add a todo above, or write `- [ ] …` in any note with an optional priority tag."
+                  />
+                </div>
+              ) : (
+                <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain">
+                  {visibleWork.map((row) => (
+                    <li
+                      key={row.id}
+                      className={priorityRowClass(row.priority)}
+                      aria-label={`${PRIORITY_PILL[row.priority]}: ${row.title}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          row.kind === 'task'
+                            ? void toggleTaskDone(row.task.id, true)
+                            : void toggleAction(row.item.noteId, row.item.line)
+                        }
+                        className="mt-0.5 shrink-0 text-text-subtle hover:text-brand-700"
+                        aria-label="Mark done"
+                        title="Mark done"
+                      >
+                        <SquareIcon className="h-4 w-4" />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p className={priorityInlineLabelClass(row.priority)}>{PRIORITY_PILL[row.priority]}</p>
+                        <p
+                          className={[
+                            'mt-0.5 break-words text-left leading-snug',
+                            priorityTitleClass(row.priority),
+                          ].join(' ')}
+                        >
+                          {row.title}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={row.onSubtitleClick}
+                          className="mt-1 block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
+                          title={row.kind === 'task' ? 'Open tasks' : 'Open note'}
+                        >
+                          {row.subtitle}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                  {workRows.length > ACTION_ITEM_LIMIT && (
+                    <li className="px-4 py-2 text-center text-xs text-text-muted">
+                      +{workRows.length - ACTION_ITEM_LIMIT} more (sorted by priority)
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </Card>
+        </section>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-stretch">
+          <section className="flex min-h-0 min-w-0 flex-col lg:h-full">
             <SectionHeader
               icon={<ClockIcon className="h-4 w-4" />}
               title="Today's schedule"
@@ -198,11 +380,16 @@ export function Dashboard() {
                 </button>
               }
             />
-            <Card padded="sm" className="card-pop card-pop-blue">
+            <Card
+              padded="sm"
+              className="card-pop card-pop-blue flex min-h-0 flex-1 flex-col"
+            >
               {todaysSchedule.length === 0 ? (
-                <p className="text-sm text-text-muted">No events today.</p>
+                <p className="flex-1 text-sm leading-relaxed text-text-muted">
+                  No events today.
+                </p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain lg:max-h-[min(58vh,32rem)]">
                   {todaysSchedule.slice(0, 8).map((o) => (
                     <li
                       key={`${o.eventId}:${o.start.toISOString()}`}
@@ -210,9 +397,7 @@ export function Dashboard() {
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-medium text-text">
-                            {o.title}
-                          </p>
+                          <p className="truncate text-sm font-medium text-text">{o.title}</p>
                           {o.source === 'outlook_ics' ? (
                             <Badge variant="subtle">Outlook</Badge>
                           ) : (
@@ -259,164 +444,69 @@ export function Dashboard() {
                     </li>
                   ))}
                   {todaysSchedule.length > 8 && (
-                    <li className="text-xs text-text-muted">
-                      +{todaysSchedule.length - 8} more
-                    </li>
+                    <li className="text-xs text-text-muted">+{todaysSchedule.length - 8} more</li>
                   )}
                 </ul>
               )}
             </Card>
           </section>
 
-          <section className="lg:col-span-2">
-            <SectionHeader
-              icon={<NoteIcon className="h-4 w-4" />}
-              title="At a glance"
-              accent="green"
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard label="Notes" value={notes.length} />
-              <StatCard label="Open tasks" value={openTasks.length + actionItems.length} />
-            </div>
-          </section>
+          <div className="flex min-h-0 min-w-0 flex-col gap-6 lg:gap-8">
+            <section className="flex min-h-0 min-w-0 flex-col">
+              <SectionHeader icon={<NoteIcon className="h-4 w-4" />} title="At a glance" accent="green" />
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard label="Notes" value={notes.length} />
+                <StatCard label="Open tasks" value={openTasks.length + actionItems.length} />
+              </div>
+            </section>
 
-          <section className="lg:col-span-3">
-            <SectionHeader
-              icon={<CheckSquareIcon className="h-4 w-4" />}
-              title="Action items"
-              count={openTasks.length + actionItems.length}
-              accent="amber"
-              action={
-                <button
-                  onClick={() => setView('tasks')}
-                  className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-                >
-                  Manage
-                  <ArrowRightIcon className="h-3 w-3" />
-                </button>
-              }
-            />
-            <Card padded="none" className="card-pop card-pop-amber">
-              <QuickAddTodo
-                disabled={!user}
-                onAdd={async (title) => {
-                  if (!user) return;
-                  await createTask(user.id, title);
-                }}
-              />
-
-              {openTasks.length === 0 && actionItems.length === 0 ? (
-                <EmptyState
-                  icon={<CheckSquareIcon className="h-5 w-5" />}
-                  title="No open tasks"
-                  message="Add a todo above, or write `- [ ] ...` in any note."
-                />
-              ) : (
-                <ul className="divide-y divide-border">
-                  {openTasks.slice(0, ACTION_ITEM_LIMIT).map((t) => (
-                    <li key={t.id} className="flex items-start gap-3 px-4 py-3">
-                      <button
-                        onClick={() => toggleTaskDone(t.id, true)}
-                        className="mt-0.5 text-text-subtle hover:text-brand-700"
-                        aria-label="Mark done"
-                        title="Mark done"
-                      >
-                        <SquareIcon className="h-4 w-4" />
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-text">
-                          {t.title}
-                        </p>
-                        <button
-                          onClick={() => setView('tasks')}
-                          className="mt-0.5 truncate text-xs text-text-muted hover:text-brand-700"
-                          title="Open todos"
-                        >
-                          Todos
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                  {visibleActions.map((item) => (
-                    <li
-                      key={`${item.noteId}:${item.line}`}
-                      className="flex items-start gap-3 px-4 py-3"
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <SectionHeader
+                icon={<NoteIcon className="h-4 w-4" />}
+                title="Recent notes"
+                accent="brand"
+                action={
+                  notes.length > 0 ? (
+                    <button
+                      onClick={() => setView('notes')}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
                     >
-                      <button
-                        onClick={() => toggleAction(item.noteId, item.line)}
-                        className="mt-0.5 text-text-subtle hover:text-brand-700"
-                        aria-label="Mark done"
-                        title="Mark done"
-                      >
-                        <SquareIcon className="h-4 w-4" />
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-text">
-                          {item.text}
-                        </p>
-                        <button
-                          onClick={() => openNote(item.noteId)}
-                          className="mt-0.5 truncate text-xs text-text-muted hover:text-brand-700"
-                          title="Open note"
-                        >
-                          {item.noteTitle}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                  {actionItems.length + openTasks.length > ACTION_ITEM_LIMIT && (
-                    <li className="px-4 py-2 text-center text-xs text-text-muted">
-                      +{actionItems.length + openTasks.length - ACTION_ITEM_LIMIT} more
-                    </li>
-                  )}
-                </ul>
-              )}
-            </Card>
-          </section>
-
-          <section className="lg:col-span-2">
-            <SectionHeader
-              icon={<NoteIcon className="h-4 w-4" />}
-              title="Recent notes"
-              accent="brand"
-              action={
-                notes.length > 0 ? (
-                  <button
-                    onClick={() => setView('notes')}
-                    className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-                  >
-                    View all
-                    <ArrowRightIcon className="h-3 w-3" />
-                  </button>
-                ) : null
-              }
-            />
-            <Card padded="none" className="card-pop card-pop-purple">
-              {loading && notes.length === 0 ? (
-                <EmptyState
-                  icon={<NoteIcon className="h-5 w-5" />}
-                  title="Loading…"
-                  message="Fetching your notes."
-                />
-              ) : recent.length === 0 ? (
-                <EmptyState
-                  icon={<NoteIcon className="h-5 w-5" />}
-                  title="No notes yet"
-                  message="Create your first note to see it here."
-                />
-              ) : (
-                <ul className="divide-y divide-border">
-                  {recent.map((note) => (
-                    <RecentNoteRow
-                      key={note.id}
-                      note={note}
-                      onOpen={() => openNote(note.id)}
+                      View all
+                      <ArrowRightIcon className="h-3 w-3" />
+                    </button>
+                  ) : null
+                }
+              />
+              <Card
+                padded="none"
+                className="card-pop card-pop-purple flex min-h-0 flex-1 flex-col overflow-hidden lg:max-h-[min(42vh,24rem)]"
+              >
+                {loading && notes.length === 0 ? (
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <EmptyState
+                      icon={<NoteIcon className="h-5 w-5" />}
+                      title="Loading…"
+                      message="Fetching your notes."
                     />
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </section>
+                  </div>
+                ) : recent.length === 0 ? (
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <EmptyState
+                      icon={<NoteIcon className="h-5 w-5" />}
+                      title="No notes yet"
+                      message="Create your first note to see it here."
+                    />
+                  </div>
+                ) : (
+                  <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain">
+                    {recent.map((note) => (
+                      <RecentNoteRow key={note.id} note={note} onOpen={() => openNote(note.id)} />
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </section>
+          </div>
         </div>
       </div>
     </div>
@@ -485,7 +575,7 @@ function QuickAddTodo({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         className="input"
-        placeholder="Add a todo…"
+        placeholder="Quick add a todo…"
         maxLength={200}
         disabled={disabled}
       />

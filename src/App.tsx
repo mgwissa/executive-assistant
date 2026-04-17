@@ -3,12 +3,16 @@ import { Auth } from './components/Auth';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
+import { EmergencyBanner } from './components/EmergencyBanner';
+import { EmergencyMode } from './components/EmergencyMode';
 import { Profile } from './components/Profile';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
+import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useAuthStore } from './store/useAuthStore';
+import { useEmergencyStore } from './store/useEmergencyStore';
 import { useEventsStore } from './store/useEventsStore';
 import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
@@ -29,6 +33,17 @@ function NotesView() {
 
 function Shell() {
   const user = useAuthStore((s) => s.user);
+  const criticalOverload = useCriticalOverload();
+  const bypassEmergency = useEmergencyStore((s) => s.bypass);
+  const setBypassEmergency = useEmergencyStore((s) => s.setBypass);
+  const clearEmergency = useEmergencyStore((s) => s.clear);
+
+  useEffect(() => {
+    if (!criticalOverload) setBypassEmergency(false);
+  }, [criticalOverload, setBypassEmergency]);
+
+  useEffect(() => () => clearEmergency(), [clearEmergency]);
+
   const fetchAll = useNotesStore((s) => s.fetchAll);
   const clearNotes = useNotesStore((s) => s.clear);
   const fetchProfile = useProfileStore((s) => s.fetchProfile);
@@ -36,6 +51,7 @@ function Shell() {
   const profile = useProfileStore((s) => s.profile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const fetchTasks = useTasksStore((s) => s.fetchAll);
+  const applyEscalationFromProfile = useTasksStore((s) => s.applyEscalationFromProfile);
   const clearTasks = useTasksStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
   const clearEvents = useEventsStore((s) => s.clear);
@@ -76,10 +92,27 @@ function Shell() {
     updateProfile(user.id, { timezone: browserTz });
   }, [user, profile, updateProfile]);
 
+  useEffect(() => {
+    if (!user || !profile) return;
+    void applyEscalationFromProfile(user.id);
+  }, [user, profile?.user_id, profile?.priority_escalation, applyEscalationFromProfile]);
+
+  const showEmergency = criticalOverload && !bypassEmergency;
+  const showEmergencyBanner = criticalOverload && bypassEmergency;
+
+  if (showEmergency) {
+    return (
+      <div className="app-shell flex h-full min-h-0 flex-col">
+        <EmergencyMode onExit={() => setBypassEmergency(true)} />
+      </div>
+    );
+  }
+
   return (
-    <div className="app-shell flex h-full">
+    <div className="app-shell flex h-full min-h-0">
       <SideNav />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
+        {showEmergencyBanner ? <EmergencyBanner /> : null}
         <TopBar />
         <div className="min-h-0 flex-1">
           {view === 'dashboard' && <Dashboard />}

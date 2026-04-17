@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import type { Json } from '../types/database';
 import type { Profile } from '../types';
 
 type ProfileState = {
@@ -15,6 +16,7 @@ type ProfileState = {
       first_name?: string | null;
       timezone?: string | null;
       outlook_ics_url?: string | null;
+      priority_escalation?: Json | null;
     },
   ) => Promise<void>;
   clear: () => void;

@@ -126,8 +126,11 @@ create table if not exists public.tasks (
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   done boolean not null default false,
+  priority text not null default 'normal',
+  priority_set_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint tasks_priority_check check (priority in ('critical', 'urgent', 'high', 'normal', 'low'))
 );
 
 create index if not exists tasks_user_id_idx on public.tasks(user_id);
@@ -218,6 +221,14 @@ create trigger events_set_updated_at
 
 alter table public.profiles add column if not exists outlook_ics_url text;
 alter table public.profiles add column if not exists outlook_ics_last_synced_at timestamptz;
+alter table public.profiles add column if not exists priority_escalation jsonb;
+
+alter table public.tasks add column if not exists priority_set_at timestamptz;
+update public.tasks
+set priority_set_at = coalesce(updated_at, created_at)
+where priority_set_at is null;
+alter table public.tasks alter column priority_set_at set default now();
+alter table public.tasks alter column priority_set_at set not null;
 
 alter table public.events add column if not exists source text not null default 'manual';
 

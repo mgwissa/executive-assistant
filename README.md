@@ -37,6 +37,9 @@ npm install
    - `supabase/migrations/2026-04-17_004_events.sql`
    - `supabase/migrations/2026-04-17_005_outlook_ics_sync.sql`
    - `supabase/migrations/2026-04-17_006_profiles_timezone_if_missing.sql` (idempotent; fixes missing `profiles.timezone` if earlier migrations were skipped)
+   - `supabase/migrations/2026-04-17_007_task_priority.sql` (todo `priority`: urgent / high / normal / low)
+   - `supabase/migrations/2026-04-17_008_priority_escalation.sql` (`tasks.priority_set_at`, `profiles.priority_escalation` JSON for auto bump cadence)
+   - `supabase/migrations/2026-04-17_009_task_priority_critical.sql` (optional `critical` / P0 priority above P1)
 3. In **Project Settings → API**, grab your **Project URL** and **anon public key**.
 4. Copy `.env.example` to `.env.local` and fill in:
 

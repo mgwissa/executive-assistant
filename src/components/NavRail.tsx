@@ -19,7 +19,7 @@ type Item = {
 const topItems: Item[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon },
   { id: 'calendar', label: 'Calendar', Icon: CalendarIcon },
-  { id: 'tasks', label: 'Todos', Icon: CheckSquareIcon },
+  { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon },
   { id: 'notes', label: 'Notes', Icon: NoteIcon },
 ];
 

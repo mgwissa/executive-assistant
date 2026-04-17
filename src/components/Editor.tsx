@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { PRIORITY_LABEL, PRIORITY_ORDER } from '../lib/priority';
+import type { TaskPriority } from '../lib/priority';
 import { useNotesStore } from '../store/useNotesStore';
 import { formatRelative } from '../lib/format';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -69,6 +71,15 @@ export function Editor() {
 
     applyEdit(next);
     requestAnimationFrame(() => el.focus());
+  };
+
+  /** Insert `- [ ]` / `- [ ] [Pn]` at the start of selected lines (same as Todo, with optional P0–P4). */
+  const insertCheckboxLinePrefix = (priority?: TaskPriority) => {
+    const prefix =
+      priority == null
+        ? '- [ ] '
+        : `- [ ] [P${PRIORITY_ORDER.indexOf(priority)}] `;
+    insertLinePrefix(prefix);
   };
 
   const insertAtCursor = (text: string) => {
@@ -171,9 +182,33 @@ export function Editor() {
                 <FormatButton onClick={() => insertLinePrefix('- ')} title="Bullet list">
                   List
                 </FormatButton>
-                <FormatButton onClick={() => insertLinePrefix('- [ ] ')} title="Checklist">
+                <FormatButton
+                  onClick={() => insertCheckboxLinePrefix()}
+                  title="Checklist item (- [ ])"
+                >
                   Todo
                 </FormatButton>
+                <select
+                  className="max-w-[10.5rem] rounded-md border border-border bg-surface-raised px-1.5 py-1 text-xs text-text shadow-card outline-none focus-ring"
+                  aria-label="Insert checklist with priority"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '') return;
+                    insertCheckboxLinePrefix(v as TaskPriority);
+                    e.target.selectedIndex = 0;
+                  }}
+                >
+                  <option value="">Todo + priority…</option>
+                  {PRIORITY_ORDER.map((p) => {
+                    const n = PRIORITY_ORDER.indexOf(p);
+                    return (
+                      <option key={p} value={p}>
+                        [P{n}] {PRIORITY_LABEL[p]}
+                      </option>
+                    );
+                  })}
+                </select>
                 <FormatButton
                   onClick={() => insertAtCursor('\n```ts\n\n```\n')}
                   title="Code block"

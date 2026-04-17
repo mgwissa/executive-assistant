@@ -15,17 +15,97 @@ export function formatRelative(iso: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+import type { TaskPriority } from './priority';
+import { PRIORITY_ORDER, parsePriorityInTitle, parsePriorityPrefix } from './priority';
+
 export type ActionItem = {
   noteId: string;
   noteTitle: string;
+  noteUpdatedAt: string;
+  /** Full checkbox label from the note (may include legacy `[P0]`–`[P4]` priority tags). */
   text: string;
+  /** Label with priority tag stripped for display. */
+  displayText: string;
   line: number;
+  priority: TaskPriority;
 };
 
 const ACTION_ITEM_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
 
+/** Leading `- [ ] ` / `* [ ] ` part of a checkbox line (open or done). */
+const CHECKBOX_LINE_PREFIX = /^(\s*[-*+]\s+\[[ xX]\]\s+)/;
+
+/** Toggle `- [ ]` ↔ `- [x]` on a single line. */
+export function toggleActionItemLine(content: string, line: number): string {
+  const lines = content.split('\n');
+  const src = lines[line];
+  if (src == null) return content;
+  const replaced = src.replace(
+    /^(\s*[-*+]\s+\[)( |x|X)(\]\s+)/,
+    (_m, pre: string, state: string, post: string) =>
+      `${pre}${state === ' ' ? 'x' : ' '}${post}`,
+  );
+  if (replaced === src) return content;
+  lines[line] = replaced;
+  return lines.join('\n');
+}
+
+/** Set legacy `[P0]`–`[P4]` on a note checkbox line to match `priority`. */
+export function setActionItemLinePriority(
+  content: string,
+  lineIndex: number,
+  priority: TaskPriority,
+): string | null {
+  const lines = content.split('\n');
+  const src = lines[lineIndex];
+  if (src == null) return null;
+  const m = src.match(ACTION_ITEM_RE);
+  if (!m) return null;
+  const raw = m[2];
+  const { label } = parsePriorityPrefix(raw);
+  const trimmed = label.trim();
+  if (!trimmed) return null;
+  const prefix = src.match(CHECKBOX_LINE_PREFIX)?.[1];
+  if (!prefix) return null;
+  const n = PRIORITY_ORDER.indexOf(priority);
+  if (n < 0) return null;
+  lines[lineIndex] = `${prefix}[P${n}] ${trimmed}`;
+  return lines.join('\n');
+}
+
+/** Rename / reprioritize a checkbox line; `rawTitle` may include optional `[Pn]` (same as standalone tasks). */
+export function renameActionItemLine(
+  content: string,
+  lineIndex: number,
+  rawTitle: string,
+): string | null {
+  const lines = content.split('\n');
+  const src = lines[lineIndex];
+  if (src == null) return null;
+  const m = src.match(ACTION_ITEM_RE);
+  if (!m) return null;
+  const prefix = src.match(CHECKBOX_LINE_PREFIX)?.[1];
+  if (!prefix) return null;
+  const currentPriority = parsePriorityPrefix(m[2]).priority;
+  const { title, priority } = parsePriorityInTitle(rawTitle.trim(), currentPriority);
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const n = PRIORITY_ORDER.indexOf(priority);
+  if (n < 0) return null;
+  lines[lineIndex] = `${prefix}[P${n}] ${trimmed}`;
+  return lines.join('\n');
+}
+
+/** Remove a checkbox line from note content. */
+export function deleteActionItemLine(content: string, lineIndex: number): string | null {
+  const lines = content.split('\n');
+  if (lines[lineIndex] == null) return null;
+  lines.splice(lineIndex, 1);
+  return lines.join('\n');
+}
+
 export function extractActionItems(
-  notes: { id: string; title: string; content: string }[],
+  notes: { id: string; title: string; content: string; updated_at: string }[],
   { includeDone = false }: { includeDone?: boolean } = {},
 ): ActionItem[] {
   const items: ActionItem[] = [];
@@ -37,11 +117,16 @@ export function extractActionItems(
       if (!match) continue;
       const done = match[1].toLowerCase() === 'x';
       if (done && !includeDone) continue;
+      const raw = match[2];
+      const { priority, label } = parsePriorityPrefix(raw);
       items.push({
         noteId: note.id,
         noteTitle: note.title || 'Untitled',
-        text: match[2],
+        noteUpdatedAt: note.updated_at,
+        text: raw,
+        displayText: label,
         line: i,
+        priority,
       });
     }
   }

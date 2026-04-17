@@ -1,6 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ActionItem } from '../lib/format';
+import {
+  deleteActionItemLine,
+  extractActionItems,
+  renameActionItemLine,
+  setActionItemLinePriority,
+  toggleActionItemLine,
+} from '../lib/format';
+import type { TaskPriority } from '../lib/priority';
+import { PRIORITY_HINT, PRIORITY_LABEL, PRIORITY_ORDER, priorityRank } from '../lib/priority';
+import { PriorityBadge } from './ui/PriorityBadge';
+import { priorityRowClass, prioritySelectClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import { useAuthStore } from '../store/useAuthStore';
+import { useNotesStore } from '../store/useNotesStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { useViewStore } from '../store/useViewStore';
+import type { Note, Task } from '../types';
 import { CheckSquareIcon, SquareIcon, TrashIcon } from './icons';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
@@ -10,30 +25,101 @@ import { Badge } from './ui/Badge';
 
 export function Tasks() {
   const user = useAuthStore((s) => s.user);
-  const { tasks, loading, error, createTask, toggleDone, deleteTask } = useTasksStore();
+  const notes = useNotesStore((s) => s.notes);
+  const notesLoading = useNotesStore((s) => s.loading);
+  const updateNote = useNotesStore((s) => s.updateNote);
+  const setActiveNote = useNotesStore((s) => s.setActive);
+  const setView = useViewStore((s) => s.setView);
+  const { tasks, loading, error, createTask, setTaskPriority, renameTask, toggleDone, deleteTask } =
+    useTasksStore();
 
   const [title, setTitle] = useState('');
 
-  const open = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+  const openDbTasks = useMemo(() => {
+    const list = tasks.filter((t) => !t.done);
+    list.sort((a, b) => {
+      const pa = priorityRank((a.priority as TaskPriority) ?? 'normal');
+      const pb = priorityRank((b.priority as TaskPriority) ?? 'normal');
+      if (pa !== pb) return pa - pb;
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+    return list;
+  }, [tasks]);
+
+  const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+
+  type OpenRow = { kind: 'task'; task: Task } | { kind: 'note'; item: ActionItem };
+
+  const openRows = useMemo(() => {
+    const rows: OpenRow[] = [];
+    for (const t of openDbTasks) rows.push({ kind: 'task', task: t });
+    for (const a of actionItems) rows.push({ kind: 'note', item: a });
+    rows.sort((a, b) => {
+      const pa = priorityRank(
+        a.kind === 'task' ? ((a.task.priority as TaskPriority) ?? 'normal') : a.item.priority,
+      );
+      const pb = priorityRank(
+        b.kind === 'task' ? ((b.task.priority as TaskPriority) ?? 'normal') : b.item.priority,
+      );
+      if (pa !== pb) return pa - pb;
+      const sa =
+        a.kind === 'task'
+          ? new Date(a.task.updated_at).getTime()
+          : new Date(a.item.noteUpdatedAt).getTime();
+      const sb =
+        b.kind === 'task'
+          ? new Date(b.task.updated_at).getTime()
+          : new Date(b.item.noteUpdatedAt).getTime();
+      return sb - sa;
+    });
+    return rows;
+  }, [openDbTasks, actionItems]);
+
   const done = useMemo(() => tasks.filter((t) => t.done), [tasks]);
+
+  const openNote = (id: string) => {
+    setActiveNote(id);
+    setView('notes');
+  };
+
+  const applyNoteLine = (item: ActionItem, map: (content: string) => string | null) => {
+    const note = notes.find((n) => n.id === item.noteId);
+    if (!note) return;
+    const next = map(note.content);
+    if (next != null) void updateNote(item.noteId, { content: next });
+  };
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-3xl px-8 py-10">
-        <header className="mb-8 flex items-center gap-3">
-          <IconBadge tone="amber" size="md">
-            <CheckSquareIcon className="h-5 w-5" />
-          </IconBadge>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-text">Todos</h1>
-            <p className="mt-1 text-sm text-text-muted">
-              Fast capture, always available. Great for calendar sync later.
-            </p>
+      <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-8 sm:py-10">
+        <header className="mb-6 flex flex-col gap-4 sm:mb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <IconBadge tone="amber" size="md" className="shrink-0">
+                <CheckSquareIcon className="h-5 w-5" />
+              </IconBadge>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold tracking-tight text-text">Tasks</h1>
+                <p className="mt-1.5 text-sm leading-relaxed text-text-muted">
+                  This list includes standalone todos and open{' '}
+                  <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-[13px] ring-1 ring-border">
+                    - [ ]
+                  </code>{' '}
+                  lines from your notes. Optional{' '}
+                  <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-[13px] ring-1 ring-border">[P0]</code>
+                  –
+                  <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-[13px] ring-1 ring-border">[P4]</code>{' '}
+                  tags use the same five priority levels.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+              <Badge variant="blue">{openRows.length} open</Badge>
+              <Badge variant="green">{done.length} done</Badge>
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Badge variant="blue">{open.length} open</Badge>
-            <Badge variant="green">{done.length} done</Badge>
-          </div>
+
+          <PriorityReference />
         </header>
 
         <form
@@ -43,16 +129,16 @@ export function Tasks() {
             const created = await createTask(user.id, title);
             if (created) setTitle('');
           }}
-          className="mb-6 flex items-center gap-2"
+          className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
         >
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="input"
+            className="input min-w-0 flex-1"
             placeholder="Add a todo…"
             maxLength={200}
           />
-          <button type="submit" className="btn-primary whitespace-nowrap">
+          <button type="submit" className="btn-primary w-full shrink-0 whitespace-nowrap sm:w-auto">
             Add
           </button>
         </form>
@@ -63,26 +149,170 @@ export function Tasks() {
           </p>
         )}
 
-        <div className="space-y-6">
-          <TaskSection
-            title="Open"
-            loading={loading}
-            tasks={open}
-            onToggle={(id, next) => toggleDone(id, next)}
-            onDelete={(id) => deleteTask(id)}
-            empty="No open todos. Add one above."
-          />
+        <div className="space-y-8">
+          <section>
+            <SectionHeader title="Open" count={openRows.length} accent="blue" />
+            <Card padded="none">
+              {(loading || notesLoading) && openRows.length === 0 ? (
+                <EmptyState
+                  icon={<SquareIcon className="h-5 w-5" />}
+                  title="Loading…"
+                  message="Fetching your tasks and notes."
+                />
+              ) : openRows.length === 0 ? (
+                <EmptyState
+                  icon={<SquareIcon className="h-5 w-5" />}
+                  title="Nothing here"
+                  message="Add a todo above, or write an open checkbox line in a note."
+                />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {openRows.map((row) =>
+                    row.kind === 'task' ? (
+                      <OpenTaskRow
+                        key={row.task.id}
+                        task={row.task}
+                        priority={(row.task.priority as TaskPriority) ?? 'normal'}
+                        onToggle={() => void toggleDone(row.task.id, true)}
+                        onDelete={() => void deleteTask(row.task.id)}
+                        onRename={renameTask}
+                        onPriorityChange={(p) => void setTaskPriority(row.task.id, p)}
+                      />
+                    ) : (
+                      <NoteOpenRow
+                        key={`note-${row.item.noteId}-${row.item.line}`}
+                        item={row.item}
+                        note={notes.find((n) => n.id === row.item.noteId)}
+                        onToggle={() =>
+                          applyNoteLine(row.item, (c) => toggleActionItemLine(c, row.item.line))
+                        }
+                        onPriorityChange={(p) =>
+                          applyNoteLine(row.item, (c) => setActionItemLinePriority(c, row.item.line, p))
+                        }
+                        onRename={(raw) =>
+                          applyNoteLine(row.item, (c) => renameActionItemLine(c, row.item.line, raw))
+                        }
+                        onDelete={() =>
+                          applyNoteLine(row.item, (c) => deleteActionItemLine(c, row.item.line))
+                        }
+                        onOpenNote={() => openNote(row.item.noteId)}
+                      />
+                    ),
+                  )}
+                </ul>
+              )}
+            </Card>
+          </section>
           <TaskSection
             title="Done"
             loading={false}
             tasks={done}
             onToggle={(id, next) => toggleDone(id, next)}
             onDelete={(id) => deleteTask(id)}
+            onRename={(id, raw) => void renameTask(id, raw)}
             empty="Nothing completed yet."
           />
         </div>
       </div>
     </div>
+  );
+}
+
+function PriorityReference() {
+  return (
+    <Card tone="sunken" padded="sm" className="border-border/80">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">Priority pills</p>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        {PRIORITY_ORDER.map((opt) => (
+          <li
+            key={opt}
+            className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-surface px-2.5 py-2.5"
+          >
+            <PriorityBadge priority={opt} className="w-fit shrink-0" />
+            <span className="min-w-0 text-[12px] leading-snug text-text-muted">{PRIORITY_HINT[opt]}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function TaskTitleField({
+  taskId,
+  title,
+  done = false,
+  className = '',
+  titleClassName = '',
+  onRename,
+}: {
+  taskId: string;
+  title: string;
+  done?: boolean;
+  className?: string;
+  /** Typography when not editing (open tasks). */
+  titleClassName?: string;
+  onRename: (id: string, rawTitle: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() !== title.trim()) {
+      onRename(taskId, draft);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className={['input w-full min-w-0 flex-1 py-1.5 text-sm text-text', className].join(' ')}
+        value={draft}
+        maxLength={200}
+        aria-label="Todo title"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setDraft(title);
+            setEditing(false);
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={[
+        'min-w-0 rounded px-1 py-0.5 text-left transition-colors',
+        done
+          ? 'flex-1 text-sm text-text-muted line-through hover:bg-surface-raised/50'
+          : [titleClassName, 'hover:bg-surface-raised/40'].filter(Boolean).join(' '),
+        className,
+      ].join(' ')}
+      title="Click to edit"
+      onClick={() => {
+        setDraft(title);
+        setEditing(true);
+      }}
+    >
+      {title}
+    </button>
   );
 }
 
@@ -92,66 +322,71 @@ function TaskSection({
   tasks,
   onToggle,
   onDelete,
+  onRename,
+  onPriorityChange,
   empty,
 }: {
   title: string;
   loading: boolean;
-  tasks: { id: string; title: string; done: boolean }[];
+  tasks: Task[];
   onToggle: (id: string, next: boolean) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, rawTitle: string) => void;
+  onPriorityChange?: (id: string, priority: TaskPriority) => void;
   empty: string;
 }) {
-  const sectionIcon = title === 'Done' ? <CheckSquareIcon className="h-5 w-5" /> : <SquareIcon className="h-5 w-5" />;
+  const sectionIcon =
+    title === 'Done' ? <CheckSquareIcon className="h-5 w-5" /> : <SquareIcon className="h-5 w-5" />;
   const accent = title === 'Done' ? 'green' : 'blue';
   return (
     <section>
       <SectionHeader title={title} count={tasks.length} accent={accent} />
       <Card padded="none">
         {loading ? (
-          <EmptyState icon={sectionIcon} title="Loading…" message="Fetching your todos." />
+          <EmptyState icon={sectionIcon} title="Loading…" message="Fetching your tasks." />
         ) : tasks.length === 0 ? (
           <EmptyState icon={sectionIcon} title="Nothing here" message={empty} />
         ) : (
           <ul className="divide-y divide-border">
-            {tasks.map((t) => (
-              <li key={t.id} className="flex items-start gap-3 px-4 py-3">
-                <button
-                  onClick={() => onToggle(t.id, !t.done)}
-                  className={[
-                    'mt-0.5 text-text-subtle',
-                    t.done ? 'hover:text-emerald-300' : 'hover:text-blue-300',
-                  ].join(' ')}
-                  aria-label={t.done ? 'Mark not done' : 'Mark done'}
-                  title={t.done ? 'Mark not done' : 'Mark done'}
-                >
-                  {t.done ? (
-                    <CheckSquareIcon className="h-4 w-4" />
-                  ) : (
-                    <SquareIcon className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={[
-                      'text-sm',
-                      t.done
-                        ? 'text-text-muted line-through'
-                        : 'text-text',
-                    ].join(' ')}
-                  >
-                    {t.title}
-                  </p>
-                </div>
-                <button
-                  onClick={() => onDelete(t.id)}
-                  className="btn-ghost h-8 w-8 p-0"
-                  aria-label="Delete todo"
-                  title="Delete todo"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
+            {tasks.map((t) => {
+              const p = (t.priority as TaskPriority) ?? 'normal';
+              if (t.done) {
+                return (
+                  <li key={t.id} className="flex items-start gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => onToggle(t.id, !t.done)}
+                      className="mt-0.5 shrink-0 text-text-subtle hover:text-emerald-600 dark:hover:text-emerald-400"
+                      aria-label="Mark not done"
+                      title="Mark not done"
+                    >
+                      <CheckSquareIcon className="h-4 w-4" />
+                    </button>
+                    <TaskTitleField taskId={t.id} title={t.title} done onRename={onRename} />
+                    <button
+                      type="button"
+                      onClick={() => onDelete(t.id)}
+                      className="btn-ghost mt-0.5 h-8 w-8 shrink-0 p-0"
+                      aria-label="Delete todo"
+                      title="Delete todo"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </li>
+                );
+              }
+              return (
+                <OpenTaskRow
+                  key={t.id}
+                  task={t}
+                  priority={p}
+                  onToggle={() => onToggle(t.id, true)}
+                  onDelete={() => onDelete(t.id)}
+                  onRename={onRename}
+                  onPriorityChange={(next) => onPriorityChange!(t.id, next)}
+                />
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -159,3 +394,167 @@ function TaskSection({
   );
 }
 
+export function OpenTaskRow({
+  task,
+  priority,
+  onToggle,
+  onDelete,
+  onRename,
+  onPriorityChange,
+}: {
+  task: Task;
+  priority: TaskPriority;
+  onToggle: () => void;
+  onDelete: () => void;
+  onRename: (id: string, rawTitle: string) => void;
+  onPriorityChange: (p: TaskPriority) => void;
+}) {
+  return (
+    <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
+      <div className="flex min-w-0 flex-1 gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="mt-0.5 shrink-0 text-text-subtle hover:text-brand-700 dark:hover:text-brand-400"
+          aria-label="Mark done"
+          title="Mark done"
+        >
+          <SquareIcon className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start gap-x-2 gap-y-1.5">
+            <PriorityBadge priority={priority} className="mt-0.5" />
+            <TaskTitleField
+              taskId={task.id}
+              title={task.title}
+              onRename={onRename}
+              className="min-w-0 flex-1 text-pretty break-words sm:max-w-[min(100%,42rem)]"
+              titleClassName={priorityTitleClass(priority)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+        <label className="sr-only" htmlFor={`pri-${task.id}`}>
+          Priority for {task.title}
+        </label>
+        <select
+          id={`pri-${task.id}`}
+          value={priority}
+          onChange={(e) => onPriorityChange(e.target.value as TaskPriority)}
+          className={[
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:min-w-[12rem] sm:flex-initial sm:py-1.5',
+            prioritySelectClass(priority),
+          ].join(' ')}
+        >
+          {PRIORITY_ORDER.map((opt) => (
+            <option key={opt} value={opt}>
+              {PRIORITY_LABEL[opt]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="btn-ghost h-9 w-9 shrink-0 p-0 sm:h-8 sm:w-8"
+          aria-label="Delete todo"
+          title="Delete todo"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+export function NoteOpenRow({
+  item,
+  note,
+  onToggle,
+  onDelete,
+  onRename,
+  onPriorityChange,
+  onOpenNote,
+}: {
+  item: ActionItem;
+  note: Note | undefined;
+  onToggle: () => void;
+  onDelete: () => void;
+  onRename: (raw: string) => void;
+  onPriorityChange: (p: TaskPriority) => void;
+  onOpenNote: () => void;
+}) {
+  const priority = item.priority;
+  const sid = `note:${item.noteId}:${item.line}`;
+  return (
+    <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
+      <div className="flex min-w-0 flex-1 gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={!note}
+          className="mt-0.5 shrink-0 text-text-subtle hover:text-brand-700 disabled:opacity-40 dark:hover:text-brand-400"
+          aria-label="Mark done"
+          title="Mark done"
+        >
+          <SquareIcon className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start gap-x-2 gap-y-1.5">
+            <PriorityBadge priority={priority} className="mt-0.5" />
+            <Badge variant="purple" className="mt-0.5 shrink-0">
+              Note
+            </Badge>
+            <TaskTitleField
+              taskId={sid}
+              title={item.displayText}
+              onRename={(_id, raw) => onRename(raw)}
+              className="min-w-0 flex-1 text-pretty break-words sm:max-w-[min(100%,42rem)]"
+              titleClassName={priorityTitleClass(priority)}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onOpenNote}
+            className="mt-1 block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
+          >
+            {item.noteTitle}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+        <label className="sr-only" htmlFor={`pri-${sid}`}>
+          Priority for {item.displayText}
+        </label>
+        <select
+          id={`pri-${sid}`}
+          value={priority}
+          disabled={!note}
+          onChange={(e) => onPriorityChange(e.target.value as TaskPriority)}
+          className={[
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:min-w-[12rem] sm:flex-initial sm:py-1.5',
+            prioritySelectClass(priority),
+          ].join(' ')}
+        >
+          {PRIORITY_ORDER.map((opt) => (
+            <option key={opt} value={opt}>
+              {PRIORITY_LABEL[opt]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!note}
+          className="btn-ghost h-9 w-9 shrink-0 p-0 sm:h-8 sm:w-8 disabled:opacity-40"
+          aria-label="Remove line from note"
+          title="Remove line from note"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      </div>
+    </li>
+  );
+}

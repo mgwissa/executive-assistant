@@ -20,7 +20,7 @@ type Item = {
 const items: Item[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon, accent: 'purple' },
   { id: 'calendar', label: 'Calendar', Icon: CalendarIcon, accent: 'blue' },
-  { id: 'tasks', label: 'Todos', Icon: CheckSquareIcon, accent: 'amber' },
+  { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon, accent: 'amber' },
   { id: 'notes', label: 'Notes', Icon: NoteIcon, accent: 'brand' },
   { id: 'profile', label: 'Profile', Icon: UserIcon, accent: 'green' },
 ];
