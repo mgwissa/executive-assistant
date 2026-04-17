@@ -31,18 +31,21 @@ export type Database = {
         Row: {
           user_id: string;
           first_name: string | null;
+          timezone: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           user_id: string;
           first_name?: string | null;
+          timezone?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           user_id?: string;
           first_name?: string | null;
+          timezone?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -69,6 +72,53 @@ export type Database = {
           user_id?: string;
           title?: string;
           done?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      events: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          start_at: string;
+          duration_minutes: number;
+          timezone: string;
+          recurrence: string;
+          interval: number;
+          by_weekday: number[] | null;
+          until_at: string | null;
+          count: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          start_at: string;
+          duration_minutes?: number;
+          timezone: string;
+          recurrence?: string;
+          interval?: number;
+          by_weekday?: number[] | null;
+          until_at?: string | null;
+          count?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          title?: string;
+          start_at?: string;
+          duration_minutes?: number;
+          timezone?: string;
+          recurrence?: string;
+          interval?: number;
+          by_weekday?: number[] | null;
+          until_at?: string | null;
+          count?: number | null;
           created_at?: string;
           updated_at?: string;
         };

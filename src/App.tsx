@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Auth } from './components/Auth';
+import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
 import { NavRail } from './components/NavRail';
@@ -7,6 +8,7 @@ import { Profile } from './components/Profile';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { useAuthStore } from './store/useAuthStore';
+import { useEventsStore } from './store/useEventsStore';
 import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useTasksStore } from './store/useTasksStore';
@@ -29,8 +31,12 @@ function Shell() {
   const clearNotes = useNotesStore((s) => s.clear);
   const fetchProfile = useProfileStore((s) => s.fetchProfile);
   const clearProfile = useProfileStore((s) => s.clear);
+  const profile = useProfileStore((s) => s.profile);
+  const updateProfile = useProfileStore((s) => s.updateProfile);
   const fetchTasks = useTasksStore((s) => s.fetchAll);
   const clearTasks = useTasksStore((s) => s.clear);
+  const fetchEventsRange = useEventsStore((s) => s.fetchRange);
+  const clearEvents = useEventsStore((s) => s.clear);
   const view = useViewStore((s) => s.view);
 
   useEffect(() => {
@@ -38,10 +44,15 @@ function Shell() {
       fetchAll(user.id);
       fetchProfile(user.id);
       fetchTasks(user.id);
+      const from = new Date();
+      const to = new Date();
+      to.setDate(to.getDate() + 90);
+      fetchEventsRange(user.id, from.toISOString(), to.toISOString());
     } else {
       clearNotes();
       clearProfile();
       clearTasks();
+      clearEvents();
     }
   }, [
     user,
@@ -49,15 +60,27 @@ function Shell() {
     clearNotes,
     fetchProfile,
     clearProfile,
+    fetchEventsRange,
     fetchTasks,
     clearTasks,
+    clearEvents,
   ]);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    const tz = profile.timezone?.trim();
+    if (tz) return;
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!browserTz) return;
+    updateProfile(user.id, { timezone: browserTz });
+  }, [user, profile, updateProfile]);
 
   return (
     <div className="flex h-full">
       <NavRail />
       <div className="flex min-w-0 flex-1">
         {view === 'dashboard' && <Dashboard />}
+        {view === 'calendar' && <Calendar />}
         {view === 'tasks' && <Tasks />}
         {view === 'notes' && <NotesView />}
         {view === 'profile' && <Profile />}

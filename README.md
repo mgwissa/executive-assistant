@@ -30,7 +30,11 @@ npm install
 ### 2. Configure Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor → New query** and paste the contents of [`supabase/schema.sql`](./supabase/schema.sql), then run it.
+2. Open **SQL Editor → New query** and run the migration files in order:
+   - `supabase/migrations/2026-04-17_001_notes.sql`
+   - `supabase/migrations/2026-04-17_002_profiles.sql`
+   - `supabase/migrations/2026-04-17_003_tasks.sql`
+   - `supabase/migrations/2026-04-17_004_events.sql`
 3. In **Project Settings → API**, grab your **Project URL** and **anon public key**.
 4. Copy `.env.example` to `.env.local` and fill in:
 
@@ -81,5 +85,6 @@ src/
   App.tsx         Top-level router (auth gate)
   main.tsx        Vite entry
 supabase/
-  schema.sql      Run once in the SQL editor
+  migrations/     Apply in order in the SQL editor
+  schema.sql      Snapshot (legacy; prefer migrations)
 ```

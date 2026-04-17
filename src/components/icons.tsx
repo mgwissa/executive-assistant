@@ -136,3 +136,15 @@ export function ClockIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function CalendarIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M8 2v3M16 2v3" />
+      <rect x="3" y="4" width="18" height="18" rx="3" />
+      <path d="M3 10h18" />
+      <path d="M8 14h.01M12 14h.01M16 14h.01" />
+      <path d="M8 18h.01M12 18h.01M16 18h.01" />
+    </svg>
+  );
+}

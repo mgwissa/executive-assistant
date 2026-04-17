@@ -1,6 +1,13 @@
 import { useAuthStore } from '../store/useAuthStore';
 import { useViewStore, type View } from '../store/useViewStore';
-import { CheckSquareIcon, HomeIcon, LogOutIcon, NoteIcon, UserIcon } from './icons';
+import {
+  CalendarIcon,
+  CheckSquareIcon,
+  HomeIcon,
+  LogOutIcon,
+  NoteIcon,
+  UserIcon,
+} from './icons';
 import { ThemeToggle } from './ThemeToggle';
 
 type Item = {
@@ -11,6 +18,7 @@ type Item = {
 
 const topItems: Item[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon },
+  { id: 'calendar', label: 'Calendar', Icon: CalendarIcon },
   { id: 'tasks', label: 'Todos', Icon: CheckSquareIcon },
   { id: 'notes', label: 'Notes', Icon: NoteIcon },
 ];

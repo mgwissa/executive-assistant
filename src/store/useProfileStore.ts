@@ -11,7 +11,7 @@ type ProfileState = {
   fetchProfile: (userId: string) => Promise<void>;
   updateProfile: (
     userId: string,
-    patch: { first_name?: string | null },
+    patch: { first_name?: string | null; timezone?: string | null },
   ) => Promise<void>;
   clear: () => void;
 };

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type View = 'dashboard' | 'notes' | 'tasks' | 'profile';
+export type View = 'dashboard' | 'calendar' | 'notes' | 'tasks' | 'profile';
 
 type ViewState = {
   view: View;
