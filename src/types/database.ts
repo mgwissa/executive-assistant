@@ -75,6 +75,7 @@ export type Database = {
           done: boolean;
           priority: string;
           priority_set_at: string;
+          due_date: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -85,6 +86,7 @@ export type Database = {
           done?: boolean;
           priority?: string;
           priority_set_at?: string;
+          due_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -95,6 +97,7 @@ export type Database = {
           done?: boolean;
           priority?: string;
           priority_set_at?: string;
+          due_date?: string | null;
           created_at?: string;
           updated_at?: string;
         };

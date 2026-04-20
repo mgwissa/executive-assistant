@@ -15,6 +15,7 @@ type TasksState = {
   applyEscalationFromProfile: (userId: string) => Promise<void>;
   createTask: (userId: string, title: string) => Promise<Task | null>;
   setTaskPriority: (id: string, priority: TaskPriority) => Promise<void>;
+  setDueDate: (id: string, dueDate: string | null) => Promise<void>;
   renameTask: (id: string, rawTitle: string) => Promise<void>;
   toggleDone: (id: string, done: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -99,6 +100,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       done: false,
       priority,
       priority_set_at: now,
+      due_date: null,
       created_at: now,
       updated_at: now,
     };
@@ -135,6 +137,20 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const { error } = await supabase
       .from('tasks')
       .update({ priority, priority_set_at: now })
+      .eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  setDueDate: async (id, dueDate) => {
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, due_date: dueDate } : t,
+      ),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase
+      .from('tasks')
+      .update({ due_date: dueDate })
       .eq('id', id);
     if (error) set({ error: error.message });
   },

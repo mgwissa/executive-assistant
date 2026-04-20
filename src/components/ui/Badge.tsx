@@ -10,7 +10,8 @@ type Variant =
   | 'blue'
   | 'purple'
   | 'amber'
-  | 'green';
+  | 'green'
+  | 'red';
 
 export function Badge({
   variant = 'subtle',
@@ -23,7 +24,7 @@ export function Badge({
   const v =
     variant === 'brand'
       ? 'bg-brand-600/10 text-brand-700 dark:bg-brand-400/10 dark:text-brand-300'
-      : variant === 'danger'
+      : variant === 'danger' || variant === 'red'
         ? 'bg-red-600/10 text-red-700 dark:bg-red-500/10 dark:text-red-300'
         : variant === 'success' || variant === 'green'
           ? 'bg-emerald-600/10 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'

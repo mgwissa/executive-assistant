@@ -12,21 +12,23 @@ export function SectionHeader({
   title: string;
   count?: number;
   action?: import('react').ReactNode;
-  accent?: 'subtle' | 'brand' | 'blue' | 'purple' | 'amber' | 'green';
+  accent?: 'subtle' | 'brand' | 'blue' | 'purple' | 'amber' | 'green' | 'red';
   className?: string;
 }) {
   const iconClass =
     accent === 'blue'
       ? 'text-blue-300'
-      : accent === 'purple'
-        ? 'text-purple-300'
-        : accent === 'amber'
-          ? 'text-amber-300'
-          : accent === 'green'
-            ? 'text-emerald-300'
-            : accent === 'brand'
-              ? 'text-brand-300'
-              : 'text-text-subtle';
+      : accent === 'red'
+        ? 'text-red-400'
+        : accent === 'purple'
+          ? 'text-purple-300'
+          : accent === 'amber'
+            ? 'text-amber-300'
+            : accent === 'green'
+              ? 'text-emerald-300'
+              : accent === 'brand'
+                ? 'text-brand-300'
+                : 'text-text-subtle';
 
   return (
     <div className={['mb-3 flex items-center justify-between', className ?? ''].join(' ')}>

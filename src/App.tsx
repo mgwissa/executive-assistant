@@ -33,14 +33,14 @@ function NotesView() {
 
 function Shell() {
   const user = useAuthStore((s) => s.user);
-  const criticalOverload = useCriticalOverload();
+  const emergency = useCriticalOverload();
   const bypassEmergency = useEmergencyStore((s) => s.bypass);
   const setBypassEmergency = useEmergencyStore((s) => s.setBypass);
   const clearEmergency = useEmergencyStore((s) => s.clear);
 
   useEffect(() => {
-    if (!criticalOverload) setBypassEmergency(false);
-  }, [criticalOverload, setBypassEmergency]);
+    if (!emergency.active) setBypassEmergency(false);
+  }, [emergency.active, setBypassEmergency]);
 
   useEffect(() => () => clearEmergency(), [clearEmergency]);
 
@@ -97,13 +97,13 @@ function Shell() {
     void applyEscalationFromProfile(user.id);
   }, [user, profile?.user_id, profile?.priority_escalation, applyEscalationFromProfile]);
 
-  const showEmergency = criticalOverload && !bypassEmergency;
-  const showEmergencyBanner = criticalOverload && bypassEmergency;
+  const showEmergency = emergency.active && !bypassEmergency;
+  const showEmergencyBanner = emergency.active && bypassEmergency;
 
   if (showEmergency) {
     return (
       <div className="app-shell flex h-full min-h-0 flex-col">
-        <EmergencyMode onExit={() => setBypassEmergency(true)} />
+        <EmergencyMode reason={emergency} onExit={() => setBypassEmergency(true)} />
       </div>
     );
   }
@@ -112,7 +112,7 @@ function Shell() {
     <div className="app-shell flex h-full min-h-0">
       <SideNav />
       <div className="flex min-h-0 flex-1 flex-col">
-        {showEmergencyBanner ? <EmergencyBanner /> : null}
+        {showEmergencyBanner ? <EmergencyBanner reason={emergency} /> : null}
         <TopBar />
         <div className="min-h-0 flex-1">
           {view === 'dashboard' && <Dashboard />}

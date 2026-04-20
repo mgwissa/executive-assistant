@@ -128,6 +128,7 @@ create table if not exists public.tasks (
   done boolean not null default false,
   priority text not null default 'normal',
   priority_set_at timestamptz not null default now(),
+  due_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint tasks_priority_check check (priority in ('critical', 'urgent', 'high', 'normal', 'low'))

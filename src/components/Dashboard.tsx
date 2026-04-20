@@ -22,6 +22,7 @@ import { generateOccurrences } from '../lib/recurrence';
 import type { Note } from '../types';
 import {
   ArrowRightIcon,
+  CalendarIcon,
   CheckSquareIcon,
   ClockIcon,
   NoteIcon,
@@ -342,14 +343,19 @@ export function Dashboard() {
                         >
                           {row.title}
                         </p>
-                        <button
-                          type="button"
-                          onClick={row.onSubtitleClick}
-                          className="mt-1 block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
-                          title={row.kind === 'task' ? 'Open tasks' : 'Open note'}
-                        >
-                          {row.subtitle}
-                        </button>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <button
+                            type="button"
+                            onClick={row.onSubtitleClick}
+                            className="block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
+                            title={row.kind === 'task' ? 'Open tasks' : 'Open note'}
+                          >
+                            {row.subtitle}
+                          </button>
+                          {row.kind === 'task' && row.task.due_date && (
+                            <DueDateChip dueDate={row.task.due_date} />
+                          )}
+                        </div>
                       </div>
                     </li>
                   ))}
@@ -583,5 +589,34 @@ function QuickAddTodo({
         Add
       </button>
     </form>
+  );
+}
+
+function DueDateChip({ dueDate }: { dueDate: string }) {
+  const parts = dueDate.split('-').map(Number);
+  const due = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+
+  let label: string;
+  if (diffDays < 0) label = `${Math.abs(diffDays)}d overdue`;
+  else if (diffDays === 0) label = 'Today';
+  else if (diffDays === 1) label = 'Tomorrow';
+  else if (diffDays <= 7) label = `${diffDays}d`;
+  else label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  const color =
+    diffDays < 0
+      ? 'text-red-600 dark:text-red-400'
+      : diffDays === 0
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-text-muted';
+
+  return (
+    <span className={['inline-flex items-center gap-1 text-xs font-medium', color].join(' ')} title={`Due ${dueDate}`}>
+      <CalendarIcon className="h-3 w-3" />
+      {label}
+    </span>
   );
 }

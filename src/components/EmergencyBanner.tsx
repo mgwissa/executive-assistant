@@ -1,7 +1,23 @@
+import type { EmergencyReason } from '../hooks/useCriticalOverload';
 import { useEmergencyStore } from '../store/useEmergencyStore';
 
-export function EmergencyBanner() {
+export function EmergencyBanner({ reason }: { reason: EmergencyReason }) {
   const setBypass = useEmergencyStore((s) => s.setBypass);
+
+  const both = reason.hasOverdue && reason.hasCriticalOverload;
+  const overdueOnly = reason.hasOverdue && !reason.hasCriticalOverload;
+
+  const message = both
+    ? 'You have overdue tasks and multiple Critical items.'
+    : overdueOnly
+      ? `You have ${reason.overdueTasks.length === 1 ? 'an overdue task' : 'overdue tasks'} past ${reason.overdueTasks.length === 1 ? 'its' : 'their'} due date.`
+      : 'You still have multiple must-do Critical items.';
+
+  const detail = both
+    ? 'Emergency mode is paused \u2014 re-enter to handle overdue deadlines and critical work.'
+    : overdueOnly
+      ? 'Emergency mode is paused \u2014 re-enter to complete or reschedule them.'
+      : 'Emergency mode is paused \u2014 re-enter to focus on finishing them, or knock them out from Tasks and notes.';
 
   return (
     <div
@@ -9,9 +25,8 @@ export function EmergencyBanner() {
       role="status"
     >
       <p className="min-w-0 text-sm leading-snug text-red-100/95">
-        <span className="font-semibold text-red-50">You still have multiple must-do Critical items.</span>{' '}
-        Emergency mode is paused — re-enter to focus on finishing them, or knock them out from Tasks
-        and notes.
+        <span className="font-semibold text-red-50">{message}</span>{' '}
+        {detail}
       </p>
       <button
         type="button"

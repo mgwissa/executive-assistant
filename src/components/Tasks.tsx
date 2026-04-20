@@ -30,7 +30,7 @@ export function Tasks() {
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActiveNote = useNotesStore((s) => s.setActive);
   const setView = useViewStore((s) => s.setView);
-  const { tasks, loading, error, createTask, setTaskPriority, renameTask, toggleDone, deleteTask } =
+  const { tasks, loading, error, createTask, setTaskPriority, setDueDate, renameTask, toggleDone, deleteTask } =
     useTasksStore();
 
   const [title, setTitle] = useState('');
@@ -177,6 +177,7 @@ export function Tasks() {
                         onDelete={() => void deleteTask(row.task.id)}
                         onRename={renameTask}
                         onPriorityChange={(p) => void setTaskPriority(row.task.id, p)}
+                        onDueDateChange={(d) => void setDueDate(row.task.id, d)}
                       />
                     ) : (
                       <NoteOpenRow
@@ -324,6 +325,7 @@ function TaskSection({
   onDelete,
   onRename,
   onPriorityChange,
+  onDueDateChange,
   empty,
 }: {
   title: string;
@@ -333,6 +335,7 @@ function TaskSection({
   onDelete: (id: string) => void;
   onRename: (id: string, rawTitle: string) => void;
   onPriorityChange?: (id: string, priority: TaskPriority) => void;
+  onDueDateChange?: (id: string, dueDate: string | null) => void;
   empty: string;
 }) {
   const sectionIcon =
@@ -384,6 +387,7 @@ function TaskSection({
                   onDelete={() => onDelete(t.id)}
                   onRename={onRename}
                   onPriorityChange={(next) => onPriorityChange!(t.id, next)}
+                  onDueDateChange={(d) => onDueDateChange?.(t.id, d)}
                 />
               );
             })}
@@ -394,6 +398,38 @@ function TaskSection({
   );
 }
 
+function dueDateStatus(dueDate: string | null): 'none' | 'overdue' | 'today' | 'upcoming' {
+  if (!dueDate) return 'none';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const parts = dueDate.split('-').map(Number);
+  const due = new Date(parts[0], parts[1] - 1, parts[2]);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0) return 'overdue';
+  if (diffDays === 0) return 'today';
+  return 'upcoming';
+}
+
+function dueDateLabel(dueDate: string): string {
+  const parts = dueDate.split('-').map(Number);
+  const due = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
+  if (diffDays === 0) return 'Due today';
+  if (diffDays === 1) return 'Due tomorrow';
+  if (diffDays <= 7) return `Due in ${diffDays}d`;
+  return `Due ${due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+const DUE_DATE_STYLE: Record<ReturnType<typeof dueDateStatus>, string> = {
+  none: '',
+  overdue: 'text-red-600 dark:text-red-400',
+  today: 'text-amber-600 dark:text-amber-400',
+  upcoming: 'text-text-muted',
+};
+
 export function OpenTaskRow({
   task,
   priority,
@@ -401,6 +437,7 @@ export function OpenTaskRow({
   onDelete,
   onRename,
   onPriorityChange,
+  onDueDateChange,
 }: {
   task: Task;
   priority: TaskPriority;
@@ -408,7 +445,9 @@ export function OpenTaskRow({
   onDelete: () => void;
   onRename: (id: string, rawTitle: string) => void;
   onPriorityChange: (p: TaskPriority) => void;
+  onDueDateChange?: (dueDate: string | null) => void;
 }) {
+  const status = dueDateStatus(task.due_date);
   return (
     <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
       <div className="flex min-w-0 flex-1 gap-3">
@@ -432,10 +471,31 @@ export function OpenTaskRow({
               titleClassName={priorityTitleClass(priority)}
             />
           </div>
+          {task.due_date && (
+            <p className={['mt-1 pl-1 text-xs font-medium', DUE_DATE_STYLE[status]].join(' ')}>
+              {dueDateLabel(task.due_date)}
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+      <div className="flex w-full flex-wrap items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+        <label className="sr-only" htmlFor={`due-${task.id}`}>
+          Due date for {task.title}
+        </label>
+        <input
+          id={`due-${task.id}`}
+          type="date"
+          value={task.due_date ?? ''}
+          onChange={(e) => onDueDateChange?.(e.target.value || null)}
+          className={[
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[9rem] sm:flex-initial sm:py-1.5',
+            status === 'overdue' ? 'border-red-400 text-red-600 dark:border-red-500 dark:text-red-400' : '',
+            status === 'today' ? 'border-amber-400 text-amber-600 dark:border-amber-500 dark:text-amber-400' : '',
+            !task.due_date ? 'text-text-muted' : '',
+          ].filter(Boolean).join(' ')}
+          title={task.due_date ? dueDateLabel(task.due_date) : 'Set due date'}
+        />
         <label className="sr-only" htmlFor={`pri-${task.id}`}>
           Priority for {task.title}
         </label>
