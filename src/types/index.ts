@@ -1,5 +1,11 @@
 import type { Database } from './database';
 
+export type Notebook = Database['public']['Tables']['notebooks']['Row'];
+export type NotebookInsert = Database['public']['Tables']['notebooks']['Insert'];
+
+export type Section = Database['public']['Tables']['sections']['Row'];
+export type SectionInsert = Database['public']['Tables']['sections']['Insert'];
+
 export type Note = Database['public']['Tables']['notes']['Row'];
 export type NoteInsert = Database['public']['Tables']['notes']['Insert'];
 export type NoteUpdate = Database['public']['Tables']['notes']['Update'];

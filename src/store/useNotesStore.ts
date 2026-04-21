@@ -13,7 +13,8 @@ type NotesState = {
   setActive: (id: string | null) => void;
 
   fetchAll: (userId: string) => Promise<void>;
-  createNote: (userId: string) => Promise<Note | null>;
+  createNote: (userId: string, sectionId: string) => Promise<Note | null>;
+  moveNote: (id: string, sectionId: string) => Promise<void>;
   updateNote: (id: string, patch: { title?: string; content?: string }) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   clear: () => void;
@@ -51,11 +52,12 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     });
   },
 
-  createNote: async (userId) => {
+  createNote: async (userId, sectionId) => {
     const now = new Date().toISOString();
     const optimistic: Note = {
       id: `tmp-${crypto.randomUUID()}`,
       user_id: userId,
+      section_id: sectionId,
       title: 'Untitled',
       content: '',
       created_at: now,
@@ -65,7 +67,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     const { data, error } = await supabase
       .from('notes')
-      .insert({ user_id: userId, title: 'Untitled', content: '' })
+      .insert({ user_id: userId, section_id: sectionId, title: 'Untitled', content: '' })
       .select()
       .single();
 
@@ -82,6 +84,15 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       activeId: data.id,
     });
     return data;
+  },
+
+  moveNote: async (id, sectionId) => {
+    set({
+      notes: get().notes.map((n) => (n.id === id ? { ...n, section_id: sectionId } : n)),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase.from('notes').update({ section_id: sectionId }).eq('id', id);
+    if (error) set({ error: error.message });
   },
 
   updateNote: async (id, patch) => {

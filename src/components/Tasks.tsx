@@ -16,12 +16,13 @@ import { useNotesStore } from '../store/useNotesStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { useViewStore } from '../store/useViewStore';
 import type { Note, Task } from '../types';
-import { CheckSquareIcon, SquareIcon, TrashIcon } from './icons';
+import { CheckSquareIcon, NoteIcon, SquareIcon, TrashIcon } from './icons';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
 import { Badge } from './ui/Badge';
+import { TaskDetailModal } from './TaskDetailModal';
 
 export function Tasks() {
   const user = useAuthStore((s) => s.user);
@@ -34,6 +35,8 @@ export function Tasks() {
     useTasksStore();
 
   const [title, setTitle] = useState('');
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
 
   const openDbTasks = useMemo(() => {
     const list = tasks.filter((t) => !t.done);
@@ -178,6 +181,7 @@ export function Tasks() {
                         onRename={renameTask}
                         onPriorityChange={(p) => void setTaskPriority(row.task.id, p)}
                         onDueDateChange={(d) => void setDueDate(row.task.id, d)}
+                        onOpen={() => setDetailTaskId(row.task.id)}
                       />
                     ) : (
                       <NoteOpenRow
@@ -211,10 +215,15 @@ export function Tasks() {
             onToggle={(id, next) => toggleDone(id, next)}
             onDelete={(id) => deleteTask(id)}
             onRename={(id, raw) => void renameTask(id, raw)}
+            onOpen={(id) => setDetailTaskId(id)}
             empty="Nothing completed yet."
           />
         </div>
       </div>
+
+      {detailTask && (
+        <TaskDetailModal task={detailTask} onClose={() => setDetailTaskId(null)} />
+      )}
     </div>
   );
 }
@@ -326,6 +335,7 @@ function TaskSection({
   onRename,
   onPriorityChange,
   onDueDateChange,
+  onOpen,
   empty,
 }: {
   title: string;
@@ -336,6 +346,7 @@ function TaskSection({
   onRename: (id: string, rawTitle: string) => void;
   onPriorityChange?: (id: string, priority: TaskPriority) => void;
   onDueDateChange?: (id: string, dueDate: string | null) => void;
+  onOpen?: (id: string) => void;
   empty: string;
 }) {
   const sectionIcon =
@@ -365,7 +376,16 @@ function TaskSection({
                     >
                       <CheckSquareIcon className="h-4 w-4" />
                     </button>
-                    <TaskTitleField taskId={t.id} title={t.title} done onRename={onRename} />
+                    <button
+                      type="button"
+                      onClick={() => onOpen?.(t.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <TaskTitleField taskId={t.id} title={t.title} done onRename={onRename} />
+                    </button>
+                    {t.description && (
+                      <NoteIcon className="mt-1 h-3.5 w-3.5 shrink-0 text-text-subtle" />
+                    )}
                     <button
                       type="button"
                       onClick={() => onDelete(t.id)}
@@ -388,6 +408,7 @@ function TaskSection({
                   onRename={onRename}
                   onPriorityChange={(next) => onPriorityChange!(t.id, next)}
                   onDueDateChange={(d) => onDueDateChange?.(t.id, d)}
+                  onOpen={() => onOpen?.(t.id)}
                 />
               );
             })}
@@ -438,6 +459,7 @@ export function OpenTaskRow({
   onRename,
   onPriorityChange,
   onDueDateChange,
+  onOpen,
 }: {
   task: Task;
   priority: TaskPriority;
@@ -446,8 +468,10 @@ export function OpenTaskRow({
   onRename: (id: string, rawTitle: string) => void;
   onPriorityChange: (p: TaskPriority) => void;
   onDueDateChange?: (dueDate: string | null) => void;
+  onOpen?: () => void;
 }) {
   const status = dueDateStatus(task.due_date);
+  const hasNotes = task.description.length > 0;
   return (
     <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
       <div className="flex min-w-0 flex-1 gap-3">
@@ -471,11 +495,29 @@ export function OpenTaskRow({
               titleClassName={priorityTitleClass(priority)}
             />
           </div>
-          {task.due_date && (
-            <p className={['mt-1 pl-1 text-xs font-medium', DUE_DATE_STYLE[status]].join(' ')}>
-              {dueDateLabel(task.due_date)}
-            </p>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-1">
+            {task.due_date && (
+              <p className={['text-xs font-medium', DUE_DATE_STYLE[status]].join(' ')}>
+                {dueDateLabel(task.due_date)}
+              </p>
+            )}
+            {onOpen && (
+              <button
+                type="button"
+                onClick={onOpen}
+                className={[
+                  'inline-flex items-center gap-1 text-xs',
+                  hasNotes
+                    ? 'font-medium text-brand-700 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300'
+                    : 'text-text-subtle hover:text-text-muted',
+                ].join(' ')}
+                title={hasNotes ? 'View notes' : 'Add notes'}
+              >
+                <NoteIcon className="h-3 w-3" />
+                {hasNotes ? 'Notes' : 'Add notes'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

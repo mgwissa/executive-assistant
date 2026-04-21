@@ -31,6 +31,30 @@ export const PRIORITY_HINT: Record<TaskPriority, string> = {
   low: 'When you can',
 };
 
+/**
+ * Days from today a task is due based on priority.
+ * 5 days per level: P0 = 5d, P1 = 10d, P2 = 15d, P3 = 20d, P4 = none.
+ */
+const PRIORITY_DUE_DAYS: Record<TaskPriority, number | null> = {
+  critical: 5,
+  urgent: 10,
+  high: 15,
+  normal: 20,
+  low: null,
+};
+
+/** Returns an ISO date string (YYYY-MM-DD) for the auto due date, or null for P4. */
+export function dueDateForPriority(priority: TaskPriority): string | null {
+  const days = PRIORITY_DUE_DAYS[priority];
+  if (days == null) return null;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 /** Lower number = show first (more important). */
 export function priorityRank(p: TaskPriority): number {
   const i = PRIORITY_ORDER.indexOf(p);

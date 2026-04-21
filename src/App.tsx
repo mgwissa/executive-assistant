@@ -14,6 +14,7 @@ import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useAuthStore } from './store/useAuthStore';
 import { useEmergencyStore } from './store/useEmergencyStore';
 import { useEventsStore } from './store/useEventsStore';
+import { useNotebooksStore } from './store/useNotebooksStore';
 import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useTasksStore } from './store/useTasksStore';
@@ -44,7 +45,10 @@ function Shell() {
 
   useEffect(() => () => clearEmergency(), [clearEmergency]);
 
-  const fetchAll = useNotesStore((s) => s.fetchAll);
+  const fetchNotebooks = useNotebooksStore((s) => s.fetchAll);
+  const ensureDefaultNotebook = useNotebooksStore((s) => s.ensureDefault);
+  const clearNotebooks = useNotebooksStore((s) => s.clear);
+  const fetchNotes = useNotesStore((s) => s.fetchAll);
   const clearNotes = useNotesStore((s) => s.clear);
   const fetchProfile = useProfileStore((s) => s.fetchProfile);
   const clearProfile = useProfileStore((s) => s.clear);
@@ -59,12 +63,14 @@ function Shell() {
 
   useEffect(() => {
     if (user) {
-      fetchAll(user.id);
+      void fetchNotebooks(user.id).then(() => ensureDefaultNotebook(user.id));
+      fetchNotes(user.id);
       fetchProfile(user.id);
       fetchTasks(user.id);
       const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
       fetchEventsRange(user.id, fromIso, toIso);
     } else {
+      clearNotebooks();
       clearNotes();
       clearProfile();
       clearTasks();
@@ -73,7 +79,10 @@ function Shell() {
   }, [
     user,
     profile?.timezone,
-    fetchAll,
+    fetchNotebooks,
+    ensureDefaultNotebook,
+    clearNotebooks,
+    fetchNotes,
     clearNotes,
     fetchProfile,
     clearProfile,

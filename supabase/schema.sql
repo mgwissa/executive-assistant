@@ -6,6 +6,7 @@ create extension if not exists "pgcrypto";
 create table if not exists public.notes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  section_id uuid references public.sections(id) on delete cascade,
   title text not null default 'Untitled',
   content text not null default '',
   created_at timestamptz not null default now(),
@@ -118,6 +119,70 @@ select id from auth.users
 on conflict (user_id) do nothing;
 
 -- ---------------------------------------------------------------------------
+-- Notebooks
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.notebooks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null default 'My Notebook',
+  position int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists notebooks_user_id_idx on public.notebooks(user_id);
+
+alter table public.notebooks enable row level security;
+
+drop policy if exists "notebooks_select_own" on public.notebooks;
+create policy "notebooks_select_own" on public.notebooks for select using (auth.uid() = user_id);
+drop policy if exists "notebooks_insert_own" on public.notebooks;
+create policy "notebooks_insert_own" on public.notebooks for insert with check (auth.uid() = user_id);
+drop policy if exists "notebooks_update_own" on public.notebooks;
+create policy "notebooks_update_own" on public.notebooks for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "notebooks_delete_own" on public.notebooks;
+create policy "notebooks_delete_own" on public.notebooks for delete using (auth.uid() = user_id);
+
+drop trigger if exists notebooks_set_updated_at on public.notebooks;
+create trigger notebooks_set_updated_at
+  before update on public.notebooks
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- Sections
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.sections (
+  id uuid primary key default gen_random_uuid(),
+  notebook_id uuid not null references public.notebooks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null default 'General',
+  position int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists sections_notebook_id_idx on public.sections(notebook_id);
+create index if not exists sections_user_id_idx on public.sections(user_id);
+
+alter table public.sections enable row level security;
+
+drop policy if exists "sections_select_own" on public.sections;
+create policy "sections_select_own" on public.sections for select using (auth.uid() = user_id);
+drop policy if exists "sections_insert_own" on public.sections;
+create policy "sections_insert_own" on public.sections for insert with check (auth.uid() = user_id);
+drop policy if exists "sections_update_own" on public.sections;
+create policy "sections_update_own" on public.sections for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "sections_delete_own" on public.sections;
+create policy "sections_delete_own" on public.sections for delete using (auth.uid() = user_id);
+
+drop trigger if exists sections_set_updated_at on public.sections;
+create trigger sections_set_updated_at
+  before update on public.sections
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
 -- Tasks
 -- ---------------------------------------------------------------------------
 
@@ -129,6 +194,7 @@ create table if not exists public.tasks (
   priority text not null default 'normal',
   priority_set_at timestamptz not null default now(),
   due_date date,
+  description text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint tasks_priority_check check (priority in ('critical', 'urgent', 'high', 'normal', 'low'))

@@ -9,10 +9,66 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      notebooks: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      sections: {
+        Row: {
+          id: string;
+          notebook_id: string;
+          user_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          notebook_id: string;
+          user_id: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          notebook_id?: string;
+          user_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       notes: {
         Row: {
           id: string;
           user_id: string;
+          section_id: string | null;
           title: string;
           content: string;
           created_at: string;
@@ -21,6 +77,7 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
+          section_id?: string | null;
           title?: string;
           content?: string;
           created_at?: string;
@@ -29,6 +86,7 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
+          section_id?: string | null;
           title?: string;
           content?: string;
           created_at?: string;
@@ -76,6 +134,7 @@ export type Database = {
           priority: string;
           priority_set_at: string;
           due_date: string | null;
+          description: string;
           created_at: string;
           updated_at: string;
         };
@@ -87,6 +146,7 @@ export type Database = {
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
+          description?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -98,6 +158,7 @@ export type Database = {
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
+          description?: string;
           created_at?: string;
           updated_at?: string;
         };

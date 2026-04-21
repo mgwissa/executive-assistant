@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalation';
-import { parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
+import { dueDateForPriority, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
 import { useProfileStore } from './useProfileStore';
@@ -16,11 +16,15 @@ type TasksState = {
   createTask: (userId: string, title: string) => Promise<Task | null>;
   setTaskPriority: (id: string, priority: TaskPriority) => Promise<void>;
   setDueDate: (id: string, dueDate: string | null) => Promise<void>;
+  updateDescription: (id: string, description: string) => void;
   renameTask: (id: string, rawTitle: string) => Promise<void>;
   toggleDone: (id: string, done: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   clear: () => void;
 };
+
+const DESC_DEBOUNCE_MS = 500;
+const descTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
@@ -93,6 +97,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (!cleanTitle) return null;
 
     const now = new Date().toISOString();
+    const due_date = dueDateForPriority(priority);
     const optimistic: Task = {
       id: `tmp-${crypto.randomUUID()}`,
       user_id: userId,
@@ -100,7 +105,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       done: false,
       priority,
       priority_set_at: now,
-      due_date: null,
+      due_date,
+      description: '',
       created_at: now,
       updated_at: now,
     };
@@ -108,7 +114,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
     const { data, error } = await supabase
       .from('tasks')
-      .insert({ user_id: userId, title: cleanTitle, done: false, priority, priority_set_at: now })
+      .insert({ user_id: userId, title: cleanTitle, done: false, priority, priority_set_at: now, due_date })
       .select()
       .single();
 
@@ -128,15 +134,16 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   setTaskPriority: async (id, priority) => {
     const now = new Date().toISOString();
+    const due_date = dueDateForPriority(priority);
     set({
       tasks: get().tasks.map((t) =>
-        t.id === id ? { ...t, priority, priority_set_at: now, updated_at: now } : t,
+        t.id === id ? { ...t, priority, priority_set_at: now, due_date, updated_at: now } : t,
       ),
     });
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase
       .from('tasks')
-      .update({ priority, priority_set_at: now })
+      .update({ priority, priority_set_at: now, due_date })
       .eq('id', id);
     if (error) set({ error: error.message });
   },
@@ -155,6 +162,28 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (error) set({ error: error.message });
   },
 
+  updateDescription: (id, description) => {
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, description } : t,
+      ),
+    });
+    const existing = descTimers.get(id);
+    if (existing) clearTimeout(existing);
+    descTimers.set(
+      id,
+      setTimeout(async () => {
+        descTimers.delete(id);
+        if (id.startsWith('tmp-')) return;
+        const { error } = await supabase
+          .from('tasks')
+          .update({ description })
+          .eq('id', id);
+        if (error) set({ error: error.message });
+      }, DESC_DEBOUNCE_MS),
+    );
+  },
+
   renameTask: async (id, rawTitle) => {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
@@ -166,6 +195,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const priorityChanged = priority !== currentP;
     const now = new Date().toISOString();
     const priority_set_at = priorityChanged ? now : task.priority_set_at;
+    const due_date = priorityChanged ? dueDateForPriority(priority) : task.due_date;
 
     set({
       tasks: get().tasks.map((t) =>
@@ -175,6 +205,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
               title: trimmed,
               priority,
               priority_set_at,
+              due_date,
               updated_at: now,
             }
           : t,
@@ -188,6 +219,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         title: trimmed,
         priority,
         priority_set_at,
+        due_date,
       })
       .eq('id', id);
     if (error) set({ error: error.message });

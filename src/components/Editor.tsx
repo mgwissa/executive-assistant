@@ -1,16 +1,27 @@
 import { useMemo, useRef, useState } from 'react';
 import { PRIORITY_LABEL, PRIORITY_ORDER } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
+import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { formatRelative } from '../lib/format';
 import { MarkdownPreview } from './MarkdownPreview';
-import { TrashIcon } from './icons';
+import { BookIcon, ChevronRightIcon, FolderIcon, TrashIcon } from './icons';
 
 type Mode = 'write' | 'preview' | 'split';
 
 export function Editor() {
   const { notes, activeId, updateNote, deleteNote } = useNotesStore();
+  const notebooks = useNotebooksStore((s) => s.notebooks);
+  const sections = useNotebooksStore((s) => s.sections);
   const note = notes.find((n) => n.id === activeId) ?? null;
+
+  const breadcrumb = useMemo(() => {
+    if (!note?.section_id) return null;
+    const section = sections.find((s) => s.id === note.section_id);
+    if (!section) return null;
+    const notebook = notebooks.find((n) => n.id === section.notebook_id);
+    return { notebookName: notebook?.name ?? '', sectionName: section.name };
+  }, [note?.section_id, sections, notebooks]);
 
   const [mode, setMode] = useState<Mode>('split');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -98,7 +109,17 @@ export function Editor() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/70 px-6 py-3 backdrop-blur">
+      <header className="border-b border-border bg-surface/70 px-6 py-3 backdrop-blur">
+        {breadcrumb && (
+          <div className="mb-1.5 flex items-center gap-1 text-[11px] text-text-muted">
+            <BookIcon className="h-3 w-3" />
+            <span>{breadcrumb.notebookName}</span>
+            <ChevronRightIcon className="h-3 w-3" />
+            <FolderIcon className="h-3 w-3" />
+            <span>{breadcrumb.sectionName}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3">
         <input
           value={title}
           onChange={(e) => {
@@ -144,6 +165,7 @@ export function Editor() {
           >
             <TrashIcon className="h-4 w-4" />
           </button>
+        </div>
         </div>
       </header>
 
