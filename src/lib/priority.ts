@@ -55,6 +55,19 @@ export function dueDateForPriority(priority: TaskPriority): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * True when a task's due date is today or past — priority is locked to critical
+ * and can only be changed by moving the due date forward.
+ */
+export function isPriorityLocked(dueDate: string | null): boolean {
+  if (!dueDate) return false;
+  const parts = dueDate.split('-').map(Number);
+  const due = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() <= today.getTime();
+}
+
 /** Lower number = show first (more important). */
 export function priorityRank(p: TaskPriority): number {
   const i = PRIORITY_ORDER.indexOf(p);

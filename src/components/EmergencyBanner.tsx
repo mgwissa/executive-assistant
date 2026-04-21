@@ -7,10 +7,11 @@ export function EmergencyBanner({ reason }: { reason: EmergencyReason }) {
   const both = reason.hasOverdue && reason.hasCriticalOverload;
   const overdueOnly = reason.hasOverdue && !reason.hasCriticalOverload;
 
+  const overdueCount = reason.overdueTasks.length + reason.overdueNoteItems.length;
   const message = both
-    ? 'You have overdue tasks and multiple Critical items.'
+    ? 'You have overdue items and multiple Critical items.'
     : overdueOnly
-      ? `You have ${reason.overdueTasks.length === 1 ? 'an overdue task' : 'overdue tasks'} past ${reason.overdueTasks.length === 1 ? 'its' : 'their'} due date.`
+      ? `You have ${overdueCount === 1 ? 'an overdue item' : 'overdue items'} past ${overdueCount === 1 ? 'its' : 'their'} due date.`
       : 'You still have multiple must-do Critical items.';
 
   const detail = both

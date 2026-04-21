@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ActionItem } from '../lib/format';
 import { extractActionItems } from '../lib/format';
 import type { TaskPriority } from '../lib/priority';
 import { useNotesStore } from '../store/useNotesStore';
@@ -10,6 +11,7 @@ export type EmergencyReason = {
   hasCriticalOverload: boolean;
   hasOverdue: boolean;
   overdueTasks: Task[];
+  overdueNoteItems: ActionItem[];
 };
 
 function isOverdue(dueDate: string): boolean {
@@ -22,7 +24,7 @@ function isOverdue(dueDate: string): boolean {
 
 /**
  * Returns emergency-mode state.
- * Active when there are 2+ critical/P0 items OR any task is past its due date.
+ * Active when there are 2+ critical/P0 items OR any task/note-item is past its due date.
  * Returns false while data is still loading to avoid flashing the overlay.
  */
 export function useCriticalOverload(): EmergencyReason {
@@ -32,24 +34,30 @@ export function useCriticalOverload(): EmergencyReason {
   const notesLoading = useNotesStore((s) => s.loading);
 
   return useMemo(() => {
-    const none: EmergencyReason = { active: false, hasCriticalOverload: false, hasOverdue: false, overdueTasks: [] };
+    const none: EmergencyReason = {
+      active: false, hasCriticalOverload: false, hasOverdue: false,
+      overdueTasks: [], overdueNoteItems: [],
+    };
     if (tasksLoading || notesLoading) return none;
+
+    const noteItems = extractActionItems(notes);
 
     const criticalTasks = tasks.filter(
       (t) => !t.done && (t.priority as TaskPriority) === 'critical',
     ).length;
-    const criticalFromNotes = extractActionItems(notes).filter((a) => a.priority === 'critical')
-      .length;
+    const criticalFromNotes = noteItems.filter((a) => a.priority === 'critical').length;
     const hasCriticalOverload = criticalTasks + criticalFromNotes > 1;
 
     const overdueTasks = tasks.filter((t) => !t.done && t.due_date && isOverdue(t.due_date));
-    const hasOverdue = overdueTasks.length > 0;
+    const overdueNoteItems = noteItems.filter((a) => a.dueDate && isOverdue(a.dueDate));
+    const hasOverdue = overdueTasks.length > 0 || overdueNoteItems.length > 0;
 
     return {
       active: hasCriticalOverload || hasOverdue,
       hasCriticalOverload,
       hasOverdue,
       overdueTasks,
+      overdueNoteItems,
     };
   }, [tasks, notes, tasksLoading, notesLoading]);
 }

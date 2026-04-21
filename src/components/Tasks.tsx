@@ -4,11 +4,12 @@ import {
   deleteActionItemLine,
   extractActionItems,
   renameActionItemLine,
+  setActionItemLineDueDate,
   setActionItemLinePriority,
   toggleActionItemLine,
 } from '../lib/format';
 import type { TaskPriority } from '../lib/priority';
-import { PRIORITY_HINT, PRIORITY_LABEL, PRIORITY_ORDER, priorityRank } from '../lib/priority';
+import { PRIORITY_HINT, PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked, priorityRank } from '../lib/priority';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { priorityRowClass, prioritySelectClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import { useAuthStore } from '../store/useAuthStore';
@@ -193,6 +194,9 @@ export function Tasks() {
                         }
                         onPriorityChange={(p) =>
                           applyNoteLine(row.item, (c) => setActionItemLinePriority(c, row.item.line, p))
+                        }
+                        onDueDateChange={(d) =>
+                          applyNoteLine(row.item, (c) => setActionItemLineDueDate(c, row.item.line, d))
                         }
                         onRename={(raw) =>
                           applyNoteLine(row.item, (c) => renameActionItemLine(c, row.item.line, raw))
@@ -472,6 +476,7 @@ export function OpenTaskRow({
 }) {
   const status = dueDateStatus(task.due_date);
   const hasNotes = task.description.length > 0;
+  const locked = !task.done && isPriorityLocked(task.due_date);
   return (
     <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
       <div className="flex min-w-0 flex-1 gap-3">
@@ -501,6 +506,11 @@ export function OpenTaskRow({
                 {dueDateLabel(task.due_date)}
               </p>
             )}
+            {locked && (
+              <p className="text-xs italic text-text-subtle">
+                Update due date to change priority
+              </p>
+            )}
             {onOpen && (
               <button
                 type="button"
@@ -521,7 +531,7 @@ export function OpenTaskRow({
         </div>
       </div>
 
-      <div className="flex w-full flex-wrap items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:shrink-0 sm:pl-0">
         <label className="sr-only" htmlFor={`due-${task.id}`}>
           Due date for {task.title}
         </label>
@@ -531,7 +541,7 @@ export function OpenTaskRow({
           value={task.due_date ?? ''}
           onChange={(e) => onDueDateChange?.(e.target.value || null)}
           className={[
-            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[9rem] sm:flex-initial sm:py-1.5',
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[9.25rem] sm:flex-initial sm:py-1.5',
             status === 'overdue' ? 'border-red-400 text-red-600 dark:border-red-500 dark:text-red-400' : '',
             status === 'today' ? 'border-amber-400 text-amber-600 dark:border-amber-500 dark:text-amber-400' : '',
             !task.due_date ? 'text-text-muted' : '',
@@ -544,11 +554,14 @@ export function OpenTaskRow({
         <select
           id={`pri-${task.id}`}
           value={priority}
+          disabled={locked}
           onChange={(e) => onPriorityChange(e.target.value as TaskPriority)}
           className={[
-            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:min-w-[12rem] sm:flex-initial sm:py-1.5',
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[8.5rem] sm:flex-initial sm:py-1.5',
             prioritySelectClass(priority),
-          ].join(' ')}
+            locked ? 'cursor-not-allowed opacity-60' : '',
+          ].filter(Boolean).join(' ')}
+          title={locked ? 'Update due date to change priority' : undefined}
         >
           {PRIORITY_ORDER.map((opt) => (
             <option key={opt} value={opt}>
@@ -577,6 +590,7 @@ export function NoteOpenRow({
   onDelete,
   onRename,
   onPriorityChange,
+  onDueDateChange,
   onOpenNote,
 }: {
   item: ActionItem;
@@ -585,10 +599,13 @@ export function NoteOpenRow({
   onDelete: () => void;
   onRename: (raw: string) => void;
   onPriorityChange: (p: TaskPriority) => void;
+  onDueDateChange: (dueDate: string | null) => void;
   onOpenNote: () => void;
 }) {
   const priority = item.priority;
   const sid = `note:${item.noteId}:${item.line}`;
+  const status = dueDateStatus(item.dueDate);
+  const locked = isPriorityLocked(item.dueDate);
   return (
     <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
       <div className="flex min-w-0 flex-1 gap-3">
@@ -616,29 +633,54 @@ export function NoteOpenRow({
               titleClassName={priorityTitleClass(priority)}
             />
           </div>
-          <button
-            type="button"
-            onClick={onOpenNote}
-            className="mt-1 block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
-          >
-            {item.noteTitle}
-          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-1">
+            {item.dueDate && (
+              <p className={['text-xs font-medium', DUE_DATE_STYLE[status]].join(' ')}>
+                {dueDateLabel(item.dueDate)}
+              </p>
+            )}
+            {locked && (
+              <p className="text-xs italic text-text-subtle">
+                Update due date to change priority
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={onOpenNote}
+              className="max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
+            >
+              {item.noteTitle}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:max-w-md sm:shrink-0 sm:pl-0">
+      <div className="flex w-full items-center gap-2 pl-10 sm:ml-auto sm:w-auto sm:shrink-0 sm:pl-0">
+        <label className="sr-only" htmlFor={`due-note-${sid}`}>
+          Due date for {item.displayText}
+        </label>
+        <input
+          id={`due-note-${sid}`}
+          type="date"
+          value={item.dueDate ?? ''}
+          disabled={!note}
+          onChange={(e) => onDueDateChange(e.target.value || null)}
+          className="input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[9.25rem] sm:flex-initial sm:py-1.5"
+        />
         <label className="sr-only" htmlFor={`pri-${sid}`}>
           Priority for {item.displayText}
         </label>
         <select
           id={`pri-${sid}`}
           value={priority}
-          disabled={!note}
+          disabled={!note || locked}
           onChange={(e) => onPriorityChange(e.target.value as TaskPriority)}
           className={[
-            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:min-w-[12rem] sm:flex-initial sm:py-1.5',
+            'input mt-0 min-h-[2.25rem] min-w-0 flex-1 py-2 text-sm sm:w-[8.5rem] sm:flex-initial sm:py-1.5',
             prioritySelectClass(priority),
-          ].join(' ')}
+            locked ? 'cursor-not-allowed opacity-60' : '',
+          ].filter(Boolean).join(' ')}
+          title={locked ? 'Update due date to change priority' : undefined}
         >
           {PRIORITY_ORDER.map((opt) => (
             <option key={opt} value={opt}>

@@ -16,7 +16,7 @@ export function formatRelative(iso: string): string {
 }
 
 import type { TaskPriority } from './priority';
-import { PRIORITY_ORDER, parsePriorityInTitle, parsePriorityPrefix } from './priority';
+import { PRIORITY_ORDER, dueDateForPriority, parsePriorityInTitle, parsePriorityPrefix } from './priority';
 
 export type ActionItem = {
   noteId: string;
@@ -28,9 +28,13 @@ export type ActionItem = {
   displayText: string;
   line: number;
   priority: TaskPriority;
+  dueDate: string | null;
 };
 
 const ACTION_ITEM_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
+
+/** Matches `[due:YYYY-MM-DD]` anywhere in the text. */
+const DUE_TAG_RE = /\[due:(\d{4}-\d{2}-\d{2})\]/i;
 
 /** Leading `- [ ] ` / `* [ ] ` part of a checkbox line (open or done). */
 const CHECKBOX_LINE_PREFIX = /^(\s*[-*+]\s+\[[ xX]\]\s+)/;
@@ -50,7 +54,7 @@ export function toggleActionItemLine(content: string, line: number): string {
   return lines.join('\n');
 }
 
-/** Set legacy `[P0]`–`[P4]` on a note checkbox line to match `priority`. */
+/** Set legacy `[P0]`–`[P4]` on a note checkbox line to match `priority`, and auto-set due date. */
 export function setActionItemLinePriority(
   content: string,
   lineIndex: number,
@@ -62,14 +66,40 @@ export function setActionItemLinePriority(
   const m = src.match(ACTION_ITEM_RE);
   if (!m) return null;
   const raw = m[2];
-  const { label } = parsePriorityPrefix(raw);
+  const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
+  const { label } = parsePriorityPrefix(withoutDue);
   const trimmed = label.trim();
   if (!trimmed) return null;
   const prefix = src.match(CHECKBOX_LINE_PREFIX)?.[1];
   if (!prefix) return null;
   const n = PRIORITY_ORDER.indexOf(priority);
   if (n < 0) return null;
-  lines[lineIndex] = `${prefix}[P${n}] ${trimmed}`;
+  const due = dueDateForPriority(priority);
+  const duePart = due ? ` [due:${due}]` : '';
+  lines[lineIndex] = `${prefix}[P${n}]${duePart} ${trimmed}`;
+  return lines.join('\n');
+}
+
+/** Set or remove the `[due:YYYY-MM-DD]` tag on a note checkbox line. */
+export function setActionItemLineDueDate(
+  content: string,
+  lineIndex: number,
+  dueDate: string | null,
+): string | null {
+  const lines = content.split('\n');
+  const src = lines[lineIndex];
+  if (src == null) return null;
+  const m = src.match(ACTION_ITEM_RE);
+  if (!m) return null;
+  const prefix = src.match(CHECKBOX_LINE_PREFIX)?.[1];
+  if (!prefix) return null;
+  const raw = m[2];
+  const stripped = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
+  const duePart = dueDate ? `[due:${dueDate}] ` : '';
+  const { priority, label } = parsePriorityPrefix(stripped);
+  const n = PRIORITY_ORDER.indexOf(priority);
+  const pTag = n >= 0 ? `[P${n}] ` : '';
+  lines[lineIndex] = `${prefix}${pTag}${duePart}${label.trim()}`;
   return lines.join('\n');
 }
 
@@ -86,13 +116,17 @@ export function renameActionItemLine(
   if (!m) return null;
   const prefix = src.match(CHECKBOX_LINE_PREFIX)?.[1];
   if (!prefix) return null;
-  const currentPriority = parsePriorityPrefix(m[2]).priority;
+  const existingDue = m[2].match(DUE_TAG_RE)?.[1] ?? null;
+  const currentPriority = parsePriorityPrefix(m[2].replace(DUE_TAG_RE, '').trim()).priority;
   const { title, priority } = parsePriorityInTitle(rawTitle.trim(), currentPriority);
   const trimmed = title.trim();
   if (!trimmed) return null;
   const n = PRIORITY_ORDER.indexOf(priority);
   if (n < 0) return null;
-  lines[lineIndex] = `${prefix}[P${n}] ${trimmed}`;
+  const priorityChanged = priority !== currentPriority;
+  const due = priorityChanged ? dueDateForPriority(priority) : existingDue;
+  const duePart = due ? ` [due:${due}]` : '';
+  lines[lineIndex] = `${prefix}[P${n}]${duePart} ${trimmed}`;
   return lines.join('\n');
 }
 
@@ -118,7 +152,11 @@ export function extractActionItems(
       const done = match[1].toLowerCase() === 'x';
       if (done && !includeDone) continue;
       const raw = match[2];
-      const { priority, label } = parsePriorityPrefix(raw);
+      const dueMatch = raw.match(DUE_TAG_RE);
+      const explicitDue = dueMatch ? dueMatch[1] : null;
+      const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
+      const { priority, label } = parsePriorityPrefix(withoutDue);
+      const dueDate = explicitDue ?? dueDateForPriority(priority);
       items.push({
         noteId: note.id,
         noteTitle: note.title || 'Untitled',
@@ -127,6 +165,7 @@ export function extractActionItems(
         displayText: label,
         line: i,
         priority,
+        dueDate,
       });
     }
   }

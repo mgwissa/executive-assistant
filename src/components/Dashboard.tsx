@@ -355,6 +355,9 @@ export function Dashboard() {
                           {row.kind === 'task' && row.task.due_date && (
                             <DueDateChip dueDate={row.task.due_date} />
                           )}
+                          {row.kind === 'action' && row.item.dueDate && (
+                            <DueDateChip dueDate={row.item.dueDate} />
+                          )}
                         </div>
                       </div>
                     </li>

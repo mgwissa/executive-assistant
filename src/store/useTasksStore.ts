@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalation';
-import { dueDateForPriority, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
+import { dueDateForPriority, isPriorityLocked, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
 import { useProfileStore } from './useProfileStore';
@@ -12,6 +12,7 @@ type TasksState = {
   error: string | null;
 
   fetchAll: (userId: string) => Promise<void>;
+  applyDueDatePromotion: () => Promise<void>;
   applyEscalationFromProfile: (userId: string) => Promise<void>;
   createTask: (userId: string, title: string) => Promise<Task | null>;
   setTaskPriority: (id: string, priority: TaskPriority) => Promise<void>;
@@ -44,7 +45,34 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       return;
     }
     set({ tasks: data ?? [], loading: false });
+    await get().applyDueDatePromotion();
     await get().applyEscalationFromProfile(userId);
+  },
+
+  applyDueDatePromotion: async () => {
+    const open = get().tasks.filter(
+      (t) => !t.done && !t.id.startsWith('tmp-') && t.priority !== 'critical' && isPriorityLocked(t.due_date),
+    );
+    if (open.length === 0) return;
+
+    const now = new Date().toISOString();
+    for (const task of open) {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ priority: 'critical', priority_set_at: now })
+        .eq('id', task.id);
+      if (error) {
+        set({ error: error.message });
+        continue;
+      }
+      set({
+        tasks: get().tasks.map((t) =>
+          t.id === task.id
+            ? { ...t, priority: 'critical', priority_set_at: now, updated_at: now }
+            : t,
+        ),
+      });
+    }
   },
 
   applyEscalationFromProfile: async (userId) => {
@@ -133,6 +161,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
 
   setTaskPriority: async (id, priority) => {
+    const task = get().tasks.find((t) => t.id === id);
+    if (task && !task.done && isPriorityLocked(task.due_date)) return;
+
     const now = new Date().toISOString();
     const due_date = dueDateForPriority(priority);
     set({
@@ -149,15 +180,33 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
 
   setDueDate: async (id, dueDate) => {
+    const locked = isPriorityLocked(dueDate);
+    const now = new Date().toISOString();
+    const task = get().tasks.find((t) => t.id === id);
+    const promote = locked && task && !task.done && task.priority !== 'critical';
+
     set({
-      tasks: get().tasks.map((t) =>
-        t.id === id ? { ...t, due_date: dueDate } : t,
-      ),
+      tasks: get().tasks.map((t) => {
+        if (t.id !== id) return t;
+        const updates: Partial<Task> = { due_date: dueDate };
+        if (promote) {
+          updates.priority = 'critical';
+          updates.priority_set_at = now;
+          updates.updated_at = now;
+        }
+        return { ...t, ...updates };
+      }),
     });
     if (id.startsWith('tmp-')) return;
+
+    const dbPatch: Record<string, unknown> = { due_date: dueDate };
+    if (promote) {
+      dbPatch.priority = 'critical';
+      dbPatch.priority_set_at = now;
+    }
     const { error } = await supabase
       .from('tasks')
-      .update({ due_date: dueDate })
+      .update(dbPatch)
       .eq('id', id);
     if (error) set({ error: error.message });
   },
@@ -188,10 +237,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
     const currentP = (task.priority as TaskPriority) ?? 'normal';
-    const { title, priority } = parsePriorityInTitle(rawTitle, currentP);
-    const trimmed = title.trim();
+    const locked = !task.done && isPriorityLocked(task.due_date);
+    const parsed = parsePriorityInTitle(rawTitle, currentP);
+    const trimmed = parsed.title.trim();
     if (!trimmed) return;
 
+    const priority = locked ? currentP : parsed.priority;
     const priorityChanged = priority !== currentP;
     const now = new Date().toISOString();
     const priority_set_at = priorityChanged ? now : task.priority_set_at;

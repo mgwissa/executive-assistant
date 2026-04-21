@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TaskPriority } from '../lib/priority';
-import { PRIORITY_LABEL, PRIORITY_ORDER } from '../lib/priority';
+import { PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked } from '../lib/priority';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { prioritySelectClass } from '../lib/priorityUiClasses';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -23,6 +23,7 @@ export function TaskDetailModal({
   const fresh = useTasksStore((s) => s.tasks.find((t) => t.id === task.id));
   const t = fresh ?? task;
   const priority = (t.priority as TaskPriority) ?? 'normal';
+  const locked = !t.done && isPriorityLocked(t.due_date);
 
   const [mode, setMode] = useState<Mode>('write');
   const [titleDraft, setTitleDraft] = useState(t.title);
@@ -122,11 +123,14 @@ export function TaskDetailModal({
             <select
               id={`modal-pri-${t.id}`}
               value={priority}
+              disabled={locked}
               onChange={(e) => void setTaskPriority(t.id, e.target.value as TaskPriority)}
               className={[
                 'input mt-0 min-h-[2rem] py-1 text-sm',
                 prioritySelectClass(priority),
-              ].join(' ')}
+                locked ? 'cursor-not-allowed opacity-60' : '',
+              ].filter(Boolean).join(' ')}
+              title={locked ? 'Update due date to change priority' : undefined}
             >
               {PRIORITY_ORDER.map((opt) => (
                 <option key={opt} value={opt}>
@@ -134,6 +138,11 @@ export function TaskDetailModal({
                 </option>
               ))}
             </select>
+            {locked && (
+              <span className="text-xs italic text-text-subtle">
+                Update due date to change priority
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-text-muted" htmlFor={`modal-due-${t.id}`}>
