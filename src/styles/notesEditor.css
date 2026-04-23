@@ -1,0 +1,107 @@
+/**
+ * BlockNote theme overrides that map its CSS variables onto the app's
+ * design tokens (rgb triples declared in index.css). BlockNote flips
+ * theme via a `data-color-scheme="dark"` attribute that it sets based
+ * on the `theme` prop we pass to <BlockNoteView>.
+ */
+
+.notes-editor .bn-root {
+  --bn-colors-editor-text: rgb(var(--text));
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: rgb(var(--text));
+  --bn-colors-menu-background: rgb(var(--surface-raised));
+  --bn-colors-tooltip-text: rgb(var(--text));
+  --bn-colors-tooltip-background: rgb(var(--surface-sunken));
+  --bn-colors-hovered-text: rgb(var(--text));
+  --bn-colors-hovered-background: rgb(var(--surface-sunken));
+  --bn-colors-selected-text: #ffffff;
+  --bn-colors-selected-background: rgb(79 70 229); /* brand-600 */
+  --bn-colors-disabled-text: rgb(var(--text-subtle));
+  --bn-colors-disabled-background: rgb(var(--surface-sunken));
+  --bn-colors-shadow: rgb(0 0 0 / 0.12);
+  --bn-colors-border: rgb(var(--border));
+  --bn-colors-side-menu: rgb(var(--text-subtle));
+  --bn-font-family: inherit;
+  --bn-border-radius: 8px;
+}
+
+.notes-editor .bn-root[data-color-scheme="dark"] {
+  --bn-colors-shadow: rgb(0 0 0 / 0.6);
+}
+
+/* Let the editor fill the available scroll container cleanly. */
+.notes-editor .bn-container {
+  background: transparent;
+  height: 100%;
+}
+
+.notes-editor .bn-editor {
+  background: transparent;
+  padding-inline: 2.25rem;
+  padding-block: 1.25rem 4rem;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* Tighten the block side-menu offset a bit; default is pretty wide. */
+.notes-editor .bn-block-outer > .bn-side-menu {
+  margin-left: -0.25rem;
+}
+
+/* Heading sizes — the default Inter metrics pair well with these. */
+.notes-editor .bn-block-content[data-content-type="heading"][data-level="1"] {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin-top: 0.75rem;
+}
+.notes-editor .bn-block-content[data-content-type="heading"][data-level="2"] {
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 0.5rem;
+}
+.notes-editor .bn-block-content[data-content-type="heading"][data-level="3"] {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* Links pick up the brand colour and underline on hover. */
+.notes-editor .bn-inline-content a {
+  color: rgb(79 70 229);
+  text-decoration: none;
+}
+.notes-editor .bn-inline-content a:hover {
+  text-decoration: underline;
+}
+.dark .notes-editor .bn-inline-content a {
+  color: rgb(129 140 248); /* brand-400 */
+}
+
+/* Inline code uses the sunken surface so it reads as a chip. */
+.notes-editor .bn-inline-content code {
+  background: rgb(var(--surface-sunken));
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Fenced code blocks: dark chip even in light mode, consistent with the
+ * old MarkdownPreview look. */
+.notes-editor .bn-block-content[data-content-type="codeBlock"] {
+  background: rgb(17 17 17);
+  color: rgb(245 245 245);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+/* GFM task list checkboxes: use the app's border/text tokens instead of
+ * BlockNote's default muted grey, so the checkmark is visible in dark mode. */
+.notes-editor .bn-block-content[data-content-type="checkListItem"]
+  input[type="checkbox"] {
+  accent-color: rgb(79 70 229);
+}

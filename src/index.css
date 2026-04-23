@@ -4,6 +4,13 @@
 
 @layer base {
   :root {
+    /* Tells the browser (and the OS) the page is rendered in a light scheme
+     * so native widgets — including the OS-drawn mouse I-beam cursor — pick
+     * the right colour variant. Without this, Windows renders the I-beam in
+     * dark-mode style (white) when the OS is set to dark, even on a light
+     * page background, which makes it invisible. */
+    color-scheme: light;
+
     /* Surfaces */
     --surface: 250 250 250; /* #fafafa */
     --surface-raised: 255 255 255; /* #ffffff */
@@ -24,6 +31,8 @@
   }
 
   .dark {
+    color-scheme: dark;
+
     /* Surfaces */
     --surface: 10 10 10; /* #0a0a0a */
     --surface-raised: 23 23 23; /* #171717 */
@@ -219,4 +228,10 @@
 }
 .notes-prose li:has(> input[type='checkbox']) {
   @apply list-none;
+}
+
+input, textarea {
+  cursor: text !important; /* Standard text selection beam */
+  /* OR try a custom image if the default beam is broken on your system */
+  /* cursor: url('custom-cursor.png'), auto; */
 }
