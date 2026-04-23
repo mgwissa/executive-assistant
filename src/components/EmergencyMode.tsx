@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ActionItem } from '../lib/format';
 import {
   deleteActionItemLine,
   extractActionItems,
   renameActionItemLine,
   setActionItemLineDueDate,
+  setActionItemLineNotes,
   setActionItemLinePriority,
   toggleActionItemLine,
 } from '../lib/format';
@@ -15,6 +16,8 @@ import { useTasksStore } from '../store/useTasksStore';
 import { useViewStore } from '../store/useViewStore';
 import type { Task } from '../types';
 import { NoteOpenRow, OpenTaskRow } from './Tasks';
+import { NoteItemDetailModal } from './NoteItemDetailModal';
+import { TaskDetailModal } from './TaskDetailModal';
 import { Card } from './ui/Card';
 import { SectionHeader } from './ui/SectionHeader';
 
@@ -36,6 +39,27 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
   const setActiveNote = useNotesStore((s) => s.setActive);
   const setView = useViewStore((s) => s.setView);
   const { tasks, setTaskPriority, setDueDate, renameTask, toggleDone, deleteTask } = useTasksStore();
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
+  const [detailNoteTarget, setDetailNoteTarget] = useState<{ noteId: string; line: number } | null>(null);
+
+  const allNoteItems = useMemo(() => extractActionItems(notes, { includeDone: true }), [notes]);
+  const detailNoteItem = useMemo(
+    () =>
+      detailNoteTarget
+        ? allNoteItems.find(
+            (a) => a.noteId === detailNoteTarget.noteId && a.line === detailNoteTarget.line,
+          ) ?? null
+        : null,
+    [allNoteItems, detailNoteTarget],
+  );
+  const detailNoteItemDone = useMemo(() => {
+    if (!detailNoteTarget) return false;
+    const n = notes.find((x) => x.id === detailNoteTarget.noteId);
+    if (!n) return false;
+    const line = n.content.split('\n')[detailNoteTarget.line];
+    return /^\s*[-*+]\s+\[x\]/i.test(line ?? '');
+  }, [detailNoteTarget, notes]);
 
   const criticalRows = useMemo(() => {
     const rows: EmergencyRow[] = [];
@@ -182,6 +206,7 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
                           onRename={renameTask}
                           onPriorityChange={(p) => void setTaskPriority(row.task.id, p)}
                           onDueDateChange={(d) => void setDueDate(row.task.id, d)}
+                          onOpen={() => setDetailTaskId(row.task.id)}
                         />
                       ) : (
                         <NoteOpenRow
@@ -203,6 +228,9 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
                             applyNoteLine(row.item, (c) => deleteActionItemLine(c, row.item.line))
                           }
                           onOpenNote={() => openNote(row.item.noteId)}
+                          onOpenDetail={() =>
+                            setDetailNoteTarget({ noteId: row.item.noteId, line: row.item.line })
+                          }
                         />
                       )}
                     </li>
@@ -229,6 +257,7 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
                       onRename={renameTask}
                       onPriorityChange={(p) => void setTaskPriority(row.task.id, p)}
                       onDueDateChange={(d) => void setDueDate(row.task.id, d)}
+                      onOpen={() => setDetailTaskId(row.task.id)}
                     />
                   ) : (
                     <NoteOpenRow
@@ -251,6 +280,9 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
                         applyNoteLine(row.item, (c) => deleteActionItemLine(c, row.item.line))
                       }
                       onOpenNote={() => openNote(row.item.noteId)}
+                      onOpenDetail={() =>
+                        setDetailNoteTarget({ noteId: row.item.noteId, line: row.item.line })
+                      }
                     />
                   ),
                 )}
@@ -275,6 +307,36 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
         </div>
       </footer>
       </div>
+
+      {detailTask && (
+        <TaskDetailModal task={detailTask} onClose={() => setDetailTaskId(null)} />
+      )}
+      {detailNoteItem && (
+        <NoteItemDetailModal
+          item={detailNoteItem}
+          done={detailNoteItemDone}
+          onClose={() => setDetailNoteTarget(null)}
+          onToggle={() =>
+            applyNoteLine(detailNoteItem, (c) => toggleActionItemLine(c, detailNoteItem.line))
+          }
+          onPriorityChange={(p) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLinePriority(c, detailNoteItem.line, p))
+          }
+          onDueDateChange={(d) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLineDueDate(c, detailNoteItem.line, d))
+          }
+          onRename={(raw) =>
+            applyNoteLine(detailNoteItem, (c) => renameActionItemLine(c, detailNoteItem.line, raw))
+          }
+          onDelete={() =>
+            applyNoteLine(detailNoteItem, (c) => deleteActionItemLine(c, detailNoteItem.line))
+          }
+          onNotesChange={(n) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLineNotes(c, detailNoteItem.line, n))
+          }
+          onOpenNote={() => openNote(detailNoteItem.noteId)}
+        />
+      )}
     </div>
   );
 }

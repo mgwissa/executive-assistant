@@ -29,6 +29,8 @@ export type ActionItem = {
   line: number;
   priority: TaskPriority;
   dueDate: string | null;
+  /** Free-form notes stored as indented continuation lines under the checkbox. */
+  description: string;
 };
 
 const ACTION_ITEM_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
@@ -38,6 +40,63 @@ const DUE_TAG_RE = /\[due:(\d{4}-\d{2}-\d{2})\]/i;
 
 /** Leading `- [ ] ` / `* [ ] ` part of a checkbox line (open or done). */
 const CHECKBOX_LINE_PREFIX = /^(\s*[-*+]\s+\[[ xX]\]\s+)/;
+
+/**
+ * Locate the range of continuation/notes lines immediately under a checkbox line.
+ * Continuation lines are indented at least 2 spaces deeper than the checkbox's own indent.
+ * Blank lines inside the block are preserved; trailing blank lines are excluded.
+ * Returns { start, end } as half-open indices; start === end when no notes exist.
+ */
+function findNotesRange(
+  lines: string[],
+  lineIndex: number,
+): { start: number; end: number; indentStr: string } {
+  const src = lines[lineIndex] ?? '';
+  const baseIndent = (src.match(/^(\s*)/)?.[1] ?? '').length;
+  const minIndent = baseIndent + 2;
+  const indentStr = ' '.repeat(minIndent);
+  const start = lineIndex + 1;
+  let end = start;
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    const indent = (line.match(/^(\s*)/)?.[1] ?? '').length;
+    if (indent >= minIndent) end = i + 1;
+    else break;
+  }
+  return { start, end, indentStr };
+}
+
+/** Read the notes block under a checkbox line, de-indented (empty string if none). */
+export function getActionItemNotes(content: string, lineIndex: number): string {
+  const lines = content.split('\n');
+  const { start, end, indentStr } = findNotesRange(lines, lineIndex);
+  if (end <= start) return '';
+  return lines
+    .slice(start, end)
+    .map((l) => (l.startsWith(indentStr) ? l.slice(indentStr.length) : l.trimStart()))
+    .join('\n');
+}
+
+/** Replace the notes block under a checkbox line with `notes` (indented). Empty string removes it. */
+export function setActionItemLineNotes(
+  content: string,
+  lineIndex: number,
+  notes: string,
+): string | null {
+  const lines = content.split('\n');
+  const src = lines[lineIndex];
+  if (src == null) return null;
+  if (!ACTION_ITEM_RE.test(src)) return null;
+  const { start, end, indentStr } = findNotesRange(lines, lineIndex);
+  const trimmed = notes.replace(/\s+$/, '');
+  const noteLines = trimmed
+    ? trimmed.split('\n').map((l) => (l.length ? indentStr + l : l))
+    : [];
+  const before = lines.slice(0, start);
+  const after = lines.slice(end);
+  return [...before, ...noteLines, ...after].join('\n');
+}
 
 /** Toggle `- [ ]` ↔ `- [x]` on a single line. */
 export function toggleActionItemLine(content: string, line: number): string {
@@ -130,11 +189,12 @@ export function renameActionItemLine(
   return lines.join('\n');
 }
 
-/** Remove a checkbox line from note content. */
+/** Remove a checkbox line and its notes block from note content. */
 export function deleteActionItemLine(content: string, lineIndex: number): string | null {
   const lines = content.split('\n');
   if (lines[lineIndex] == null) return null;
-  lines.splice(lineIndex, 1);
+  const { end } = findNotesRange(lines, lineIndex);
+  lines.splice(lineIndex, end - lineIndex);
   return lines.join('\n');
 }
 
@@ -157,6 +217,14 @@ export function extractActionItems(
       const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
       const { priority, label } = parsePriorityPrefix(withoutDue);
       const dueDate = explicitDue ?? dueDateForPriority(priority);
+      const { start, end, indentStr } = findNotesRange(lines, i);
+      const description =
+        end > start
+          ? lines
+              .slice(start, end)
+              .map((l) => (l.startsWith(indentStr) ? l.slice(indentStr.length) : l.trimStart()))
+              .join('\n')
+          : '';
       items.push({
         noteId: note.id,
         noteTitle: note.title || 'Untitled',
@@ -166,6 +234,7 @@ export function extractActionItems(
         line: i,
         priority,
         dueDate,
+        description,
       });
     }
   }

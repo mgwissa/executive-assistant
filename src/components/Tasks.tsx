@@ -5,6 +5,7 @@ import {
   extractActionItems,
   renameActionItemLine,
   setActionItemLineDueDate,
+  setActionItemLineNotes,
   setActionItemLinePriority,
   toggleActionItemLine,
 } from '../lib/format';
@@ -24,6 +25,7 @@ import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
 import { Badge } from './ui/Badge';
 import { TaskDetailModal } from './TaskDetailModal';
+import { NoteItemDetailModal } from './NoteItemDetailModal';
 
 export function Tasks() {
   const user = useAuthStore((s) => s.user);
@@ -38,6 +40,7 @@ export function Tasks() {
   const [title, setTitle] = useState('');
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
+  const [detailNoteTarget, setDetailNoteTarget] = useState<{ noteId: string; line: number } | null>(null);
 
   const openDbTasks = useMemo(() => {
     const list = tasks.filter((t) => !t.done);
@@ -51,6 +54,24 @@ export function Tasks() {
   }, [tasks]);
 
   const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+  const allActionItems = useMemo(() => extractActionItems(notes, { includeDone: true }), [notes]);
+
+  const detailNoteItem = useMemo(
+    () =>
+      detailNoteTarget
+        ? allActionItems.find(
+            (a) => a.noteId === detailNoteTarget.noteId && a.line === detailNoteTarget.line,
+          ) ?? null
+        : null,
+    [allActionItems, detailNoteTarget],
+  );
+  const detailNoteItemDone = useMemo(() => {
+    if (!detailNoteTarget) return false;
+    const n = notes.find((x) => x.id === detailNoteTarget.noteId);
+    if (!n) return false;
+    const line = n.content.split('\n')[detailNoteTarget.line];
+    return /^\s*[-*+]\s+\[x\]/i.test(line ?? '');
+  }, [detailNoteTarget, notes]);
 
   type OpenRow = { kind: 'task'; task: Task } | { kind: 'note'; item: ActionItem };
 
@@ -205,6 +226,9 @@ export function Tasks() {
                           applyNoteLine(row.item, (c) => deleteActionItemLine(c, row.item.line))
                         }
                         onOpenNote={() => openNote(row.item.noteId)}
+                        onOpenDetail={() =>
+                          setDetailNoteTarget({ noteId: row.item.noteId, line: row.item.line })
+                        }
                       />
                     ),
                   )}
@@ -227,6 +251,32 @@ export function Tasks() {
 
       {detailTask && (
         <TaskDetailModal task={detailTask} onClose={() => setDetailTaskId(null)} />
+      )}
+      {detailNoteItem && (
+        <NoteItemDetailModal
+          item={detailNoteItem}
+          done={detailNoteItemDone}
+          onClose={() => setDetailNoteTarget(null)}
+          onToggle={() =>
+            applyNoteLine(detailNoteItem, (c) => toggleActionItemLine(c, detailNoteItem.line))
+          }
+          onPriorityChange={(p) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLinePriority(c, detailNoteItem.line, p))
+          }
+          onDueDateChange={(d) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLineDueDate(c, detailNoteItem.line, d))
+          }
+          onRename={(raw) =>
+            applyNoteLine(detailNoteItem, (c) => renameActionItemLine(c, detailNoteItem.line, raw))
+          }
+          onDelete={() =>
+            applyNoteLine(detailNoteItem, (c) => deleteActionItemLine(c, detailNoteItem.line))
+          }
+          onNotesChange={(n) =>
+            applyNoteLine(detailNoteItem, (c) => setActionItemLineNotes(c, detailNoteItem.line, n))
+          }
+          onOpenNote={() => openNote(detailNoteItem.noteId)}
+        />
       )}
     </div>
   );
@@ -592,6 +642,7 @@ export function NoteOpenRow({
   onPriorityChange,
   onDueDateChange,
   onOpenNote,
+  onOpenDetail,
 }: {
   item: ActionItem;
   note: Note | undefined;
@@ -601,11 +652,13 @@ export function NoteOpenRow({
   onPriorityChange: (p: TaskPriority) => void;
   onDueDateChange: (dueDate: string | null) => void;
   onOpenNote: () => void;
+  onOpenDetail?: () => void;
 }) {
   const priority = item.priority;
   const sid = `note:${item.noteId}:${item.line}`;
   const status = dueDateStatus(item.dueDate);
   const locked = isPriorityLocked(item.dueDate);
+  const hasNotes = item.description.trim().length > 0;
   return (
     <li className={[priorityRowClass(priority), 'flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4'].join(' ')}>
       <div className="flex min-w-0 flex-1 gap-3">
@@ -643,6 +696,22 @@ export function NoteOpenRow({
               <p className="text-xs italic text-text-subtle">
                 Update due date to change priority
               </p>
+            )}
+            {onOpenDetail && (
+              <button
+                type="button"
+                onClick={onOpenDetail}
+                className={[
+                  'inline-flex items-center gap-1 text-xs',
+                  hasNotes
+                    ? 'font-medium text-brand-700 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300'
+                    : 'text-text-subtle hover:text-text-muted',
+                ].join(' ')}
+                title={hasNotes ? 'View notes' : 'Add notes'}
+              >
+                <NoteIcon className="h-3 w-3" />
+                {hasNotes ? 'Notes' : 'Add notes'}
+              </button>
             )}
             <button
               type="button"
