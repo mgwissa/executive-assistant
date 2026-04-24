@@ -1,10 +1,20 @@
-import { useEffect, useRef } from 'react';
-import { useCreateBlockNote } from '@blocknote/react';
+import { useEffect, useMemo, useRef } from 'react';
+import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { BlockNoteView } from '@blocknote/mantine';
+import {
+  FormattingToolbar,
+  FormattingToolbarController,
+  getDefaultReactSlashMenuItems,
+  getFormattingToolbarItems,
+  SuggestionMenuController,
+  useCreateBlockNote,
+} from '@blocknote/react';
 
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
+import { createTaskSlashMenuItems } from '../lib/taskSlashMenuItems';
 import '../styles/notesEditor.css';
+import { NotesTaskToolbar } from './notes/NotesTaskToolbar';
 
 type NotesEditorProps = {
   /**
@@ -35,6 +45,12 @@ type NotesEditorProps = {
  *   - We skip the first onChange event that fires immediately after we
  *     replace the empty document with the parsed blocks, so we don't
  *     write a round-trip-normalised version back to the store on mount.
+ *
+ * Task system:
+ *   - Slash `/` menu includes **Tasks** group (action item + one entry per
+ *     priority tier with auto `[Pn]` / `[due:…]`).
+ *   - Floating toolbar includes **Task** controls when the selection is in
+ *     a checklist block (priority, due, clear due, toggle done, delete).
  */
 export function NotesEditor({
   noteId: _noteId,
@@ -59,11 +75,22 @@ export function NotesEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const slashGetItems = useMemo(
+    () => async (query: string) =>
+      filterSuggestionItems(
+        [...getDefaultReactSlashMenuItems(editor), ...createTaskSlashMenuItems(editor)],
+        query,
+      ),
+    [editor],
+  );
+
   return (
     <div className="notes-editor h-full">
       <BlockNoteView
         editor={editor}
         theme={theme}
+        slashMenu={false}
+        formattingToolbar={false}
         onChange={() => {
           if (!initializedRef.current) return;
           const md = editor.blocksToMarkdownLossy();
@@ -71,7 +98,17 @@ export function NotesEditor({
           lastEmittedRef.current = md;
           onChange(md);
         }}
-      />
+      >
+        <SuggestionMenuController triggerCharacter="/" getItems={slashGetItems} />
+        <FormattingToolbarController
+          formattingToolbar={() => (
+            <FormattingToolbar>
+              <NotesTaskToolbar />
+              {getFormattingToolbarItems()}
+            </FormattingToolbar>
+          )}
+        />
+      </BlockNoteView>
     </div>
   );
 }

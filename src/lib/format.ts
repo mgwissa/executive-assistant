@@ -33,10 +33,11 @@ export type ActionItem = {
   description: string;
 };
 
-const ACTION_ITEM_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
+/** Exported for BlockNote task toolbar / slash menu (same pattern as Tasks view). */
+export const ACTION_ITEM_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
 
 /** Matches `[due:YYYY-MM-DD]` anywhere in the text. */
-const DUE_TAG_RE = /\[due:(\d{4}-\d{2}-\d{2})\]/i;
+export const DUE_TAG_RE = /\[due:(\d{4}-\d{2}-\d{2})\]/i;
 
 /** Leading `- [ ] ` / `* [ ] ` part of a checkbox line (open or done). */
 const CHECKBOX_LINE_PREFIX = /^(\s*[-*+]\s+\[[ xX]\]\s+)/;
