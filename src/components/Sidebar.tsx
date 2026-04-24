@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isNotebookShared } from '../lib/notebookSharing';
+import { extractPreview, formatRelative } from '../lib/format';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
-import { extractPreview, formatRelative } from '../lib/format';
-import type { Section } from '../types';
+import { useSharingStore } from '../store/useSharingStore';
+import type { Notebook, Section } from '../types';
+import { ShareNotebookModal } from './ShareNotebookModal';
 import {
   BookIcon,
   ChevronDownIcon,
@@ -21,6 +24,7 @@ export function Sidebar() {
   const {
     notebooks,
     sections,
+    memberCountByNotebook,
     activeNotebookId,
     setActiveNotebook,
     createNotebook,
@@ -29,7 +33,17 @@ export function Sidebar() {
     createSection,
     renameSection,
     deleteSection,
+    fetchAll: fetchNotebooks,
+    refreshMemberCounts,
   } = useNotebooksStore();
+  const fetchNotes = useNotesStore((s) => s.fetchAll);
+  const fetchSharing = useSharingStore((s) => s.fetchSharing);
+
+  const [shareOpen, setShareOpen] = useState(false);
+
+  useEffect(() => {
+    setShareOpen(false);
+  }, [activeNotebookId]);
 
   const activeNotebook = notebooks.find((n) => n.id === activeNotebookId) ?? null;
 
@@ -92,13 +106,33 @@ export function Sidebar() {
       <div className="border-b border-border-strong px-3 py-3">
         <NotebookPicker
           notebooks={notebooks}
+          memberCountByNotebook={memberCountByNotebook}
+          currentUserId={user?.id}
           activeId={activeNotebookId}
           onSelect={setActiveNotebook}
           onCreate={(name) => user && createNotebook(user.id, name)}
           onRename={renameNotebook}
           onDelete={deleteNotebook}
+          onShare={() => setShareOpen(true)}
         />
       </div>
+
+      {activeNotebook && user ? (
+        <ShareNotebookModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          notebookId={activeNotebook.id}
+          notebookName={activeNotebook.name}
+          isOwner={activeNotebook.user_id === user.id}
+          currentUserId={user.id}
+          onMembershipChanged={async () => {
+            await fetchNotebooks(user.id);
+            await refreshMemberCounts();
+            await fetchNotes(user.id);
+            await fetchSharing(activeNotebook.id);
+          }}
+        />
+      ) : null}
 
       {/* Search + new section */}
       <div className="space-y-2 border-b border-border-strong px-3 py-3">
@@ -164,18 +198,24 @@ export function Sidebar() {
 
 function NotebookPicker({
   notebooks,
+  memberCountByNotebook,
+  currentUserId,
   activeId,
   onSelect,
   onCreate,
   onRename,
   onDelete,
+  onShare,
 }: {
-  notebooks: { id: string; name: string }[];
+  notebooks: Notebook[];
+  memberCountByNotebook: Record<string, number>;
+  currentUserId: string | undefined;
   activeId: string | null;
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onShare: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -195,25 +235,39 @@ function NotebookPicker({
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-1">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
           Notebooks
         </h2>
-        <button
-          className="btn-ghost h-6 w-6 p-0"
-          title="New notebook"
-          onClick={() => {
-            const name = window.prompt('Notebook name:');
-            if (name?.trim()) onCreate(name.trim());
-          }}
-        >
-          <PlusIcon className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            className="btn-ghost h-6 px-1.5 text-[11px] font-medium"
+            title="Share notebook"
+            disabled={!activeId}
+            onClick={onShare}
+          >
+            Share
+          </button>
+          <button
+            type="button"
+            className="btn-ghost h-6 w-6 p-0"
+            title="New notebook"
+            onClick={() => {
+              const name = window.prompt('Notebook name:');
+              if (name?.trim()) onCreate(name.trim());
+            }}
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <ul className="space-y-0.5">
         {notebooks.map((nb) => {
           const isActive = nb.id === activeId;
           const isEditing = editing === nb.id;
+          const shared = isNotebookShared(nb, currentUserId, memberCountByNotebook);
+          const canDelete = notebooks.length > 1 && nb.user_id === currentUserId;
           return (
             <li key={nb.id} className="group flex items-center gap-1">
               {isEditing ? (
@@ -231,6 +285,7 @@ function NotebookPicker({
                 />
               ) : (
                 <button
+                  type="button"
                   onClick={() => onSelect(nb.id)}
                   onDoubleClick={() => {
                     setDraft(nb.name);
@@ -245,11 +300,17 @@ function NotebookPicker({
                   title="Double-click to rename"
                 >
                   <BookIcon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{nb.name}</span>
+                  <span className="min-w-0 truncate">{nb.name}</span>
+                  {shared ? (
+                    <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-text-muted ring-1 ring-border">
+                      Shared
+                    </span>
+                  ) : null}
                 </button>
               )}
-              {notebooks.length > 1 && (
+              {canDelete ? (
                 <button
+                  type="button"
                   className="btn-ghost hidden h-6 w-6 shrink-0 p-0 text-red-500 group-hover:flex"
                   title="Delete notebook"
                   onClick={() => {
@@ -259,7 +320,7 @@ function NotebookPicker({
                 >
                   <TrashIcon className="h-3.5 w-3.5" />
                 </button>
-              )}
+              ) : null}
             </li>
           );
         })}

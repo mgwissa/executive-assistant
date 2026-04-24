@@ -11,17 +11,22 @@ import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
 import { useCriticalOverload } from './hooks/useCriticalOverload';
+import { useNotebookRealtime } from './hooks/useNotebookRealtime';
+import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
 import { useAuthStore } from './store/useAuthStore';
 import { useEmergencyStore } from './store/useEmergencyStore';
 import { useEventsStore } from './store/useEventsStore';
 import { useNotebooksStore } from './store/useNotebooksStore';
 import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
+import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
 import { useViewStore } from './store/useViewStore';
 import { eventsFetchIsoRange } from './lib/eventQueries';
 
 function NotesView() {
+  const user = useAuthStore((s) => s.user);
+  useNotebookRealtime(user?.id);
   return (
     <div className="flex h-full min-w-0 flex-1">
       <Sidebar />
@@ -50,6 +55,7 @@ function Shell() {
   const clearNotebooks = useNotebooksStore((s) => s.clear);
   const fetchNotes = useNotesStore((s) => s.fetchAll);
   const clearNotes = useNotesStore((s) => s.clear);
+  const clearSharing = useSharingStore((s) => s.clear);
   const fetchProfile = useProfileStore((s) => s.fetchProfile);
   const clearProfile = useProfileStore((s) => s.clear);
   const profile = useProfileStore((s) => s.profile);
@@ -72,6 +78,7 @@ function Shell() {
     } else {
       clearNotebooks();
       clearNotes();
+      clearSharing();
       clearProfile();
       clearTasks();
       clearEvents();
@@ -84,6 +91,7 @@ function Shell() {
     clearNotebooks,
     fetchNotes,
     clearNotes,
+    clearSharing,
     fetchProfile,
     clearProfile,
     fetchEventsRange,
@@ -91,6 +99,40 @@ function Shell() {
     clearTasks,
     clearEvents,
   ]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const consumeInvite = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('invite');
+      const fromStorage = sessionStorage.getItem(PENDING_NOTEBOOK_INVITE_KEY);
+      const token = fromUrl ?? fromStorage;
+      if (!token) return;
+
+      sessionStorage.removeItem(PENDING_NOTEBOOK_INVITE_KEY);
+      if (fromUrl) {
+        params.delete('invite');
+        const search = params.toString();
+        const next = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', next);
+      }
+
+      try {
+        const notebookId = await useSharingStore.getState().acceptInvite(token);
+        await useNotebooksStore.getState().fetchAll(user.id);
+        await useNotesStore.getState().fetchAll(user.id);
+        useNotebooksStore.getState().setActiveNotebook(notebookId);
+        useViewStore.getState().setView('notes');
+      } catch (e) {
+        console.error(e);
+        const msg = e instanceof Error ? e.message : 'Could not accept invite';
+        window.alert(msg);
+      }
+    };
+
+    void consumeInvite();
+  }, [user]);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -141,6 +183,19 @@ export default function App() {
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (session) return;
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get('invite');
+    if (!invite) return;
+    sessionStorage.setItem(PENDING_NOTEBOOK_INVITE_KEY, invite);
+    params.delete('invite');
+    const search = params.toString();
+    const next = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', next);
+  }, [loading, session]);
 
   if (loading) {
     return (

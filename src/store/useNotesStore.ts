@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { markNoteSelfPersisted } from '../lib/noteSyncEcho';
 import type { Note } from '../types';
 
 type NotesState = {
@@ -33,12 +34,11 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   setQuery: (q) => set({ query: q }),
   setActive: (id) => set({ activeId: id }),
 
-  fetchAll: async (userId) => {
+  fetchAll: async (_userId) => {
     set({ loading: true, error: null });
     const { data, error } = await supabase
       .from('notes')
       .select('*')
-      .eq('user_id', userId)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -113,11 +113,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         pendingTimers.delete(id);
         // Don't write to the backend for unsaved optimistic notes
         if (id.startsWith('tmp-')) return;
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('notes')
           .update({ ...patch, updated_at: now })
-          .eq('id', id);
+          .eq('id', id)
+          .select('id, updated_at')
+          .single();
         if (error) set({ error: error.message });
+        else if (data) markNoteSelfPersisted(data.id, data.updated_at);
       }, DEBOUNCE_MS),
     );
   },

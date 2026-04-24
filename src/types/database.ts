@@ -213,9 +213,66 @@ export type Database = {
           updated_at?: string;
         };
       };
+      notebook_members: {
+        Row: {
+          notebook_id: string;
+          user_id: string;
+          role: string;
+          invited_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          notebook_id: string;
+          user_id: string;
+          role?: string;
+          invited_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          notebook_id?: string;
+          user_id?: string;
+          role?: string;
+          invited_by?: string | null;
+          created_at?: string;
+        };
+      };
+      notebook_invites: {
+        Row: {
+          id: string;
+          notebook_id: string;
+          token: string;
+          created_by: string;
+          created_at: string;
+          expires_at: string;
+          revoked_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          notebook_id: string;
+          token?: string;
+          created_by: string;
+          created_at?: string;
+          expires_at?: string;
+          revoked_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          notebook_id?: string;
+          token?: string;
+          created_by?: string;
+          created_at?: string;
+          expires_at?: string;
+          revoked_at?: string | null;
+        };
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      accept_notebook_invite: {
+        Args: { invite_token: string };
+        Returns: string;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

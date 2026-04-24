@@ -5,6 +5,8 @@ import type { Notebook, Section } from '../types';
 type NotebooksState = {
   notebooks: Notebook[];
   sections: Section[];
+  /** Row counts in `notebook_members` per notebook (for shared badge). */
+  memberCountByNotebook: Record<string, number>;
   activeNotebookId: string | null;
   loading: boolean;
   error: string | null;
@@ -23,44 +25,51 @@ type NotebooksState = {
   renameSection: (id: string, name: string) => Promise<void>;
   deleteSection: (id: string) => Promise<void>;
 
+  /** Recompute `memberCountByNotebook` without touching notebooks/sections. */
+  refreshMemberCounts: () => Promise<void>;
+
   clear: () => void;
 };
 
 export const useNotebooksStore = create<NotebooksState>((set, get) => ({
   notebooks: [],
   sections: [],
+  memberCountByNotebook: {},
   activeNotebookId: null,
   loading: false,
   error: null,
 
   setActiveNotebook: (id) => set({ activeNotebookId: id }),
 
-  fetchAll: async (userId) => {
+  fetchAll: async (_userId) => {
     set({ loading: true, error: null });
-    const [nbRes, secRes] = await Promise.all([
-      supabase
-        .from('notebooks')
-        .select('*')
-        .eq('user_id', userId)
-        .order('position')
-        .order('created_at'),
-      supabase
-        .from('sections')
-        .select('*')
-        .eq('user_id', userId)
-        .order('position')
-        .order('created_at'),
+    const [nbRes, secRes, memRes] = await Promise.all([
+      supabase.from('notebooks').select('*').order('position').order('created_at'),
+      supabase.from('sections').select('*').order('position').order('created_at'),
+      supabase.from('notebook_members').select('notebook_id'),
     ]);
-    if (nbRes.error || secRes.error) {
-      set({ loading: false, error: nbRes.error?.message ?? secRes.error?.message ?? 'Fetch failed' });
+    if (nbRes.error || secRes.error || memRes.error) {
+      set({
+        loading: false,
+        error:
+          nbRes.error?.message ??
+          secRes.error?.message ??
+          memRes.error?.message ??
+          'Fetch failed',
+      });
       return;
     }
     const notebooks = nbRes.data ?? [];
     const sections = secRes.data ?? [];
+    const memberCountByNotebook: Record<string, number> = {};
+    for (const row of memRes.data ?? []) {
+      const nid = row.notebook_id as string;
+      memberCountByNotebook[nid] = (memberCountByNotebook[nid] ?? 0) + 1;
+    }
     const current = get().activeNotebookId;
     const activeNotebookId =
       notebooks.find((n) => n.id === current)?.id ?? notebooks[0]?.id ?? null;
-    set({ notebooks, sections, activeNotebookId, loading: false });
+    set({ notebooks, sections, memberCountByNotebook, activeNotebookId, loading: false });
   },
 
   ensureDefault: async (userId) => {
@@ -178,6 +187,27 @@ export const useNotebooksStore = create<NotebooksState>((set, get) => ({
     }
   },
 
+  refreshMemberCounts: async () => {
+    const { data, error } = await supabase.from('notebook_members').select('notebook_id');
+    if (error) {
+      set({ error: error.message });
+      return;
+    }
+    const memberCountByNotebook: Record<string, number> = {};
+    for (const row of data ?? []) {
+      const nid = row.notebook_id as string;
+      memberCountByNotebook[nid] = (memberCountByNotebook[nid] ?? 0) + 1;
+    }
+    set({ memberCountByNotebook });
+  },
+
   clear: () =>
-    set({ notebooks: [], sections: [], activeNotebookId: null, loading: false, error: null }),
+    set({
+      notebooks: [],
+      sections: [],
+      memberCountByNotebook: {},
+      activeNotebookId: null,
+      loading: false,
+      error: null,
+    }),
 }));
