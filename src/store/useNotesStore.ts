@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { markNoteSelfPersisted } from '../lib/noteSyncEcho';
+import { randomUUID } from '../lib/uuid';
 import type { Note } from '../types';
 
 type NotesState = {
@@ -55,7 +56,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   createNote: async (userId, sectionId) => {
     const now = new Date().toISOString();
     const optimistic: Note = {
-      id: `tmp-${crypto.randomUUID()}`,
+      id: `tmp-${randomUUID()}`,
       user_id: userId,
       section_id: sectionId,
       title: 'Untitled',

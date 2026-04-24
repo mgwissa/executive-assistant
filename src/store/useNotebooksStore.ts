@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { randomUUID } from '../lib/uuid';
 import type { Notebook, Section } from '../types';
 
 type NotebooksState = {
@@ -84,7 +85,7 @@ export const useNotebooksStore = create<NotebooksState>((set, get) => ({
     const position = get().notebooks.length;
     const now = new Date().toISOString();
     const optimistic: Notebook = {
-      id: `tmp-${crypto.randomUUID()}`,
+      id: `tmp-${randomUUID()}`,
       user_id: userId,
       name,
       position,
@@ -96,11 +97,10 @@ export const useNotebooksStore = create<NotebooksState>((set, get) => ({
       activeNotebookId: get().activeNotebookId ?? optimistic.id,
     });
 
-    const { data, error } = await supabase
-      .from('notebooks')
-      .insert({ user_id: userId, name, position })
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('create_notebook', {
+      p_name: name,
+      p_position: position,
+    });
 
     if (error || !data) {
       set({
@@ -144,7 +144,7 @@ export const useNotebooksStore = create<NotebooksState>((set, get) => ({
     const position = get().sections.filter((s) => s.notebook_id === notebookId).length;
     const now = new Date().toISOString();
     const optimistic: Section = {
-      id: `tmp-${crypto.randomUUID()}`,
+      id: `tmp-${randomUUID()}`,
       notebook_id: notebookId,
       user_id: userId,
       name,

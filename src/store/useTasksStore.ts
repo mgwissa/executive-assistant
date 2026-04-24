@@ -4,6 +4,7 @@ import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalat
 import { dueDateForPriority, isPriorityLocked, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
+import { randomUUID } from '../lib/uuid';
 import { useProfileStore } from './useProfileStore';
 
 type TasksState = {
@@ -127,7 +128,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const now = new Date().toISOString();
     const due_date = dueDateForPriority(priority);
     const optimistic: Task = {
-      id: `tmp-${crypto.randomUUID()}`,
+      id: `tmp-${randomUUID()}`,
       user_id: userId,
       title: cleanTitle,
       done: false,

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { randomUUID } from '../lib/uuid';
 import type { Event } from '../types';
 
 export type Recurrence = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
@@ -101,7 +102,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
   createEvent: async (userId, payload) => {
     const now = new Date().toISOString();
     const optimistic: Event = {
-      id: `tmp-${crypto.randomUUID()}`,
+      id: `tmp-${randomUUID()}`,
       user_id: userId,
       title: payload.title,
       start_at: payload.start_at,
