@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isNotebookShared } from '../lib/notebookSharing';
 import { extractPreview, formatRelative } from '../lib/format';
+import { getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
@@ -65,7 +66,8 @@ export function Sidebar() {
     if (!q) return notesInNotebook;
     return notesInNotebook.filter(
       (n) =>
-        n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q),
+        n.title.toLowerCase().includes(q) ||
+        getNoteCanonicalMarkdown(n).toLowerCase().includes(q),
     );
   }, [notesInNotebook, query]);
 
@@ -444,7 +446,7 @@ function SectionGroup({
           ) : (
             notes.map((note) => {
               const isActive = note.id === activeNoteId;
-              const preview = extractPreview(note.content);
+              const preview = extractPreview(getNoteCanonicalMarkdown(note));
               return (
                 <li key={note.id}>
                   <button

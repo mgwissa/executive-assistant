@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import type { Block } from '@blocknote/core';
 import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
@@ -12,6 +13,8 @@ import {
 
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
+import { isPersistedBlockDocument, noteDocumentFromEditor } from '../lib/noteContentBridge';
+import type { Json } from '../types/database';
 import { createTaskSlashMenuItems } from '../lib/taskSlashMenuItems';
 import '../styles/notesEditor.css';
 import { NotesTaskToolbar } from './notes/NotesTaskToolbar';
@@ -23,53 +26,51 @@ type NotesEditorProps = {
    * and we get a clean initial-content pass.
    */
   noteId: string;
-  /** Current markdown content. Only consulted on mount. */
+  /** Legacy / fallback markdown when `initialBlocks` is absent (pre–content_blocks migration). */
   initialMarkdown: string;
-  /** Called with the latest markdown on every change. */
-  onChange: (markdown: string) => void;
+  /** BlockNote document from DB; when present and non-empty, this is the canonical source. */
+  initialBlocks: Json | null;
+  /** Called with denormalized markdown + canonical blocks on meaningful edits. */
+  onChange: (payload: { content: string; content_blocks: Json }) => void;
   /** Forces light / dark theme to follow the app's theme. */
   theme: 'light' | 'dark';
 };
 
 /**
- * BlockNote editor wired up to the app's markdown-first data model.
+ * BlockNote WYSIWYG with JSON block document as source of truth.
  *
- * Lifecycle notes:
- *   - The parent is expected to mount this with `key={note.id}`, so when
- *     the active note changes the editor is fully remounted. That gives
- *     us a clean `initialMarkdown → blocks` pass per note with no syncing
- *     logic to worry about.
- *   - `initialMarkdown` is snapshotted on mount into a ref so subsequent
- *     prop changes (from the debounced save in useNotesStore echoing back)
- *     don't re-parse and clobber the user's cursor.
- *   - We skip the first onChange event that fires immediately after we
- *     replace the empty document with the parsed blocks, so we don't
- *     write a round-trip-normalised version back to the store on mount.
+ * - When `content_blocks` exists in the DB, the editor loads it directly (no
+ *   markdown re-parse), so natural line breaks and layout are preserved.
+ * - `content` is still updated as a Markdown export for search and for
+ *   line-based task edits from the Tasks/Dashboard views.
  *
- * Task system:
- *   - Slash `/` menu includes **Tasks** group (action item + one entry per
- *     priority tier with auto `[Pn]` / `[due:…]`).
- *   - Floating toolbar includes **Task** controls when the selection is in
- *     a checklist block (priority, due, clear due, toggle done, delete).
+ * Slash `/` task group + checklist toolbar behave as before.
  */
 export function NotesEditor({
   noteId: _noteId,
   initialMarkdown,
+  initialBlocks,
   onChange,
   theme,
 }: NotesEditorProps) {
   const editor = useCreateBlockNote();
 
-  const initialRef = useRef(initialMarkdown);
+  const initialMarkdownRef = useRef(initialMarkdown);
+  const initialBlocksRef = useRef(initialBlocks);
   const initializedRef = useRef(false);
-  const lastEmittedRef = useRef<string>(initialMarkdown);
+  const lastEmittedSnapshotRef = useRef<string>('');
 
   useEffect(() => {
-    const blocks = editor.tryParseMarkdownToBlocks(initialRef.current);
-    if (blocks.length > 0) {
-      editor.replaceBlocks(editor.document, blocks);
+    if (isPersistedBlockDocument(initialBlocksRef.current)) {
+      editor.replaceBlocks(editor.document, initialBlocksRef.current as Block[]);
+    } else {
+      const blocks = editor.tryParseMarkdownToBlocks(initialMarkdownRef.current);
+      if (blocks.length > 0) {
+        editor.replaceBlocks(editor.document, blocks);
+      }
     }
-    lastEmittedRef.current = editor.blocksToMarkdownLossy();
+    const snap = JSON.stringify(editor.document);
+    lastEmittedSnapshotRef.current = snap;
     initializedRef.current = true;
     // Intentionally run once per mount; parent remounts on note switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,10 +94,10 @@ export function NotesEditor({
         formattingToolbar={false}
         onChange={() => {
           if (!initializedRef.current) return;
-          const md = editor.blocksToMarkdownLossy();
-          if (md === lastEmittedRef.current) return;
-          lastEmittedRef.current = md;
-          onChange(md);
+          const snap = JSON.stringify(editor.document);
+          if (snap === lastEmittedSnapshotRef.current) return;
+          lastEmittedSnapshotRef.current = snap;
+          onChange(noteDocumentFromEditor(editor));
         }}
       >
         <SuggestionMenuController triggerCharacter="/" getItems={slashGetItems} />

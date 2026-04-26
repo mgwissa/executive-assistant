@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { markNoteSelfPersisted } from '../lib/noteSyncEcho';
 import { randomUUID } from '../lib/uuid';
+import type { Json } from '../types/database';
 import type { Note } from '../types';
 
 type NotesState = {
@@ -17,7 +18,10 @@ type NotesState = {
   fetchAll: (userId: string) => Promise<void>;
   createNote: (userId: string, sectionId: string) => Promise<Note | null>;
   moveNote: (id: string, sectionId: string) => Promise<void>;
-  updateNote: (id: string, patch: { title?: string; content?: string }) => Promise<void>;
+  updateNote: (
+    id: string,
+    patch: { title?: string; content?: string; content_blocks?: Json | null },
+  ) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   clear: () => void;
 };
@@ -61,6 +65,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       section_id: sectionId,
       title: 'Untitled',
       content: '',
+      content_blocks: null,
       created_at: now,
       updated_at: now,
     };

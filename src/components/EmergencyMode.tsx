@@ -9,6 +9,7 @@ import {
   setActionItemLinePriority,
   toggleActionItemLine,
 } from '../lib/format';
+import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import type { TaskPriority } from '../lib/priority';
 import type { EmergencyReason } from '../hooks/useCriticalOverload';
 import { useNotesStore } from '../store/useNotesStore';
@@ -57,7 +58,7 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
     if (!detailNoteTarget) return false;
     const n = notes.find((x) => x.id === detailNoteTarget.noteId);
     if (!n) return false;
-    const line = n.content.split('\n')[detailNoteTarget.line];
+    const line = getNoteCanonicalMarkdown(n).split('\n')[detailNoteTarget.line];
     return /^\s*[-*+]\s+\[x\]/i.test(line ?? '');
   }, [detailNoteTarget, notes]);
 
@@ -100,8 +101,8 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
   const applyNoteLine = (item: ActionItem, map: (content: string) => string | null) => {
     const note = notes.find((n) => n.id === item.noteId);
     if (!note) return;
-    const next = map(note.content);
-    if (next != null) void updateNote(item.noteId, { content: next });
+    const patched = applyMarkdownPatchToNote(note, map);
+    if (patched) void updateNote(item.noteId, patched);
   };
 
   const openNote = (id: string) => {

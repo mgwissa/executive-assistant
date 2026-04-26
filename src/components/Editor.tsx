@@ -79,7 +79,8 @@ export function Editor() {
           key={note.id}
           noteId={note.id}
           initialMarkdown={note.content ?? ''}
-          onChange={(md) => updateNote(note.id, { content: md })}
+          initialBlocks={note.content_blocks ?? null}
+          onChange={(payload) => updateNote(note.id, payload)}
           theme={theme}
         />
       </div>

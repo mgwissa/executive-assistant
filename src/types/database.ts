@@ -71,6 +71,7 @@ export type Database = {
           section_id: string | null;
           title: string;
           content: string;
+          content_blocks: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -80,6 +81,7 @@ export type Database = {
           section_id?: string | null;
           title?: string;
           content?: string;
+          content_blocks?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -89,6 +91,7 @@ export type Database = {
           section_id?: string | null;
           title?: string;
           content?: string;
+          content_blocks?: Json | null;
           created_at?: string;
           updated_at?: string;
         };

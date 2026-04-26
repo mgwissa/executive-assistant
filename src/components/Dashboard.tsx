@@ -19,6 +19,7 @@ import { PRIORITY_ORDER, PRIORITY_PILL, priorityRank } from '../lib/priority';
 import { priorityInlineLabelClass, priorityRowClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import type { Task } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
+import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import type { Note } from '../types';
 import {
   ArrowRightIcon,
@@ -213,7 +214,8 @@ export function Dashboard() {
   const toggleAction = (noteId: string, line: number) => {
     const note = notes.find((n) => n.id === noteId);
     if (!note) return;
-    updateNote(noteId, { content: toggleActionItemLine(note.content, line) });
+    const patched = applyMarkdownPatchToNote(note, (md) => toggleActionItemLine(md, line));
+    if (patched) void updateNote(noteId, patched);
   };
 
   return (
@@ -536,7 +538,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
-  const preview = extractPreview(note.content);
+  const preview = extractPreview(getNoteCanonicalMarkdown(note));
   return (
     <li>
       <button

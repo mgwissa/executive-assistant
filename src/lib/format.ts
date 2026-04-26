@@ -17,6 +17,8 @@ export function formatRelative(iso: string): string {
 
 import type { TaskPriority } from './priority';
 import { PRIORITY_ORDER, dueDateForPriority, parsePriorityInTitle, parsePriorityPrefix } from './priority';
+import { getNoteCanonicalMarkdown } from './noteContentBridge';
+import type { Json } from '../types/database';
 
 export type ActionItem = {
   noteId: string;
@@ -200,13 +202,20 @@ export function deleteActionItemLine(content: string, lineIndex: number): string
 }
 
 export function extractActionItems(
-  notes: { id: string; title: string; content: string; updated_at: string }[],
+  notes: {
+    id: string;
+    title: string;
+    content: string;
+    content_blocks?: Json | null;
+    updated_at: string;
+  }[],
   { includeDone = false }: { includeDone?: boolean } = {},
 ): ActionItem[] {
   const items: ActionItem[] = [];
   for (const note of notes) {
-    if (!note.content) continue;
-    const lines = note.content.split('\n');
+    const body = getNoteCanonicalMarkdown(note);
+    if (!body) continue;
+    const lines = body.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(ACTION_ITEM_RE);
       if (!match) continue;
