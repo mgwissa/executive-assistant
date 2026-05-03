@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
-import { useViewStore } from '../store/useViewStore';
 import type { ActionItem } from '../lib/format';
 import {
   extractActionItems,
@@ -162,6 +163,7 @@ function resolveName(
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
   const notes = useNotesStore((s) => s.notes);
@@ -173,7 +175,6 @@ export function Dashboard() {
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActive = useNotesStore((s) => s.setActive);
-  const setView = useViewStore((s) => s.setView);
 
   const today = useMemo(() => new Date(), []);
   const greeting = getGreeting(today);
@@ -196,18 +197,18 @@ export function Dashboard() {
   const openNote = useCallback(
     (id: string) => {
       setActive(id);
-      setView('notes');
+      navigate(viewPath('notes'));
     },
-    [setActive, setView],
+    [setActive, navigate],
   );
 
   const workRows = useMemo(
     () =>
       buildWorkRows(openTasks, actionItems, {
         openNote,
-        openTasksView: () => setView('tasks'),
+        openTasksView: () => navigate(viewPath('tasks')),
       }),
-    [openTasks, actionItems, openNote, setView],
+    [openTasks, actionItems, openNote, navigate],
   );
   const visibleWork = workRows.slice(0, ACTION_ITEM_LIMIT);
 
@@ -234,7 +235,7 @@ export function Dashboard() {
               <>
                 {' '}
                 <button
-                  onClick={() => setView('profile')}
+                  onClick={() => navigate(viewPath('profile'))}
                   className="font-medium text-brand-700 hover:text-brand-600"
                 >
                   Set your name
@@ -255,7 +256,7 @@ export function Dashboard() {
             accent="amber"
             action={
               <button
-                onClick={() => setView('tasks')}
+                onClick={() => navigate(viewPath('tasks'))}
                 className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
               >
                 Manage
@@ -281,7 +282,7 @@ export function Dashboard() {
                 Sorted top to bottom. The left edge and label use the same color; change levels on{' '}
                 <button
                   type="button"
-                  onClick={() => setView('tasks')}
+                  onClick={() => navigate(viewPath('tasks'))}
                   className="font-medium text-brand-700 hover:text-brand-600"
                 >
                   Tasks
@@ -383,7 +384,7 @@ export function Dashboard() {
               accent="blue"
               action={
                 <button
-                  onClick={() => setView('calendar')}
+                  onClick={() => navigate(viewPath('calendar'))}
                   className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
                 >
                   Calendar
@@ -479,7 +480,7 @@ export function Dashboard() {
                 action={
                   notes.length > 0 ? (
                     <button
-                      onClick={() => setView('notes')}
+                      onClick={() => navigate(viewPath('notes'))}
                       className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
                     >
                       View all

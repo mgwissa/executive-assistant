@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { viewPath } from '../lib/routes';
 import type { ActionItem } from '../lib/format';
 import {
   deleteActionItemLine,
@@ -14,7 +16,6 @@ import type { TaskPriority } from '../lib/priority';
 import type { EmergencyReason } from '../hooks/useCriticalOverload';
 import { useNotesStore } from '../store/useNotesStore';
 import { useTasksStore } from '../store/useTasksStore';
-import { useViewStore } from '../store/useViewStore';
 import type { Task } from '../types';
 import { NoteOpenRow, OpenTaskRow } from './Tasks';
 import { NoteItemDetailModal } from './NoteItemDetailModal';
@@ -35,10 +36,10 @@ function overdueLabel(dueDate: string): string {
 }
 
 export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onExit: () => void }) {
+  const navigate = useNavigate();
   const notes = useNotesStore((s) => s.notes);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActiveNote = useNotesStore((s) => s.setActive);
-  const setView = useViewStore((s) => s.setView);
   const { tasks, setTaskPriority, setDueDate, renameTask, toggleDone, deleteTask } = useTasksStore();
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
@@ -107,7 +108,7 @@ export function EmergencyMode({ reason, onExit }: { reason: EmergencyReason; onE
 
   const openNote = (id: string) => {
     setActiveNote(id);
-    setView('notes');
+    navigate(viewPath('notes'));
   };
 
   const { headline, subtitle, description } = useMemo(() => {

@@ -1,5 +1,6 @@
+import { useNavigate } from 'react-router-dom';
+import { viewPath, useActiveView, type View } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
-import { useViewStore, type View } from '../store/useViewStore';
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -24,7 +25,8 @@ const topItems: Item[] = [
 ];
 
 export function NavRail() {
-  const { view, setView } = useViewStore();
+  const view = useActiveView();
+  const navigate = useNavigate();
   const { user, signOut } = useAuthStore();
 
   const renderItem = ({ id, label, Icon }: Item) => {
@@ -32,7 +34,7 @@ export function NavRail() {
     return (
       <button
         key={id}
-        onClick={() => setView(id)}
+        onClick={() => navigate(viewPath(id))}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
         title={label}

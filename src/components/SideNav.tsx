@@ -1,5 +1,6 @@
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { useViewStore, type View } from '../store/useViewStore';
+import { viewPath, useActiveView, type View } from '../lib/routes';
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -26,7 +27,8 @@ const items: Item[] = [
 ];
 
 export function SideNav() {
-  const { view, setView } = useViewStore();
+  const view = useActiveView();
+  const navigate = useNavigate();
   const { user, signOut } = useAuthStore();
 
   return (
@@ -84,7 +86,7 @@ export function SideNav() {
             return (
               <li key={id}>
                 <button
-                  onClick={() => setView(id)}
+                  onClick={() => navigate(viewPath(id))}
                   aria-current={active ? 'page' : undefined}
                   className={[
                     'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors focus-ring',

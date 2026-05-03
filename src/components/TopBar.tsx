@@ -1,4 +1,4 @@
-import { useViewStore } from '../store/useViewStore';
+import { useActiveView } from '../lib/routes';
 import { SearchBar } from './SearchBar';
 
 const titles: Record<string, string> = {
@@ -10,7 +10,7 @@ const titles: Record<string, string> = {
 };
 
 export function TopBar() {
-  const view = useViewStore((s) => s.view);
+  const view = useActiveView();
   const title = titles[view] ?? 'Workspace';
 
   return (

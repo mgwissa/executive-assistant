@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import { Auth } from './components/Auth';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
@@ -12,7 +13,9 @@ import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
 import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
+import { eventsFetchIsoRange } from './lib/eventQueries';
 import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
+import { viewPath } from './lib/routes';
 import { useAuthStore } from './store/useAuthStore';
 import { useEmergencyStore } from './store/useEmergencyStore';
 import { useEventsStore } from './store/useEventsStore';
@@ -21,8 +24,6 @@ import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
-import { useViewStore } from './store/useViewStore';
-import { eventsFetchIsoRange } from './lib/eventQueries';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -38,6 +39,7 @@ function NotesView() {
 }
 
 function Shell() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const emergency = useCriticalOverload();
   const bypassEmergency = useEmergencyStore((s) => s.bypass);
@@ -65,7 +67,6 @@ function Shell() {
   const clearTasks = useTasksStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
   const clearEvents = useEventsStore((s) => s.clear);
-  const view = useViewStore((s) => s.view);
 
   useEffect(() => {
     if (user) {
@@ -123,7 +124,7 @@ function Shell() {
         await useNotebooksStore.getState().fetchAll(user.id);
         await useNotesStore.getState().fetchAll(user.id);
         useNotebooksStore.getState().setActiveNotebook(notebookId);
-        useViewStore.getState().setView('notes');
+        navigate(viewPath('notes'), { replace: true });
       } catch (e) {
         console.error(e);
         const msg = e instanceof Error ? e.message : 'Could not accept invite';
@@ -132,7 +133,7 @@ function Shell() {
     };
 
     void consumeInvite();
-  }, [user]);
+  }, [user, navigate]);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -166,11 +167,7 @@ function Shell() {
         {showEmergencyBanner ? <EmergencyBanner reason={emergency} /> : null}
         <TopBar />
         <div className="min-h-0 flex-1">
-          {view === 'dashboard' && <Dashboard />}
-          {view === 'calendar' && <Calendar />}
-          {view === 'tasks' && <Tasks />}
-          {view === 'notes' && <NotesView />}
-          {view === 'profile' && <Profile />}
+          <Outlet />
         </div>
       </div>
     </div>
@@ -205,5 +202,21 @@ export default function App() {
     );
   }
 
-  return session ? <Shell /> : <Auth />;
+  if (!session) {
+    return <Auth />;
+  }
+
+  return (
+    <Routes>
+      <Route element={<Shell />}>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="calendar" element={<Calendar />} />
+        <Route path="tasks" element={<Tasks />} />
+        <Route path="notes" element={<NotesView />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+    </Routes>
+  );
 }

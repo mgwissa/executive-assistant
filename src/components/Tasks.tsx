@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { viewPath } from '../lib/routes';
 import type { ActionItem } from '../lib/format';
 import {
   deleteActionItemLine,
@@ -17,7 +19,6 @@ import { priorityRowClass, prioritySelectClass, priorityTitleClass } from '../li
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useTasksStore } from '../store/useTasksStore';
-import { useViewStore } from '../store/useViewStore';
 import type { Note, Task } from '../types';
 import { CheckSquareIcon, NoteIcon, SquareIcon, TrashIcon } from './icons';
 import { Card } from './ui/Card';
@@ -29,12 +30,12 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { NoteItemDetailModal } from './NoteItemDetailModal';
 
 export function Tasks() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const notes = useNotesStore((s) => s.notes);
   const notesLoading = useNotesStore((s) => s.loading);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActiveNote = useNotesStore((s) => s.setActive);
-  const setView = useViewStore((s) => s.setView);
   const { tasks, loading, error, createTask, setTaskPriority, setDueDate, renameTask, toggleDone, deleteTask } =
     useTasksStore();
 
@@ -105,7 +106,7 @@ export function Tasks() {
 
   const openNote = (id: string) => {
     setActiveNote(id);
-    setView('notes');
+    navigate(viewPath('notes'));
   };
 
   const applyNoteLine = (item: ActionItem, map: (content: string) => string | null) => {
