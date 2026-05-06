@@ -21,6 +21,7 @@ type TasksState = {
   updateDescription: (id: string, description: string) => void;
   renameTask: (id: string, rawTitle: string) => Promise<void>;
   toggleDone: (id: string, done: boolean) => Promise<void>;
+  setWaitingOn: (id: string, value: string | null) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   clear: () => void;
 };
@@ -136,6 +137,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       priority_set_at: now,
       due_date,
       description: '',
+      waiting_on: null,
       created_at: now,
       updated_at: now,
     };
@@ -143,7 +145,15 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
     const { data, error } = await supabase
       .from('tasks')
-      .insert({ user_id: userId, title: cleanTitle, done: false, priority, priority_set_at: now, due_date })
+      .insert({
+        user_id: userId,
+        title: cleanTitle,
+        done: false,
+        priority,
+        priority_set_at: now,
+        due_date,
+        waiting_on: null,
+      })
       .select()
       .single();
 
@@ -284,6 +294,18 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     });
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('tasks').update({ done }).eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  setWaitingOn: async (id, value) => {
+    const raw = value?.trim() ?? '';
+    const next = raw === '' ? null : raw.slice(0, 120);
+    const now = new Date().toISOString();
+    set({
+      tasks: get().tasks.map((t) => (t.id === id ? { ...t, waiting_on: next, updated_at: now } : t)),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase.from('tasks').update({ waiting_on: next }).eq('id', id);
     if (error) set({ error: error.message });
   },
 

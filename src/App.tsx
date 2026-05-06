@@ -6,7 +6,9 @@ import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
 import { EmergencyBanner } from './components/EmergencyBanner';
 import { EmergencyMode } from './components/EmergencyMode';
+import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
+import { UsefulLinksPage } from './components/UsefulLinksPage';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
@@ -24,6 +26,7 @@ import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
+import { useUsefulLinksStore } from './store/useUsefulLinksStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -65,6 +68,8 @@ function Shell() {
   const fetchTasks = useTasksStore((s) => s.fetchAll);
   const applyEscalationFromProfile = useTasksStore((s) => s.applyEscalationFromProfile);
   const clearTasks = useTasksStore((s) => s.clear);
+  const fetchUsefulLinks = useUsefulLinksStore((s) => s.fetchAll);
+  const clearUsefulLinks = useUsefulLinksStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
   const clearEvents = useEventsStore((s) => s.clear);
 
@@ -74,6 +79,7 @@ function Shell() {
       fetchNotes(user.id);
       fetchProfile(user.id);
       fetchTasks(user.id);
+      fetchUsefulLinks(user.id);
       const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
       fetchEventsRange(user.id, fromIso, toIso);
     } else {
@@ -82,6 +88,7 @@ function Shell() {
       clearSharing();
       clearProfile();
       clearTasks();
+      clearUsefulLinks();
       clearEvents();
     }
   }, [
@@ -98,6 +105,8 @@ function Shell() {
     fetchEventsRange,
     fetchTasks,
     clearTasks,
+    fetchUsefulLinks,
+    clearUsefulLinks,
     clearEvents,
   ]);
 
@@ -212,7 +221,9 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="calendar" element={<Calendar />} />
+        <Route path="links" element={<UsefulLinksPage />} />
         <Route path="tasks" element={<Tasks />} />
+        <Route path="owed" element={<OwedToMePage />} />
         <Route path="notes" element={<NotesView />} />
         <Route path="profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

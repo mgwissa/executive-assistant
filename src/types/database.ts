@@ -138,6 +138,7 @@ export type Database = {
           priority_set_at: string;
           due_date: string | null;
           description: string;
+          waiting_on: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -150,6 +151,7 @@ export type Database = {
           priority_set_at?: string;
           due_date?: string | null;
           description?: string;
+          waiting_on?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -162,6 +164,7 @@ export type Database = {
           priority_set_at?: string;
           due_date?: string | null;
           description?: string;
+          waiting_on?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -212,6 +215,35 @@ export type Database = {
           until_at?: string | null;
           count?: number | null;
           source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      useful_links: {
+        Row: {
+          id: string;
+          user_id: string;
+          label: string;
+          url: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          label: string;
+          url: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          label?: string;
+          url?: string;
+          position?: number;
           created_at?: string;
           updated_at?: string;
         };

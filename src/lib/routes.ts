@@ -1,10 +1,12 @@
 import { useLocation } from 'react-router-dom';
 
-export type View = 'dashboard' | 'calendar' | 'notes' | 'tasks' | 'profile';
+export type View = 'dashboard' | 'calendar' | 'links' | 'notes' | 'owed' | 'tasks' | 'profile';
 
 export const VIEW_PATHS: Record<View, string> = {
   dashboard: '/dashboard',
   calendar: '/calendar',
+  links: '/links',
+  owed: '/owed',
   tasks: '/tasks',
   notes: '/notes',
   profile: '/profile',
@@ -13,6 +15,8 @@ export const VIEW_PATHS: Record<View, string> = {
 const PATH_TO_VIEW: Record<string, View> = {
   '/dashboard': 'dashboard',
   '/calendar': 'calendar',
+  '/links': 'links',
+  '/owed': 'owed',
   '/tasks': 'tasks',
   '/notes': 'notes',
   '/profile': 'profile',

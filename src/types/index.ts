@@ -20,3 +20,7 @@ export type TaskUpdate = Database['public']['Tables']['tasks']['Update'];
 export type Event = Database['public']['Tables']['events']['Row'];
 export type EventInsert = Database['public']['Tables']['events']['Insert'];
 export type EventUpdate = Database['public']['Tables']['events']['Update'];
+
+export type UsefulLink = Database['public']['Tables']['useful_links']['Row'];
+export type UsefulLinkInsert = Database['public']['Tables']['useful_links']['Insert'];
+export type UsefulLinkUpdate = Database['public']['Tables']['useful_links']['Update'];

@@ -3,7 +3,9 @@ import { SearchBar } from './SearchBar';
 
 const titles: Record<string, string> = {
   dashboard: 'Dashboard',
+  links: 'Links',
   calendar: 'Calendar',
+  owed: 'Owed to me',
   tasks: 'Tasks',
   notes: 'Notes',
   profile: 'Profile',

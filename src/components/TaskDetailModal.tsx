@@ -17,7 +17,7 @@ export function TaskDetailModal({
   task: Task;
   onClose: () => void;
 }) {
-  const { setTaskPriority, setDueDate, updateDescription, renameTask, toggleDone, deleteTask } =
+  const { setTaskPriority, setDueDate, setWaitingOn, updateDescription, renameTask, toggleDone, deleteTask } =
     useTasksStore();
 
   const fresh = useTasksStore((s) => s.tasks.find((t) => t.id === task.id));
@@ -30,9 +30,18 @@ export function TaskDetailModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
+  const [waitingEnabled, setWaitingEnabled] = useState(() => (t.waiting_on ?? '').trim().length > 0);
+  const [waitingDraft, setWaitingDraft] = useState(t.waiting_on ?? '');
+
   useEffect(() => {
     setTitleDraft(t.title);
   }, [t.title]);
+
+  useEffect(() => {
+    const w = (t.waiting_on ?? '').trim();
+    setWaitingDraft(t.waiting_on ?? '');
+    setWaitingEnabled(w.length > 0);
+  }, [t.waiting_on, t.id]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -172,6 +181,55 @@ export function TaskDetailModal({
               <TrashIcon className="h-4 w-4" />
             </button>
           </div>
+        </div>
+
+        {/* Waiting on — someone else owes you the outcome */}
+        <div className="space-y-3 border-b border-border px-6 py-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={waitingEnabled}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setWaitingEnabled(on);
+                if (!on) {
+                  setWaitingDraft('');
+                  void setWaitingOn(t.id, null);
+                }
+              }}
+              className="mt-1 rounded border-border"
+            />
+            <span className="min-w-0">
+              <span className="text-sm font-medium text-text">Waiting on someone</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-text-muted">
+                Use for hand-offs: you need something from a person, vendor, or team before you can finish.
+              </span>
+            </span>
+          </label>
+          {waitingEnabled ? (
+            <div className="pl-7">
+              <label className="mb-1 block text-xs font-medium text-text-muted" htmlFor={`modal-wait-${t.id}`}>
+                Who (any text)
+              </label>
+              <input
+                id={`modal-wait-${t.id}`}
+                type="text"
+                value={waitingDraft}
+                onChange={(e) => setWaitingDraft(e.target.value)}
+                onBlur={() => {
+                  const v = waitingDraft.trim();
+                  void setWaitingOn(t.id, v || null);
+                  if (!v) {
+                    setWaitingEnabled(false);
+                    setWaitingDraft('');
+                  }
+                }}
+                maxLength={120}
+                placeholder="e.g. Jamie, Legal, ACME vendor"
+                className="input w-full max-w-lg"
+              />
+            </div>
+          ) : null}
         </div>
 
         {/* Notes area */}

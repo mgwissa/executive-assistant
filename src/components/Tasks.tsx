@@ -136,7 +136,8 @@ export function Tasks() {
                   <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-[13px] ring-1 ring-border">[P0]</code>
                   –
                   <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-[13px] ring-1 ring-border">[P4]</code>{' '}
-                  tags use the same five priority levels.
+                  tags use the same five priority levels. Open a task to mark{' '}
+                  <span className="font-medium text-text">Waiting on someone</span> when you are blocked on another person or team.
                 </p>
               </div>
             </div>
@@ -558,6 +559,11 @@ export function OpenTaskRow({
                 {dueDateLabel(task.due_date)}
               </p>
             )}
+            {task.waiting_on?.trim() ? (
+              <p className="text-xs text-text-muted">
+                Waiting on <span className="font-medium text-text">{task.waiting_on.trim()}</span>
+              </p>
+            ) : null}
             {locked && (
               <p className="text-xs italic text-text-subtle">
                 Update due date to change priority

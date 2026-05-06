@@ -5,6 +5,8 @@ import {
   CalendarIcon,
   CheckSquareIcon,
   HomeIcon,
+  InboxIcon,
+  LinkIcon,
   LogOutIcon,
   NoteIcon,
   UserIcon,
@@ -20,8 +22,10 @@ type Item = {
 
 const items: Item[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon, accent: 'purple' },
+  { id: 'links', label: 'Links', Icon: LinkIcon, accent: 'brand' },
   { id: 'calendar', label: 'Calendar', Icon: CalendarIcon, accent: 'blue' },
   { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon, accent: 'amber' },
+  { id: 'owed', label: 'Owed to me', Icon: InboxIcon, accent: 'green' },
   { id: 'notes', label: 'Notes', Icon: NoteIcon, accent: 'brand' },
   { id: 'profile', label: 'Profile', Icon: UserIcon, accent: 'green' },
 ];
