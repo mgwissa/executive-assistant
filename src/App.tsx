@@ -9,6 +9,7 @@ import { EmergencyMode } from './components/EmergencyMode';
 import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
 import { RequireOptionalFeature } from './components/RequireOptionalFeature';
+import { ResetPassword } from './components/ResetPassword';
 import { TimeTrackingPage } from './components/TimeTrackingPage';
 import { UsefulLinksPage } from './components/UsefulLinksPage';
 import { SideNav } from './components/SideNav';
@@ -238,6 +239,7 @@ export default function App() {
 
   return (
     <Routes>
+      <Route path="reset-password" element={<ResetPassword />} />
       <Route element={<Shell />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />

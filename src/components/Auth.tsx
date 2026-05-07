@@ -4,7 +4,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { ThemeToggle } from './ThemeToggle';
 import { Card } from './ui/Card';
 
-type Mode = 'signin' | 'signup';
+type Mode = 'signin' | 'signup' | 'forgot';
 
 export function Auth() {
   const [mode, setMode] = useState<Mode>('signin');
@@ -14,7 +14,14 @@ export function Auth() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  const { signInWithPassword, signUpWithPassword } = useAuthStore();
+  const { signInWithPassword, signUpWithPassword, resetPasswordForEmail } = useAuthStore();
+
+  const heading =
+    mode === 'signin'
+      ? 'Sign in to your workspace'
+      : mode === 'signup'
+        ? 'Create your workspace'
+        : 'Reset your password';
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,10 +31,13 @@ export function Auth() {
     try {
       if (mode === 'signin') {
         await signInWithPassword(email, password);
-      } else {
+      } else if (mode === 'signup') {
         await signUpWithPassword(email, password);
         setInfo('Account created. Check your email if confirmation is required, then sign in.');
         setMode('signin');
+      } else {
+        await resetPasswordForEmail(email);
+        setInfo('Check your email for a password reset link.');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Authentication failed.');
@@ -44,9 +54,7 @@ export function Auth() {
       <Card tone="raised" padded="lg" className="w-full max-w-sm">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-text">Notes</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            {mode === 'signin' ? 'Sign in to your workspace' : 'Create your workspace'}
-          </p>
+          <p className="mt-1 text-sm text-text-muted">{heading}</p>
         </div>
 
         {!isSupabaseConfigured && (
@@ -73,7 +81,8 @@ export function Auth() {
               placeholder="you@company.com"
             />
           </div>
-          <div>
+          {mode !== 'forgot' && (
+            <div>
             <label className="mb-1 block text-xs font-medium text-text-muted">
               Password
             </label>
@@ -87,7 +96,8 @@ export function Auth() {
               className="input"
               placeholder="••••••••"
             />
-          </div>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">
@@ -105,12 +115,22 @@ export function Auth() {
             disabled={busy || !isSupabaseConfigured}
             className="btn-primary w-full"
           >
-            {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            {busy
+              ? 'Please wait…'
+              : mode === 'signin'
+                ? 'Sign in'
+                : mode === 'signup'
+                  ? 'Create account'
+                  : 'Send reset link'}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-text-muted">
-          {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
+          {mode === 'signin'
+            ? "Don't have an account?"
+            : mode === 'signup'
+              ? 'Already have an account?'
+              : 'Remember your password?'}{' '}
           <button
             type="button"
             onClick={() => {
@@ -123,6 +143,22 @@ export function Auth() {
             {mode === 'signin' ? 'Sign up' : 'Sign in'}
           </button>
         </div>
+        {mode === 'signin' && (
+          <div className="mt-3 text-center text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('forgot');
+                setPassword('');
+                setError(null);
+                setInfo(null);
+              }}
+              className="font-medium text-brand-700 hover:text-brand-600"
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
       </Card>
     </div>
   );
