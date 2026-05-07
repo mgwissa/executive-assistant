@@ -180,6 +180,7 @@ export type Database = {
           started_at: string;
           ended_at: string | null;
           task_id: string | null;
+          project_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -190,6 +191,7 @@ export type Database = {
           started_at: string;
           ended_at?: string | null;
           task_id?: string | null;
+          project_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -200,6 +202,30 @@ export type Database = {
           started_at?: string;
           ended_at?: string | null;
           task_id?: string | null;
+          project_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      time_projects: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
           created_at?: string;
           updated_at?: string;
         };

@@ -21,6 +21,10 @@ export type TimeEntry = Database['public']['Tables']['time_entries']['Row'];
 export type TimeEntryInsert = Database['public']['Tables']['time_entries']['Insert'];
 export type TimeEntryUpdate = Database['public']['Tables']['time_entries']['Update'];
 
+export type TimeProject = Database['public']['Tables']['time_projects']['Row'];
+export type TimeProjectInsert = Database['public']['Tables']['time_projects']['Insert'];
+export type TimeProjectUpdate = Database['public']['Tables']['time_projects']['Update'];
+
 export type Event = Database['public']['Tables']['events']['Row'];
 export type EventInsert = Database['public']['Tables']['events']['Insert'];
 export type EventUpdate = Database['public']['Tables']['events']['Update'];

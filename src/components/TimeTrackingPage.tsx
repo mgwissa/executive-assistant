@@ -1,12 +1,14 @@
 import { formatInTimeZone } from 'date-fns-tz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { datetimeLocalValueToIso, isoToDatetimeLocalValue } from '../lib/datetimeLocal';
+import { formatDurationSeconds } from '../lib/timeTrackingFormat';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
-import { useTimeEntriesStore } from '../store/useTimeEntriesStore';
-import { formatDurationSeconds } from '../lib/timeTrackingFormat';
-import type { TimeEntry } from '../types';
-import { ClockIcon, SquareIcon, TrashIcon } from './icons';
+import { useTimeEntriesStore, type UpdateTimeEntryPatch } from '../store/useTimeEntriesStore';
+import { useTimeProjectsStore } from '../store/useTimeProjectsStore';
+import type { TimeEntry, TimeProject } from '../types';
+import { ClockIcon, PlusIcon, SquareIcon, TrashIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -20,18 +22,229 @@ function useTickingNow(active: boolean): number {
   return now;
 }
 
+type CompletedEntryRowProps = {
+  entry: TimeEntry & { ended_at: string };
+  tz: string;
+  taskTitle: string | null;
+  projectName: string | null;
+  projects: TimeProject[];
+  onUpdate: (entryId: string, patch: UpdateTimeEntryPatch) => Promise<void>;
+  onDelete: () => void;
+  deleting: boolean;
+};
+
+function CompletedEntryRow({
+  entry,
+  tz,
+  taskTitle,
+  projectName,
+  projects,
+  onUpdate,
+  onDelete,
+  deleting,
+}: CompletedEntryRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(entry.label);
+  const [draftStart, setDraftStart] = useState(() => isoToDatetimeLocalValue(entry.started_at));
+  const [draftEnd, setDraftEnd] = useState(() => isoToDatetimeLocalValue(entry.ended_at));
+  const [draftProjectId, setDraftProjectId] = useState(entry.project_id ?? '');
+
+  useEffect(() => {
+    if (editing) return;
+    setDraftLabel(entry.label);
+    setDraftStart(isoToDatetimeLocalValue(entry.started_at));
+    setDraftEnd(isoToDatetimeLocalValue(entry.ended_at));
+    setDraftProjectId(entry.project_id ?? '');
+  }, [entry.id, entry.label, entry.started_at, entry.ended_at, entry.project_id, editing]);
+
+  const durSec = Math.max(
+    0,
+    Math.floor((Date.parse(entry.ended_at) - Date.parse(entry.started_at)) / 1000),
+  );
+
+  const beginEdit = () => {
+    setDraftLabel(entry.label);
+    setDraftStart(isoToDatetimeLocalValue(entry.started_at));
+    setDraftEnd(isoToDatetimeLocalValue(entry.ended_at));
+    setDraftProjectId(entry.project_id ?? '');
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
+  const saveEdit = async () => {
+    const startIso = datetimeLocalValueToIso(draftStart);
+    const endIso = datetimeLocalValueToIso(draftEnd);
+    if (!startIso || !endIso) return;
+    if (Date.parse(endIso) <= Date.parse(startIso)) {
+      window.alert('End time must be after start time.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onUpdate(entry.id, {
+        label: draftLabel.trim(),
+        started_at: startIso,
+        ended_at: endIso,
+        project_id: draftProjectId === '' ? null : draftProjectId,
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-3 px-4 py-3">
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-text-muted" htmlFor={`edit-label-${entry.id}`}>
+            Label <span className="font-normal text-text-subtle">(optional)</span>
+          </label>
+          <input
+            id={`edit-label-${entry.id}`}
+            type="text"
+            value={draftLabel}
+            onChange={(e) => setDraftLabel(e.target.value)}
+            className="input"
+            maxLength={200}
+            placeholder="Optional"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-text-muted" htmlFor={`edit-project-${entry.id}`}>
+            Project
+          </label>
+          <select
+            id={`edit-project-${entry.id}`}
+            value={draftProjectId}
+            onChange={(e) => setDraftProjectId(e.target.value)}
+            className="input"
+          >
+            <option value="">None</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-text-muted" htmlFor={`edit-start-${entry.id}`}>
+              Start
+            </label>
+            <input
+              id={`edit-start-${entry.id}`}
+              type="datetime-local"
+              value={draftStart}
+              onChange={(e) => setDraftStart(e.target.value)}
+              className="input font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-text-muted" htmlFor={`edit-end-${entry.id}`}>
+              End
+            </label>
+            <input
+              id={`edit-end-${entry.id}`}
+              type="datetime-local"
+              value={draftEnd}
+              onChange={(e) => setDraftEnd(e.target.value)}
+              className="input font-mono text-xs"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={saving}
+            onClick={() => void saveEdit()}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" className="btn-secondary" disabled={saving} onClick={cancelEdit}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-start gap-3 px-4 py-3 sm:items-center">
+      <div className="min-w-0 flex-1">
+        <p
+          className={
+            entry.label.trim()
+              ? 'font-medium text-text'
+              : 'font-medium italic text-text-muted'
+          }
+        >
+          {entry.label.trim() || 'No label'}
+        </p>
+        <p className="mt-0.5 text-xs text-text-muted">
+          {formatInTimeZone(new Date(entry.started_at), tz, 'h:mm a')}
+          {' – '}
+          {formatInTimeZone(new Date(entry.ended_at), tz, 'h:mm a')}
+          {projectName ? (
+            <>
+              {' · '}
+              <span className="font-medium text-text-muted/90">{projectName}</span>
+            </>
+          ) : null}
+          {taskTitle ? (
+            <>
+              {' · '}
+              <span className="text-text-muted">{taskTitle}</span>
+            </>
+          ) : null}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 sm:gap-2">
+        <span className="font-mono text-sm tabular-nums text-text-muted">
+          {formatDurationSeconds(durSec)}
+        </span>
+        <button
+          type="button"
+          className="btn-ghost shrink-0 px-2 py-1 text-xs text-text-muted"
+          onClick={beginEdit}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="btn-ghost h-8 w-8 shrink-0 p-0 text-text-muted hover:text-red-600 dark:hover:text-red-400"
+          title="Delete session"
+          disabled={deleting}
+          onClick={onDelete}
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function TimeTrackingPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
   const tasks = useTasksStore((s) => s.tasks);
+  const projects = useTimeProjectsStore((s) => s.projects);
   const entries = useTimeEntriesStore((s) => s.entries);
   const loading = useTimeEntriesStore((s) => s.loading);
   const error = useTimeEntriesStore((s) => s.error);
   const fetchAll = useTimeEntriesStore((s) => s.fetchAll);
   const startTimer = useTimeEntriesStore((s) => s.startTimer);
   const stopTimer = useTimeEntriesStore((s) => s.stopTimer);
-  const updateLabel = useTimeEntriesStore((s) => s.updateLabel);
+  const updateEntry = useTimeEntriesStore((s) => s.updateEntry);
   const deleteEntry = useTimeEntriesStore((s) => s.deleteEntry);
+  const createProject = useTimeProjectsStore((s) => s.create);
+  const deleteProject = useTimeProjectsStore((s) => s.deleteProject);
 
   const tz =
     profile?.timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -83,16 +296,32 @@ export function TimeTrackingPage() {
     [tasks],
   );
 
+  const projectName = useCallback(
+    (projectId: string | null) => {
+      if (!projectId) return null;
+      return projects.find((p) => p.id === projectId)?.name ?? null;
+    },
+    [projects],
+  );
+
   const [draftLabel, setDraftLabel] = useState('');
   const [draftTaskId, setDraftTaskId] = useState<string>('');
+  const [draftProjectId, setDraftProjectId] = useState<string>('');
   const [runningLabelDraft, setRunningLabelDraft] = useState('');
+  const [runningStartDraft, setRunningStartDraft] = useState('');
   const [starting, setStarting] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [addingProject, setAddingProject] = useState(false);
 
   useEffect(() => {
     setRunningLabelDraft(running?.label ?? '');
   }, [running?.id, running?.label]);
+
+  useEffect(() => {
+    setRunningStartDraft(running ? isoToDatetimeLocalValue(running.started_at) : '');
+  }, [running?.id, running?.started_at]);
 
   const nowMs = useTickingNow(Boolean(running));
 
@@ -104,13 +333,14 @@ export function TimeTrackingPage() {
     if (!user || running) return;
     setStarting(true);
     try {
-      await startTimer(
-        user.id,
-        draftLabel.trim() === '' ? 'Untitled' : draftLabel.trim(),
-        draftTaskId === '' ? null : draftTaskId,
-      );
+      await startTimer(user.id, {
+        label: draftLabel.trim(),
+        taskId: draftTaskId === '' ? null : draftTaskId,
+        projectId: draftProjectId === '' ? null : draftProjectId,
+      });
       setDraftLabel('');
       setDraftTaskId('');
+      setDraftProjectId('');
     } finally {
       setStarting(false);
     }
@@ -127,10 +357,54 @@ export function TimeTrackingPage() {
   };
 
   const onRunningLabelBlur = async () => {
-    if (!running) return;
+    if (!user || !running) return;
     const next = runningLabelDraft.trim();
     if (next === running.label.trim()) return;
-    await updateLabel(running.id, next === '' ? 'Untitled' : next);
+    await updateEntry(user.id, running.id, {
+      label: next,
+    });
+  };
+
+  const onRunningStartBlur = async () => {
+    if (!user || !running) return;
+    const iso = datetimeLocalValueToIso(runningStartDraft);
+    if (!iso || iso === running.started_at) return;
+    if (Date.parse(iso) > Date.now()) {
+      window.alert('Start time cannot be in the future.');
+      setRunningStartDraft(isoToDatetimeLocalValue(running.started_at));
+      return;
+    }
+    await updateEntry(user.id, running.id, { started_at: iso });
+  };
+
+  const onAddProject = async () => {
+    if (!user) return;
+    const name = projectNameDraft.trim();
+    if (!name) return;
+    setAddingProject(true);
+    try {
+      await createProject(user.id, name);
+      setProjectNameDraft('');
+    } finally {
+      setAddingProject(false);
+    }
+  };
+
+  const onDeleteProject = async (id: string, name: string) => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        `Delete project “${name}”? Sessions stay in your history; they will no longer be linked to this project.`,
+      )
+    ) {
+      return;
+    }
+    await deleteProject(user.id, id);
+  };
+
+  const onPatchEntry = async (entryId: string, patch: UpdateTimeEntryPatch) => {
+    if (!user) return;
+    await updateEntry(user.id, entryId, patch);
   };
 
   const onDelete = async (id: string, opts: { message: string }) => {
@@ -154,7 +428,7 @@ export function TimeTrackingPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-text">Time tracking</h1>
             <p className="mt-1 text-sm text-text-muted">
-              Run a timer for what you are doing, then review past sessions below.
+              Labels are optional and can repeat. Use projects to group time, tasks when helpful.
             </p>
           </div>
         </header>
@@ -170,6 +444,64 @@ export function TimeTrackingPage() {
 
         <div className="space-y-6">
           <Card tone="sunken">
+            <h2 className="text-sm font-semibold text-text">Projects</h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Create a project, then attach it when you start a timer or when you edit a past
+              session.
+            </p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <label htmlFor="new-project-name" className="block text-xs font-medium text-text-muted">
+                  New project
+                </label>
+                <input
+                  id="new-project-name"
+                  type="text"
+                  value={projectNameDraft}
+                  onChange={(e) => setProjectNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void onAddProject();
+                  }}
+                  maxLength={120}
+                  disabled={!user || addingProject}
+                  placeholder="e.g. Acme redesign"
+                  className="input"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-secondary inline-flex shrink-0 items-center gap-1.5"
+                disabled={!user || addingProject || !projectNameDraft.trim()}
+                onClick={() => void onAddProject()}
+              >
+                <PlusIcon className="h-4 w-4" />
+                Add
+              </button>
+            </div>
+            {projects.length > 0 ? (
+              <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface/40">
+                {projects.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate font-medium text-text">{p.name}</span>
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0 px-2 py-1 text-xs text-text-muted hover:text-red-600 dark:hover:text-red-400"
+                      onClick={() => void onDeleteProject(p.id, p.name)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-xs text-text-muted">No projects yet.</p>
+            )}
+          </Card>
+
+          <Card tone="sunken">
             {running ? (
               <div className="space-y-5">
                 <div className="flex flex-wrap items-end justify-between gap-4">
@@ -181,8 +513,7 @@ export function TimeTrackingPage() {
                       {formatDurationSeconds(runningElapsedSec)}
                     </p>
                     <p className="mt-1 text-xs text-text-muted">
-                      Started{' '}
-                      {formatInTimeZone(new Date(running.started_at), tz, 'h:mm a')}
+                      Started at (adjust if you started late)
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -212,10 +543,28 @@ export function TimeTrackingPage() {
 
                 <div className="space-y-1.5">
                   <label
+                    htmlFor="running-start"
+                    className="block text-xs font-medium text-text-muted"
+                  >
+                    Start time
+                  </label>
+                  <input
+                    id="running-start"
+                    type="datetime-local"
+                    value={runningStartDraft}
+                    onChange={(e) => setRunningStartDraft(e.target.value)}
+                    onBlur={() => void onRunningStartBlur()}
+                    disabled={!user}
+                    className="input max-w-xs font-mono text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
                     htmlFor="running-label"
                     className="block text-xs font-medium text-text-muted"
                   >
-                    Label
+                    Label <span className="font-normal text-text-subtle">(optional)</span>
                   </label>
                   <input
                     id="running-label"
@@ -226,9 +575,18 @@ export function TimeTrackingPage() {
                     maxLength={200}
                     disabled={!user}
                     className="input"
-                    placeholder="What are you working on?"
+                    placeholder="Optional note for this session"
                   />
                 </div>
+
+                {running.project_id ? (
+                  <p className="text-sm text-text-muted">
+                    Project:{' '}
+                    <span className="font-medium text-text">
+                      {projectName(running.project_id) ?? '(removed)'}
+                    </span>
+                  </p>
+                ) : null}
 
                 {running.task_id ? (
                   <p className="text-sm text-text-muted">
@@ -242,14 +600,15 @@ export function TimeTrackingPage() {
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-text-muted">
-                  Start a timer to record this session. You can link an open task (optional).
+                  Start a timer with an optional label. You can use the same label on many sessions,
+                  or leave it empty and rely on project or task only.
                 </p>
                 <div className="space-y-1.5">
                   <label
                     htmlFor="time-draft-label"
                     className="block text-xs font-medium text-text-muted"
                   >
-                    Label
+                    Label <span className="font-normal text-text-subtle">(optional)</span>
                   </label>
                   <input
                     id="time-draft-label"
@@ -262,8 +621,35 @@ export function TimeTrackingPage() {
                     maxLength={200}
                     disabled={!user || starting}
                     className="input"
-                    placeholder="e.g. Deep work, email, planning…"
+                    placeholder="e.g. Deep work — or leave blank and use project/task only"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="time-draft-project"
+                    className="block text-xs font-medium text-text-muted"
+                  >
+                    Project (optional)
+                  </label>
+                  <select
+                    id="time-draft-project"
+                    value={draftProjectId}
+                    onChange={(e) => setDraftProjectId(e.target.value)}
+                    disabled={!user || starting}
+                    className="input"
+                  >
+                    <option value="">None</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {projects.length === 0 ? (
+                    <p className="text-xs text-text-muted">
+                      Optional: add projects above to group this session.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <label
@@ -321,56 +707,25 @@ export function TimeTrackingPage() {
                       )}
                     </h3>
                     <Card padded="none" className="divide-y divide-border overflow-hidden">
-                      {dayEntries.map((e) => {
-                        const durSec = Math.max(
-                          0,
-                          Math.floor(
-                            (Date.parse(e.ended_at) - Date.parse(e.started_at)) / 1000,
-                          ),
-                        );
-                        const title = taskTitle(e.task_id);
-                        return (
-                          <div
-                            key={e.id}
-                            className="flex flex-wrap items-start gap-3 px-4 py-3 sm:items-center"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-text">
-                                {e.label.trim() || 'Untitled'}
-                              </p>
-                              <p className="mt-0.5 text-xs text-text-muted">
-                                {formatInTimeZone(new Date(e.started_at), tz, 'h:mm a')}
-                                {' – '}
-                                {formatInTimeZone(new Date(e.ended_at), tz, 'h:mm a')}
-                                {title ? (
-                                  <>
-                                    {' · '}
-                                    <span className="text-text-muted">{title}</span>
-                                  </>
-                                ) : null}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-sm tabular-nums text-text-muted">
-                                {formatDurationSeconds(durSec)}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn-ghost h-8 w-8 shrink-0 p-0 text-text-muted hover:text-red-600 dark:hover:text-red-400"
-                                title="Delete session"
-                                disabled={deletingId === e.id}
-                                onClick={() =>
-                                  void onDelete(e.id, {
-                                    message: 'Delete this time entry?',
-                                  })
-                                }
-                              >
-                                <TrashIcon className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {dayEntries.map((e) => (
+                        <CompletedEntryRow
+                          key={e.id}
+                          entry={e}
+                          tz={tz}
+                          taskTitle={taskTitle(e.task_id)}
+                          projectName={
+                            e.project_id ? projectName(e.project_id) : null
+                          }
+                          projects={projects}
+                          onUpdate={(id, patch) => onPatchEntry(id, patch)}
+                          onDelete={() =>
+                            void onDelete(e.id, {
+                              message: 'Delete this time entry?',
+                            })
+                          }
+                          deleting={deletingId === e.id}
+                        />
+                      ))}
                     </Card>
                   </div>
                 ))}

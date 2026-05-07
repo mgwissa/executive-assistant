@@ -29,6 +29,7 @@ import { useProfileStore } from './store/useProfileStore';
 import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
 import { useTimeEntriesStore } from './store/useTimeEntriesStore';
+import { useTimeProjectsStore } from './store/useTimeProjectsStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
 
 function NotesView() {
@@ -73,6 +74,8 @@ function Shell() {
   const clearTasks = useTasksStore((s) => s.clear);
   const fetchTimeEntries = useTimeEntriesStore((s) => s.fetchAll);
   const clearTimeEntries = useTimeEntriesStore((s) => s.clear);
+  const fetchTimeProjects = useTimeProjectsStore((s) => s.fetchAll);
+  const clearTimeProjects = useTimeProjectsStore((s) => s.clear);
   const fetchUsefulLinks = useUsefulLinksStore((s) => s.fetchAll);
   const clearUsefulLinks = useUsefulLinksStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
@@ -86,6 +89,7 @@ function Shell() {
       fetchTasks(user.id);
       fetchUsefulLinks(user.id);
       fetchTimeEntries(user.id);
+      void fetchTimeProjects(user.id);
       const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
       fetchEventsRange(user.id, fromIso, toIso);
     } else {
@@ -96,6 +100,7 @@ function Shell() {
       clearTasks();
       clearUsefulLinks();
       clearTimeEntries();
+      clearTimeProjects();
       clearEvents();
     }
   }, [
@@ -116,6 +121,8 @@ function Shell() {
     clearUsefulLinks,
     fetchTimeEntries,
     clearTimeEntries,
+    fetchTimeProjects,
+    clearTimeProjects,
     clearEvents,
   ]);
 

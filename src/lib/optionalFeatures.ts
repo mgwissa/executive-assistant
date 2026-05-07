@@ -51,7 +51,7 @@ export const OPTIONAL_FEATURE_NAV: Record<
   time: {
     label: 'Time tracking',
     description:
-      'Run timers, optionally link open tasks, and browse your history by day.',
+      'Run timers, optional tasks and projects, editable history grouped by day.',
     Icon: ClockIcon,
     accent: 'blue',
   },

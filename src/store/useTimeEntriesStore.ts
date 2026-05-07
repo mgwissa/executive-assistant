@@ -11,15 +11,32 @@ function sortEntries(entries: TimeEntry[]): TimeEntry[] {
   });
 }
 
+export type StartTimerOpts = {
+  label: string;
+  taskId: string | null;
+  projectId: string | null;
+};
+
+export type UpdateTimeEntryPatch = {
+  label?: string;
+  started_at?: string;
+  ended_at?: string | null;
+  project_id?: string | null;
+};
+
 type TimeEntriesState = {
   entries: TimeEntry[];
   loading: boolean;
   error: string | null;
 
   fetchAll: (userId: string) => Promise<void>;
-  startTimer: (userId: string, label: string, taskId: string | null) => Promise<TimeEntry | null>;
+  startTimer: (userId: string, opts: StartTimerOpts) => Promise<TimeEntry | null>;
   stopTimer: (userId: string, entryId: string) => Promise<void>;
-  updateLabel: (entryId: string, label: string) => Promise<void>;
+  updateEntry: (
+    userId: string,
+    entryId: string,
+    patch: UpdateTimeEntryPatch,
+  ) => Promise<void>;
   deleteEntry: (userId: string, entryId: string) => Promise<void>;
   clear: () => void;
 };
@@ -43,17 +60,18 @@ export const useTimeEntriesStore = create<TimeEntriesState>((set, get) => ({
     set({ entries: sortEntries(data ?? []), loading: false });
   },
 
-  startTimer: async (userId, label, taskId) => {
+  startTimer: async (userId, opts) => {
     set({ error: null });
     const started_at = new Date().toISOString();
     const { data, error } = await supabase
       .from('time_entries')
       .insert({
         user_id: userId,
-        label: label.trim(),
+        label: opts.label.trim(),
         started_at,
         ended_at: null,
-        task_id: taskId,
+        task_id: opts.taskId,
+        project_id: opts.projectId,
       })
       .select()
       .single();
@@ -91,12 +109,41 @@ export const useTimeEntriesStore = create<TimeEntriesState>((set, get) => ({
     });
   },
 
-  updateLabel: async (entryId, label) => {
-    const next = label.trim();
+  updateEntry: async (userId, entryId, patch) => {
+    const prev = get().entries.find((e) => e.id === entryId);
+    if (!prev) return;
+
+    const nextStart = patch.started_at ?? prev.started_at;
+    const nextEnd = patch.ended_at !== undefined ? patch.ended_at : prev.ended_at;
+
+    if (nextEnd != null && Date.parse(nextEnd) <= Date.parse(nextStart)) {
+      set({ error: 'End time must be after start time.' });
+      return;
+    }
+
+    set({ error: null });
+
+    const body: Partial<{
+      label: string;
+      started_at: string;
+      ended_at: string | null;
+      project_id: string | null;
+    }> = {};
+
+    if (patch.label !== undefined) {
+      body.label = patch.label.trim();
+    }
+    if (patch.started_at !== undefined) body.started_at = patch.started_at;
+    if (patch.ended_at !== undefined) body.ended_at = patch.ended_at;
+    if (patch.project_id !== undefined) body.project_id = patch.project_id;
+
+    if (Object.keys(body).length === 0) return;
+
     const { data, error } = await supabase
       .from('time_entries')
-      .update({ label: next })
+      .update(body)
       .eq('id', entryId)
+      .eq('user_id', userId)
       .select()
       .single();
 
