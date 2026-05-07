@@ -280,6 +280,53 @@ export type Database = {
           updated_at?: string;
         };
       };
+      routine_item_states: {
+        Row: {
+          id: string;
+          user_id: string;
+          template_version: string;
+          routine_date: string;
+          item_id: string;
+          status: string;
+          completed_at: string | null;
+          notes: string;
+          task_id: string | null;
+          event_id: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          template_version: string;
+          routine_date: string;
+          item_id: string;
+          status?: string;
+          completed_at?: string | null;
+          notes?: string;
+          task_id?: string | null;
+          event_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          template_version?: string;
+          routine_date?: string;
+          item_id?: string;
+          status?: string;
+          completed_at?: string | null;
+          notes?: string;
+          task_id?: string | null;
+          event_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       useful_links: {
         Row: {
           id: string;

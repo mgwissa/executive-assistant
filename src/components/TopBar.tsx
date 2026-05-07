@@ -10,6 +10,7 @@ const titles: Record<string, string> = {
   notes: 'Notes',
   profile: 'Profile',
   time: 'Time tracking',
+  routine: 'Weekly routine',
 };
 
 export function TopBar() {

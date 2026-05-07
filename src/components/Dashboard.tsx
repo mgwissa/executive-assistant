@@ -1,11 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
+import { formatInTimeZone } from 'date-fns-tz';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { useWeeklyRoutineStore } from '../store/useWeeklyRoutineStore';
 import type { ActionItem } from '../lib/format';
 import {
   extractActionItems,
@@ -23,7 +26,18 @@ import { generateOccurrences } from '../lib/recurrence';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import type { Note } from '../types';
 import {
+  getRoutineBlocksForWeekday,
+  getRoutineDay,
+  getRoutineRitualsForWeekday,
+  routineProgress,
+  routineWeekDatesFor,
+  routineWeekdayFromLabel,
+  type RoutineChecklistItem,
+  type RoutineStatus,
+} from '../lib/weeklyRoutine';
+import {
   ArrowRightIcon,
+  BookIcon,
   CalendarIcon,
   CheckSquareIcon,
   ClockIcon,
@@ -176,11 +190,61 @@ export function Dashboard() {
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActive = useNotesStore((s) => s.setActive);
+  const routineStates = useWeeklyRoutineStore((s) => s.states);
+  const routineLoading = useWeeklyRoutineStore((s) => s.loading);
+  const fetchRoutineRange = useWeeklyRoutineStore((s) => s.fetchRange);
+  const setRoutineItemStatus = useWeeklyRoutineStore((s) => s.setItemStatus);
 
   const today = useMemo(() => new Date(), []);
   const greeting = getGreeting(today);
   const dateLabel = formatLongDate(today);
   const name = resolveName(profile?.first_name, user?.email);
+  const routineEnabled = isOptionalFeatureEnabled(profile, 'routine');
+  const timezone = profile?.timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const routineTodayDate = formatInTimeZone(today, timezone, 'yyyy-MM-dd');
+  const routineTodayWeekday = routineWeekdayFromLabel(formatInTimeZone(today, timezone, 'EEEE'));
+  const routineWeekDates = routineWeekDatesFor(routineTodayDate);
+  const routineDay = getRoutineDay(routineTodayWeekday);
+  const routineBlocks = useMemo(
+    () => getRoutineBlocksForWeekday(routineTodayWeekday),
+    [routineTodayWeekday],
+  );
+  const routineRituals = useMemo(
+    () => getRoutineRitualsForWeekday(routineTodayWeekday),
+    [routineTodayWeekday],
+  );
+  const routineItems = useMemo<RoutineChecklistItem[]>(
+    () => [...routineBlocks, ...routineRituals],
+    [routineBlocks, routineRituals],
+  );
+  const routineStatusByItem = useMemo(() => {
+    const map = new Map<string, RoutineStatus>();
+    for (const row of routineStates) {
+      if (row.routine_date === routineTodayDate) {
+        map.set(row.item_id, statusFromDb(row.status));
+      }
+    }
+    return map;
+  }, [routineStates, routineTodayDate]);
+  const routineStatusForItem = useCallback(
+    (itemId: string): RoutineStatus => routineStatusByItem.get(itemId) ?? 'pending',
+    [routineStatusByItem],
+  );
+  const routineTodayProgress = routineProgress(routineItems, routineStatusForItem);
+  const routineUpcoming = routineBlocks
+    .filter((item) => routineStatusForItem(item.id) !== 'done')
+    .slice(0, 3);
+
+  useEffect(() => {
+    if (!user || !routineEnabled) return;
+    void fetchRoutineRange(user.id, routineWeekDates.monday, routineWeekDates.friday);
+  }, [
+    user,
+    routineEnabled,
+    routineWeekDates.monday,
+    routineWeekDates.friday,
+    fetchRoutineRange,
+  ]);
 
   const recent = useMemo(() => notes.slice(0, RECENT_LIMIT), [notes]);
   const actionItems = useMemo(() => extractActionItems(notes), [notes]);
@@ -248,6 +312,23 @@ export function Dashboard() {
         </header>
 
         <CriticalBlocker rows={workRows} />
+
+        {routineEnabled ? (
+          <WeeklyRoutineDashboardCard
+            dayLabel={`${routineDay.label} - ${routineDay.theme}`}
+            summary={routineDay.summary}
+            date={routineTodayDate}
+            progress={routineTodayProgress}
+            loading={routineLoading}
+            upcoming={routineUpcoming}
+            statusForItem={routineStatusForItem}
+            onOpen={() => navigate(viewPath('routine'))}
+            onStatus={(itemId, status) => {
+              if (!user) return;
+              void setRoutineItemStatus(user.id, routineTodayDate, itemId, status);
+            }}
+          />
+        ) : null}
 
         <div className="mb-6 grid grid-cols-1 gap-6 lg:mb-8 lg:grid-cols-2 lg:gap-8 lg:items-stretch">
           <section className="flex min-h-0 min-w-0 flex-col">
@@ -548,6 +629,116 @@ function StatCard({ label, value }: { label: string; value: number }) {
   );
 }
 
+function WeeklyRoutineDashboardCard({
+  dayLabel,
+  summary,
+  date,
+  progress,
+  loading,
+  upcoming,
+  statusForItem,
+  onOpen,
+  onStatus,
+}: {
+  dayLabel: string;
+  summary: string;
+  date: string;
+  progress: { done: number; total: number; percent: number };
+  loading: boolean;
+  upcoming: RoutineChecklistItem[];
+  statusForItem: (itemId: string) => RoutineStatus;
+  onOpen: () => void;
+  onStatus: (itemId: string, status: RoutineStatus) => void;
+}) {
+  return (
+    <section className="mb-6 lg:mb-8">
+      <SectionHeader
+        icon={<BookIcon className="h-4 w-4" />}
+        title="Today's routine"
+        count={progress.total}
+        accent="purple"
+        action={
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
+          >
+            Open routine
+            <ArrowRightIcon className="h-3 w-3" />
+          </button>
+        }
+      />
+      <Card className="card-pop card-pop-purple">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="purple">{date}</Badge>
+              {loading ? <Badge variant="subtle">Syncing</Badge> : null}
+            </div>
+            <h2 className="mt-2 text-lg font-semibold text-text">{dayLabel}</h2>
+            <p className="mt-1 text-sm text-text-muted">{summary}</p>
+
+            {upcoming.length === 0 ? (
+              <p className="mt-4 text-sm font-medium text-emerald-600 dark:text-emerald-300">
+                Routine complete for today.
+              </p>
+            ) : (
+              <ul className="mt-4 grid gap-2 lg:grid-cols-3">
+                {upcoming.map((item) => {
+                  const status = statusForItem(item.id);
+                  const isBlock = item.kind === 'time-block';
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-start gap-2 rounded-lg bg-surface-sunken px-3 py-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={status === 'done'}
+                        disabled={loading}
+                        onChange={(e) =>
+                          onStatus(item.id, e.target.checked ? 'done' : 'pending')
+                        }
+                        className="mt-1 rounded border-border"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-text">{item.title}</p>
+                        <p className="mt-0.5 text-xs text-text-muted">
+                          {isBlock
+                            ? `${item.startTime}-${item.endTime}`
+                            : `${item.durationMinutes} min ritual`}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="min-w-[11rem] rounded-xl bg-surface-sunken p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
+              Progress
+            </p>
+            <div className="mt-2 flex items-end gap-2">
+              <span className="text-3xl font-semibold text-text">{progress.percent}%</span>
+              <span className="pb-1 text-sm text-text-muted">
+                {progress.done}/{progress.total}
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-raised">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-all"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
 function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
   const preview = extractPreview(getNoteCanonicalMarkdown(note));
   return (
@@ -572,6 +763,11 @@ function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
       </button>
     </li>
   );
+}
+
+function statusFromDb(status: string): RoutineStatus {
+  if (status === 'done' || status === 'skipped') return status;
+  return 'pending';
 }
 
 function QuickAddTodo({

@@ -15,6 +15,7 @@ import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
+import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
 import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
 import { eventsFetchIsoRange } from './lib/eventQueries';
@@ -31,6 +32,7 @@ import { useTasksStore } from './store/useTasksStore';
 import { useTimeEntriesStore } from './store/useTimeEntriesStore';
 import { useTimeProjectsStore } from './store/useTimeProjectsStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
+import { useWeeklyRoutineStore } from './store/useWeeklyRoutineStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -78,6 +80,7 @@ function Shell() {
   const clearTimeProjects = useTimeProjectsStore((s) => s.clear);
   const fetchUsefulLinks = useUsefulLinksStore((s) => s.fetchAll);
   const clearUsefulLinks = useUsefulLinksStore((s) => s.clear);
+  const clearWeeklyRoutine = useWeeklyRoutineStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
   const clearEvents = useEventsStore((s) => s.clear);
 
@@ -101,6 +104,7 @@ function Shell() {
       clearUsefulLinks();
       clearTimeEntries();
       clearTimeProjects();
+      clearWeeklyRoutine();
       clearEvents();
     }
   }, [
@@ -123,6 +127,7 @@ function Shell() {
     clearTimeEntries,
     fetchTimeProjects,
     clearTimeProjects,
+    clearWeeklyRoutine,
     clearEvents,
   ]);
 
@@ -172,7 +177,7 @@ function Shell() {
   useEffect(() => {
     if (!user || !profile) return;
     void applyEscalationFromProfile(user.id);
-  }, [user, profile?.user_id, profile?.priority_escalation, applyEscalationFromProfile]);
+  }, [user, profile, applyEscalationFromProfile]);
 
   const showEmergency = emergency.active && !bypassEmergency;
   const showEmergencyBanner = emergency.active && bypassEmergency;
@@ -246,6 +251,14 @@ export default function App() {
           element={
             <RequireOptionalFeature featureId="time">
               <TimeTrackingPage />
+            </RequireOptionalFeature>
+          }
+        />
+        <Route
+          path="routine"
+          element={
+            <RequireOptionalFeature featureId="routine">
+              <WeeklyRoutinePage />
             </RequireOptionalFeature>
           }
         />

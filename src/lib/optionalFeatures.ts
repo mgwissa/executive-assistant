@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import type { SVGProps } from 'react';
 import {
   CalendarIcon,
+  BookIcon,
   CheckSquareIcon,
   ClockIcon,
   HomeIcon,
@@ -14,7 +15,7 @@ import type { View } from './routes';
 import type { Profile } from '../types';
 
 /** IDs for optional features the user can turn on in Profile (`profiles.enabled_addons`). */
-export const OPTIONAL_FEATURE_IDS = ['time'] as const;
+export const OPTIONAL_FEATURE_IDS = ['time', 'routine'] as const;
 export type OptionalFeatureId = (typeof OPTIONAL_FEATURE_IDS)[number];
 
 export function isOptionalFeatureId(value: string): value is OptionalFeatureId {
@@ -54,6 +55,13 @@ export const OPTIONAL_FEATURE_NAV: Record<
       'Run timers, optional tasks and projects, editable history grouped by day.',
     Icon: ClockIcon,
     accent: 'blue',
+  },
+  routine: {
+    label: 'Weekly routine',
+    description:
+      'Follow a product-leader operating rhythm with daily blocks, rituals, and progress tracking.',
+    Icon: BookIcon,
+    accent: 'purple',
   },
 };
 

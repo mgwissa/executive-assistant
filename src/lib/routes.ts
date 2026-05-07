@@ -8,7 +8,8 @@ export type View =
   | 'owed'
   | 'tasks'
   | 'profile'
-  | 'time';
+  | 'time'
+  | 'routine';
 
 export const VIEW_PATHS: Record<View, string> = {
   dashboard: '/dashboard',
@@ -19,6 +20,7 @@ export const VIEW_PATHS: Record<View, string> = {
   notes: '/notes',
   profile: '/profile',
   time: '/time',
+  routine: '/routine',
 };
 
 const PATH_TO_VIEW: Record<string, View> = {
@@ -30,6 +32,7 @@ const PATH_TO_VIEW: Record<string, View> = {
   '/notes': 'notes',
   '/profile': 'profile',
   '/time': 'time',
+  '/routine': 'routine',
 };
 
 export function viewPath(view: View): string {
