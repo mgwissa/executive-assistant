@@ -1,6 +1,14 @@
 import { useLocation } from 'react-router-dom';
 
-export type View = 'dashboard' | 'calendar' | 'links' | 'notes' | 'owed' | 'tasks' | 'profile';
+export type View =
+  | 'dashboard'
+  | 'calendar'
+  | 'links'
+  | 'notes'
+  | 'owed'
+  | 'tasks'
+  | 'profile'
+  | 'time';
 
 export const VIEW_PATHS: Record<View, string> = {
   dashboard: '/dashboard',
@@ -10,6 +18,7 @@ export const VIEW_PATHS: Record<View, string> = {
   tasks: '/tasks',
   notes: '/notes',
   profile: '/profile',
+  time: '/time',
 };
 
 const PATH_TO_VIEW: Record<string, View> = {
@@ -20,6 +29,7 @@ const PATH_TO_VIEW: Record<string, View> = {
   '/tasks': 'tasks',
   '/notes': 'notes',
   '/profile': 'profile',
+  '/time': 'time',
 };
 
 export function viewPath(view: View): string {

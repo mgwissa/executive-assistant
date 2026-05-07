@@ -11,8 +11,15 @@ import {
   type PriorityEscalationConfig,
 } from '../lib/priorityEscalation';
 import type { Json } from '../types/database';
-import type { ProfileUpdate } from '../types';
-import { CalendarIcon, CheckSquareIcon, UserIcon } from './icons';
+import type { Profile, ProfileUpdate } from '../types';
+import {
+  isOptionalFeatureEnabled,
+  OPTIONAL_FEATURE_IDS,
+  OPTIONAL_FEATURE_NAV,
+  sortOptionalFeatureIds,
+  type OptionalFeatureId,
+} from '../lib/optionalFeatures';
+import { CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -61,6 +68,16 @@ export function Profile() {
               saving={saving}
               updateProfile={updateProfile}
               fetchProfile={fetchProfile}
+            />
+          )}
+
+          {user && profile && (
+            <OptionalFeaturesSection
+              userId={user.id}
+              profile={profile}
+              loading={loading}
+              saving={saving}
+              updateProfile={updateProfile}
             />
           )}
 
@@ -485,6 +502,68 @@ function ProfileForm({
       </div>
       </Card>
     </form>
+  );
+}
+
+function OptionalFeaturesSection({
+  userId,
+  profile,
+  loading,
+  saving,
+  updateProfile,
+}: {
+  userId: string;
+  profile: Profile;
+  loading: boolean;
+  saving: boolean;
+  updateProfile: (uid: string, patch: ProfileUpdate) => Promise<void>;
+}) {
+  const toggle = async (id: OptionalFeatureId, checked: boolean) => {
+    const current = sortOptionalFeatureIds(profile.enabled_addons);
+    const next = checked
+      ? sortOptionalFeatureIds([...current, id])
+      : current.filter((x) => x !== id);
+    await updateProfile(userId, { enabled_addons: next });
+  };
+
+  return (
+    <Card tone="sunken">
+      <div className="mb-4 flex items-start gap-3">
+        <IconBadge tone="brand" size="md">
+          <SparklesIcon className="h-5 w-5" />
+        </IconBadge>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text">Optional features</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Turn on extra tools when you need them. Enabled items appear in the sidebar under
+            Navigation.
+          </p>
+        </div>
+      </div>
+
+      <ul className="divide-y divide-border rounded-lg border border-border bg-surface/40">
+        {OPTIONAL_FEATURE_IDS.map((id) => {
+          const on = isOptionalFeatureEnabled(profile, id);
+          const def = OPTIONAL_FEATURE_NAV[id];
+          return (
+            <li key={id} className="flex items-start gap-3 p-4">
+              <input
+                type="checkbox"
+                id={`optional-feature-${id}`}
+                checked={on}
+                disabled={loading || saving}
+                onChange={(e) => void toggle(id, e.target.checked)}
+                className="mt-1 rounded border-border"
+              />
+              <label htmlFor={`optional-feature-${id}`} className="min-w-0 flex-1 cursor-pointer">
+                <span className="block text-sm font-medium text-text">{def.label}</span>
+                <span className="mt-0.5 block text-xs text-text-muted">{def.description}</span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 

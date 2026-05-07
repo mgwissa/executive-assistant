@@ -1,37 +1,21 @@
 import { useNavigate } from 'react-router-dom';
-import { viewPath, useActiveView, type View } from '../lib/routes';
+import { buildSideNavItems, type NavItemDef } from '../lib/optionalFeatures';
+import { viewPath, useActiveView } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
-import {
-  CalendarIcon,
-  CheckSquareIcon,
-  HomeIcon,
-  InboxIcon,
-  LinkIcon,
-  LogOutIcon,
-  NoteIcon,
-  UserIcon,
-} from './icons';
+import { useProfileStore } from '../store/useProfileStore';
+import { LogOutIcon, NoteIcon } from './icons';
 import { ThemeToggle } from './ThemeToggle';
 
-type Item = {
-  id: View;
-  label: string;
-  Icon: typeof HomeIcon;
-};
-
-const topItems: Item[] = [
-  { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon },
-  { id: 'links', label: 'Links', Icon: LinkIcon },
-  { id: 'calendar', label: 'Calendar', Icon: CalendarIcon },
-  { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon },
-  { id: 'owed', label: 'Owed', Icon: InboxIcon },
-  { id: 'notes', label: 'Notes', Icon: NoteIcon },
-];
+type Item = NavItemDef;
 
 export function NavRail() {
   const view = useActiveView();
   const navigate = useNavigate();
   const { user, signOut } = useAuthStore();
+  const optionalFeatures = useProfileStore((s) => s.profile?.enabled_addons);
+  const full = buildSideNavItems(optionalFeatures);
+  const profileEntry = full[full.length - 1];
+  const topItems: Item[] = full.slice(0, -1) as Item[];
 
   const renderItem = ({ id, label, Icon }: Item) => {
     const active = view === id;
@@ -65,7 +49,7 @@ export function NavRail() {
 
       <div className="flex flex-col items-center gap-1">
         <div className="divider my-2 w-8" />
-        {renderItem({ id: 'profile', label: 'Profile', Icon: UserIcon })}
+        {renderItem(profileEntry)}
         <ThemeToggle />
         <button
           onClick={() => signOut()}

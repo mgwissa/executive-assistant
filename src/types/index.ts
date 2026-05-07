@@ -17,6 +17,10 @@ export type Task = Database['public']['Tables']['tasks']['Row'];
 export type TaskInsert = Database['public']['Tables']['tasks']['Insert'];
 export type TaskUpdate = Database['public']['Tables']['tasks']['Update'];
 
+export type TimeEntry = Database['public']['Tables']['time_entries']['Row'];
+export type TimeEntryInsert = Database['public']['Tables']['time_entries']['Insert'];
+export type TimeEntryUpdate = Database['public']['Tables']['time_entries']['Update'];
+
 export type Event = Database['public']['Tables']['events']['Row'];
 export type EventInsert = Database['public']['Tables']['events']['Insert'];
 export type EventUpdate = Database['public']['Tables']['events']['Update'];

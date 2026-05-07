@@ -8,6 +8,8 @@ import { EmergencyBanner } from './components/EmergencyBanner';
 import { EmergencyMode } from './components/EmergencyMode';
 import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
+import { RequireOptionalFeature } from './components/RequireOptionalFeature';
+import { TimeTrackingPage } from './components/TimeTrackingPage';
 import { UsefulLinksPage } from './components/UsefulLinksPage';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
@@ -26,6 +28,7 @@ import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
+import { useTimeEntriesStore } from './store/useTimeEntriesStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
 
 function NotesView() {
@@ -68,6 +71,8 @@ function Shell() {
   const fetchTasks = useTasksStore((s) => s.fetchAll);
   const applyEscalationFromProfile = useTasksStore((s) => s.applyEscalationFromProfile);
   const clearTasks = useTasksStore((s) => s.clear);
+  const fetchTimeEntries = useTimeEntriesStore((s) => s.fetchAll);
+  const clearTimeEntries = useTimeEntriesStore((s) => s.clear);
   const fetchUsefulLinks = useUsefulLinksStore((s) => s.fetchAll);
   const clearUsefulLinks = useUsefulLinksStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
@@ -80,6 +85,7 @@ function Shell() {
       fetchProfile(user.id);
       fetchTasks(user.id);
       fetchUsefulLinks(user.id);
+      fetchTimeEntries(user.id);
       const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
       fetchEventsRange(user.id, fromIso, toIso);
     } else {
@@ -89,6 +95,7 @@ function Shell() {
       clearProfile();
       clearTasks();
       clearUsefulLinks();
+      clearTimeEntries();
       clearEvents();
     }
   }, [
@@ -107,6 +114,8 @@ function Shell() {
     clearTasks,
     fetchUsefulLinks,
     clearUsefulLinks,
+    fetchTimeEntries,
+    clearTimeEntries,
     clearEvents,
   ]);
 
@@ -225,6 +234,14 @@ export default function App() {
         <Route path="tasks" element={<Tasks />} />
         <Route path="owed" element={<OwedToMePage />} />
         <Route path="notes" element={<NotesView />} />
+        <Route
+          path="time"
+          element={
+            <RequireOptionalFeature featureId="time">
+              <TimeTrackingPage />
+            </RequireOptionalFeature>
+          }
+        />
         <Route path="profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

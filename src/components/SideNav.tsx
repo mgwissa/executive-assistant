@@ -1,39 +1,17 @@
 import { useNavigate } from 'react-router-dom';
+import { buildSideNavItems } from '../lib/optionalFeatures';
+import { viewPath, useActiveView } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
-import { viewPath, useActiveView, type View } from '../lib/routes';
-import {
-  CalendarIcon,
-  CheckSquareIcon,
-  HomeIcon,
-  InboxIcon,
-  LinkIcon,
-  LogOutIcon,
-  NoteIcon,
-  UserIcon,
-} from './icons';
+import { useProfileStore } from '../store/useProfileStore';
+import { LogOutIcon, NoteIcon } from './icons';
 import { ThemeToggle } from './ThemeToggle';
-
-type Item = {
-  id: View;
-  label: string;
-  Icon: typeof HomeIcon;
-  accent: 'brand' | 'blue' | 'purple' | 'amber' | 'green';
-};
-
-const items: Item[] = [
-  { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon, accent: 'purple' },
-  { id: 'links', label: 'Links', Icon: LinkIcon, accent: 'brand' },
-  { id: 'calendar', label: 'Calendar', Icon: CalendarIcon, accent: 'blue' },
-  { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon, accent: 'amber' },
-  { id: 'owed', label: 'Owed to me', Icon: InboxIcon, accent: 'green' },
-  { id: 'notes', label: 'Notes', Icon: NoteIcon, accent: 'brand' },
-  { id: 'profile', label: 'Profile', Icon: UserIcon, accent: 'green' },
-];
 
 export function SideNav() {
   const view = useActiveView();
   const navigate = useNavigate();
   const { user, signOut } = useAuthStore();
+  const optionalFeatures = useProfileStore((s) => s.profile?.enabled_addons);
+  const items = buildSideNavItems(optionalFeatures);
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-border-strong bg-nav">

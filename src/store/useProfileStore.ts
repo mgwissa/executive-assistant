@@ -6,6 +6,8 @@ import type { Profile } from '../types';
 type ProfileState = {
   profile: Profile | null;
   loading: boolean;
+  /** True after the first fetch for this session finished (success or error). */
+  hydrated: boolean;
   saving: boolean;
   error: string | null;
 
@@ -17,6 +19,7 @@ type ProfileState = {
       timezone?: string | null;
       outlook_ics_url?: string | null;
       priority_escalation?: Json | null;
+      enabled_addons?: string[];
     },
   ) => Promise<void>;
   clear: () => void;
@@ -25,6 +28,7 @@ type ProfileState = {
 export const useProfileStore = create<ProfileState>((set) => ({
   profile: null,
   loading: false,
+  hydrated: false,
   saving: false,
   error: null,
 
@@ -37,7 +41,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
       .maybeSingle();
 
     if (error) {
-      set({ loading: false, error: error.message });
+      set({ loading: false, error: error.message, hydrated: true });
       return;
     }
 
@@ -49,14 +53,14 @@ export const useProfileStore = create<ProfileState>((set) => ({
         .select()
         .single();
       if (insertError) {
-        set({ loading: false, error: insertError.message });
+        set({ loading: false, error: insertError.message, hydrated: true });
         return;
       }
-      set({ profile: inserted, loading: false });
+      set({ profile: inserted, loading: false, hydrated: true });
       return;
     }
 
-    set({ profile: data, loading: false });
+    set({ profile: data, loading: false, hydrated: true });
   },
 
   updateProfile: async (userId, patch) => {
@@ -75,5 +79,5 @@ export const useProfileStore = create<ProfileState>((set) => ({
     set({ profile: data, saving: false });
   },
 
-  clear: () => set({ profile: null, error: null }),
+  clear: () => set({ profile: null, error: null, hydrated: false }),
 }));

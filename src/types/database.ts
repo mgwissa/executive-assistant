@@ -104,6 +104,7 @@ export type Database = {
           outlook_ics_url: string | null;
           outlook_ics_last_synced_at: string | null;
           priority_escalation: Json | null;
+          enabled_addons: string[];
           created_at: string;
           updated_at: string;
         };
@@ -114,6 +115,7 @@ export type Database = {
           outlook_ics_url?: string | null;
           outlook_ics_last_synced_at?: string | null;
           priority_escalation?: Json | null;
+          enabled_addons?: string[];
           created_at?: string;
           updated_at?: string;
         };
@@ -124,6 +126,7 @@ export type Database = {
           outlook_ics_url?: string | null;
           outlook_ics_last_synced_at?: string | null;
           priority_escalation?: Json | null;
+          enabled_addons?: string[];
           created_at?: string;
           updated_at?: string;
         };
@@ -165,6 +168,38 @@ export type Database = {
           due_date?: string | null;
           description?: string;
           waiting_on?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      time_entries: {
+        Row: {
+          id: string;
+          user_id: string;
+          label: string;
+          started_at: string;
+          ended_at: string | null;
+          task_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          label?: string;
+          started_at: string;
+          ended_at?: string | null;
+          task_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          label?: string;
+          started_at?: string;
+          ended_at?: string | null;
+          task_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
