@@ -1,7 +1,7 @@
 import { formatInTimeZone } from 'date-fns-tz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { datetimeLocalValueToIso, isoToDatetimeLocalValue } from '../lib/datetimeLocal';
-import { formatDurationSeconds } from '../lib/timeTrackingFormat';
+import { formatDurationSeconds, entryDurationSeconds } from '../lib/timeTrackingFormat';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
@@ -9,6 +9,7 @@ import { useTimeEntriesStore, type UpdateTimeEntryPatch } from '../store/useTime
 import { useTimeProjectsStore } from '../store/useTimeProjectsStore';
 import type { TimeEntry, TimeProject } from '../types';
 import { ClockIcon, PlusIcon, SquareIcon, TrashIcon } from './icons';
+import { TimeTrackingBarChart } from './TimeTrackingBarChart';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -22,11 +23,32 @@ function useTickingNow(active: boolean): number {
   return now;
 }
 
+function groupEntriesByDay(
+  entries: (TimeEntry & { ended_at: string })[],
+  tz: string,
+): [string, (TimeEntry & { ended_at: string })[]][] {
+  const map = new Map<string, (TimeEntry & { ended_at: string })[]>();
+  for (const e of entries) {
+    const key = formatInTimeZone(new Date(e.started_at), tz, 'yyyy-MM-dd');
+    const list = map.get(key) ?? [];
+    list.push(e);
+    map.set(key, list);
+  }
+  for (const [, list] of map) {
+    list.sort(
+      (a, b) =>
+        new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+    );
+  }
+  return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+}
+
 type CompletedEntryRowProps = {
   entry: TimeEntry & { ended_at: string };
   tz: string;
   taskTitle: string | null;
-  projectName: string | null;
+  projectBadgeText: string;
+  hasProject: boolean;
   projects: TimeProject[];
   onUpdate: (entryId: string, patch: UpdateTimeEntryPatch) => Promise<void>;
   onDelete: () => void;
@@ -37,7 +59,8 @@ function CompletedEntryRow({
   entry,
   tz,
   taskTitle,
-  projectName,
+  projectBadgeText,
+  hasProject,
   projects,
   onUpdate,
   onDelete,
@@ -58,10 +81,7 @@ function CompletedEntryRow({
     setDraftProjectId(entry.project_id ?? '');
   }, [entry.id, entry.label, entry.started_at, entry.ended_at, entry.project_id, editing]);
 
-  const durSec = Math.max(
-    0,
-    Math.floor((Date.parse(entry.ended_at) - Date.parse(entry.started_at)) / 1000),
-  );
+  const durSec = entryDurationSeconds(entry);
 
   const beginEdit = () => {
     setDraftLabel(entry.label);
@@ -177,26 +197,32 @@ function CompletedEntryRow({
 
   return (
     <div className="flex flex-wrap items-start gap-3 px-4 py-3 sm:items-center">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div>
+          <span
+            className={[
+              'inline-flex max-w-full truncate rounded-md px-2.5 py-1 text-sm font-semibold tracking-tight ring-1',
+              hasProject
+                ? 'bg-brand-500/12 text-brand-900 ring-brand-500/25 dark:bg-brand-500/18 dark:text-brand-100 dark:ring-brand-400/30'
+                : 'bg-surface-raised text-text-muted ring-border',
+            ].join(' ')}
+          >
+            {projectBadgeText}
+          </span>
+        </div>
         <p
           className={
             entry.label.trim()
-              ? 'font-medium text-text'
-              : 'font-medium italic text-text-muted'
+              ? 'text-[15px] font-medium text-text'
+              : 'text-[15px] font-medium italic text-text-muted'
           }
         >
           {entry.label.trim() || 'No label'}
         </p>
-        <p className="mt-0.5 text-xs text-text-muted">
+        <p className="text-xs text-text-muted">
           {formatInTimeZone(new Date(entry.started_at), tz, 'h:mm a')}
           {' – '}
           {formatInTimeZone(new Date(entry.ended_at), tz, 'h:mm a')}
-          {projectName ? (
-            <>
-              {' · '}
-              <span className="font-medium text-text-muted/90">{projectName}</span>
-            </>
-          ) : null}
           {taskTitle ? (
             <>
               {' · '}
@@ -263,22 +289,43 @@ export function TimeTrackingPage() {
     [entries],
   );
 
-  const byDay = useMemo(() => {
-    const map = new Map<string, (TimeEntry & { ended_at: string })[]>();
+  const historyGroups = useMemo(() => {
+    const map = new Map<string | null, (TimeEntry & { ended_at: string })[]>();
     for (const e of completed) {
-      const key = formatInTimeZone(new Date(e.started_at), tz, 'yyyy-MM-dd');
-      const list = map.get(key) ?? [];
+      const pid = e.project_id;
+      const list = map.get(pid) ?? [];
       list.push(e);
-      map.set(key, list);
+      map.set(pid, list);
     }
-    for (const [, list] of map) {
-      list.sort(
+
+    const resolveName = (projectId: string | null) => {
+      if (!projectId) return 'No project';
+      return projects.find((p) => p.id === projectId)?.name ?? 'Removed project';
+    };
+
+    const groups = [...map.entries()].map(([projectId, groupEntries]) => {
+      const name = resolveName(projectId);
+      const totalSec = groupEntries.reduce((sum, e) => sum + entryDurationSeconds(e), 0);
+      const sortedEntries = [...groupEntries].sort(
         (a, b) =>
           new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
       );
-    }
-    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [completed, tz]);
+      return { projectId, name, entries: sortedEntries, totalSec };
+    });
+
+    groups.sort((a, b) => {
+      if (a.projectId === null && b.projectId !== null) return 1;
+      if (a.projectId !== null && b.projectId === null) return -1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+    return groups;
+  }, [completed, projects]);
+
+  const historyGrandTotalSec = useMemo(
+    () => completed.reduce((sum, e) => sum + entryDurationSeconds(e), 0),
+    [completed],
+  );
 
   const openTasks = useMemo(
     () =>
@@ -685,48 +732,96 @@ export function TimeTrackingPage() {
             )}
           </Card>
 
+          <TimeTrackingBarChart completed={completed} tz={tz} projects={projects} />
+
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-text">History</h2>
+            <h2 className="mb-1 text-sm font-semibold text-text">History</h2>
+            <p className="mb-3 text-xs text-text-muted">
+              Grouped by project with per-project totals. Days are newest first within each group.
+            </p>
             {loading && entries.length === 0 ? (
               <p className="text-sm text-text-muted">Loading…</p>
-            ) : byDay.length === 0 ? (
+            ) : historyGroups.length === 0 ? (
               <Card tone="sunken">
                 <p className="text-sm text-text-muted">
                   No completed sessions yet. Stop a timer to see it here.
                 </p>
               </Card>
             ) : (
-              <div className="space-y-6">
-                {byDay.map(([dayKey, dayEntries]) => (
-                  <div key={dayKey}>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-subtle">
-                      {formatInTimeZone(
-                        new Date(dayEntries[0].started_at),
-                        tz,
-                        'EEEE, MMMM d, yyyy',
-                      )}
-                    </h3>
-                    <Card padded="none" className="divide-y divide-border overflow-hidden">
-                      {dayEntries.map((e) => (
-                        <CompletedEntryRow
-                          key={e.id}
-                          entry={e}
-                          tz={tz}
-                          taskTitle={taskTitle(e.task_id)}
-                          projectName={
-                            e.project_id ? projectName(e.project_id) : null
-                          }
-                          projects={projects}
-                          onUpdate={(id, patch) => onPatchEntry(id, patch)}
-                          onDelete={() =>
-                            void onDelete(e.id, {
-                              message: 'Delete this time entry?',
-                            })
-                          }
-                          deleting={deletingId === e.id}
-                        />
+              <div className="space-y-8">
+                {completed.length > 0 ? (
+                  <p className="text-sm text-text-muted">
+                    <span className="text-text">All sessions:</span>{' '}
+                    <span className="font-mono font-semibold tabular-nums text-text">
+                      {formatDurationSeconds(historyGrandTotalSec)}
+                    </span>
+                    <span className="text-text-subtle">
+                      {' '}
+                      · {completed.length} {completed.length === 1 ? 'session' : 'sessions'}
+                    </span>
+                  </p>
+                ) : null}
+
+                {historyGroups.map((group) => (
+                  <div key={group.projectId ?? 'none'} className="space-y-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border-strong pb-2">
+                      <h3 className="text-base font-semibold tracking-tight text-text">
+                        {group.name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
+                        <span className="font-mono font-semibold tabular-nums text-text">
+                          {formatDurationSeconds(group.totalSec)}
+                        </span>
+                        <span className="text-text-subtle">·</span>
+                        <span>
+                          {group.entries.length}{' '}
+                          {group.entries.length === 1 ? 'session' : 'sessions'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-5">
+                      {groupEntriesByDay(group.entries, tz).map(([dayKey, dayEntries], dayIdx) => (
+                        <div key={`${group.projectId ?? 'none'}-${dayKey}`}>
+                          <p
+                            className={[
+                              'mb-2 text-[11px] font-semibold uppercase tracking-wider text-text-subtle',
+                              dayIdx === 0 ? '' : 'mt-1',
+                            ].join(' ')}
+                          >
+                            {formatInTimeZone(
+                              new Date(dayEntries[0].started_at),
+                              tz,
+                              'EEEE, MMMM d, yyyy',
+                            )}
+                          </p>
+                          <Card tone="raised" padded="none" className="divide-y divide-border overflow-hidden">
+                            {dayEntries.map((e) => (
+                              <CompletedEntryRow
+                                key={e.id}
+                                entry={e}
+                                tz={tz}
+                                taskTitle={taskTitle(e.task_id)}
+                                projectBadgeText={
+                                  e.project_id
+                                    ? projectName(e.project_id) ?? 'Removed project'
+                                    : 'No project'
+                                }
+                                hasProject={Boolean(e.project_id)}
+                                projects={projects}
+                                onUpdate={(id, patch) => onPatchEntry(id, patch)}
+                                onDelete={() =>
+                                  void onDelete(e.id, {
+                                    message: 'Delete this time entry?',
+                                  })
+                                }
+                                deleting={deletingId === e.id}
+                              />
+                            ))}
+                          </Card>
+                        </div>
                       ))}
-                    </Card>
+                    </div>
                   </div>
                 ))}
               </div>
