@@ -15,6 +15,7 @@ import {
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { isPersistedBlockDocument, noteDocumentFromEditor } from '../lib/noteContentBridge';
+import { notePasteHandler, noteUploadFile } from '../lib/noteClipboardUpload';
 import type { Json } from '../types/database';
 import { createTaskSlashMenuItems } from '../lib/taskSlashMenuItems';
 import '../styles/notesEditor.css';
@@ -63,7 +64,14 @@ export function NotesEditor({
   onChange,
   theme,
 }: NotesEditorProps) {
-  const editor = useCreateBlockNote({ dictionary: notesDictionary }, []);
+  const editor = useCreateBlockNote(
+    {
+      dictionary: notesDictionary,
+      uploadFile: noteUploadFile,
+      pasteHandler: notePasteHandler,
+    },
+    [],
+  );
 
   const initialMarkdownRef = useRef(initialMarkdown);
   const initialBlocksRef = useRef(initialBlocks);
