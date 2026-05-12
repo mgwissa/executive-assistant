@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { Block } from '@blocknote/core';
+import { en } from '@blocknote/core/locales';
 import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
@@ -18,6 +19,15 @@ import type { Json } from '../types/database';
 import { createTaskSlashMenuItems } from '../lib/taskSlashMenuItems';
 import '../styles/notesEditor.css';
 import { NotesTaskToolbar } from './notes/NotesTaskToolbar';
+
+/** Softer than BlockNote’s default (“type '/' for commands”), which reads like a chat prompt. */
+const notesDictionary = {
+  ...en,
+  placeholders: {
+    ...en.placeholders,
+    default: 'Start writing…',
+  },
+};
 
 type NotesEditorProps = {
   /**
@@ -53,7 +63,7 @@ export function NotesEditor({
   onChange,
   theme,
 }: NotesEditorProps) {
-  const editor = useCreateBlockNote();
+  const editor = useCreateBlockNote({ dictionary: notesDictionary }, []);
 
   const initialMarkdownRef = useRef(initialMarkdown);
   const initialBlocksRef = useRef(initialBlocks);

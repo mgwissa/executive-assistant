@@ -29,27 +29,92 @@
   --bn-colors-shadow: rgb(0 0 0 / 0.6);
 }
 
-/* Let the editor fill the available scroll container cleanly. */
+/* Let the editor fill the scroll container like a document, not a chat input. */
 .notes-editor .bn-container {
   background: transparent;
-  height: 100%;
+  min-height: 100%;
+  max-width: 100%;
+}
+
+.notes-editor-document .notes-editor {
+  min-height: min(72vh, 100%);
+}
+
+.notes-editor-document .notes-editor .bn-container {
+  min-height: min(72vh, 100%);
 }
 
 .notes-editor .bn-editor {
   background: transparent;
-  padding-inline: 2.25rem;
-  padding-block: 1.25rem 4rem;
-  font-size: 15px;
+  padding-inline: 0;
+  padding-block: 0.25rem 4rem;
+  font-size: 16px;
   line-height: 1.65;
+  min-height: min(68vh, 100%);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-/* When the editor sits in the card on the Notes page, slightly tighten padding. */
-.notes-editor-page .notes-editor .bn-editor {
-  padding-inline: clamp(1rem, 3vw, 2rem);
-  padding-block: 1.35rem 3rem;
+/*
+ * BlockNote sets `.bn-block-content { display: flex }` (row) without growing children.
+ * Flex items default to `flex: 0 1 auto`, so the editable column stays only as wide as
+ * the longest line — it reads like a chat prompt. Let the first content shell fill the row.
+ * (Skip blocks whose first child is intentionally compact: table, files, toggles.)
+ */
+.notes-editor
+  .bn-block-content:not([data-content-type='table']):not([data-file-block]):not(
+    [data-content-type='toggleListItem']
+  )
+  > *:first-child {
+  flex: 1 1 0%;
+  min-width: 0;
 }
 
-/* Tables: stronger column / header treatment for matrix-style notes. */
+.notes-editor .bn-block-content .bn-inline-content {
+  width: 100%;
+  /* `pre-wrap` keeps intentional line breaks; this still allows wrapping long URLs/tokens. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Empty block: BlockNote draws the hint as `::after`. With `flex: 1` on the real child,
+ * a flex `order` hack put the hint on the left but left the caret in the editor cell — so
+ * the caret looked past the ellipsis. Pin the hint to the text origin with `absolute`
+ * (out of flex flow) and stack it under the editable surface. */
+.notes-editor
+  .bn-block-content:has(.ProseMirror-trailingBreak:only-child):not([data-content-type='table']):not(
+    [data-content-type='bulletListItem']
+  ):not([data-content-type='numberedListItem']):not([data-content-type='checkListItem']) {
+  position: relative;
+}
+
+.notes-editor
+  .bn-block-content:has(.ProseMirror-trailingBreak:only-child):not([data-content-type='table']):not(
+    [data-content-type='bulletListItem']
+  ):not([data-content-type='numberedListItem']):not([data-content-type='checkListItem'])
+  > *:first-child {
+  position: relative;
+  z-index: 1;
+}
+
+.notes-editor
+  .bn-block-content:has(.ProseMirror-trailingBreak:only-child):not([data-content-type='table']):not(
+    [data-content-type='bulletListItem']
+  ):not([data-content-type='numberedListItem']):not([data-content-type='checkListItem'])::after {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 3px;
+  margin-inline: 0;
+  z-index: 0;
+  pointer-events: none;
+  color: rgb(var(--text-muted));
+  opacity: 0.85;
+  font-size: 1rem;
+  font-style: normal;
+  letter-spacing: 0;
+}
+
 .notes-editor .bn-editor [data-content-type="table"] .tableWrapper {
   margin-block: 1.25rem;
   overflow: hidden auto;
