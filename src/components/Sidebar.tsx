@@ -6,11 +6,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useSharingStore } from '../store/useSharingStore';
+import { useShellLayoutStore } from '../store/useShellLayoutStore';
 import type { Notebook, Section } from '../types';
 import { ShareNotebookModal } from './ShareNotebookModal';
 import {
   BookIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   FolderIcon,
   NoteIcon,
@@ -127,8 +129,21 @@ export function Sidebar() {
 
   const firstSection = notebookSections[0];
 
+  const toggleNotesSidebar = useShellLayoutStore((s) => s.toggleNotesSidebar);
+
   return (
-    <aside className="relative flex h-full w-72 flex-col border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] dark:to-brand-950/[0.12]">
+    <aside className="relative flex h-full w-72 shrink-0 flex-col border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] dark:to-brand-950/[0.12]">
+      <div className="relative z-[1] flex shrink-0 items-center justify-end border-b border-border-strong bg-surface-sunken/40 px-2 py-1 dark:bg-black/10">
+        <button
+          type="button"
+          className="btn-ghost h-8 w-8 p-0"
+          title="Hide note list (more space for editor)"
+          aria-expanded={true}
+          onClick={toggleNotesSidebar}
+        >
+          <ChevronLeftIcon className="h-4 w-4" />
+        </button>
+      </div>
       <div
         className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-brand-200/0 via-brand-300/25 to-brand-200/0 dark:via-brand-500/20"
         aria-hidden

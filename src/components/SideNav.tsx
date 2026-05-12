@@ -3,7 +3,8 @@ import { buildSideNavItems } from '../lib/optionalFeatures';
 import { viewPath, useActiveView } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProfileStore } from '../store/useProfileStore';
-import { LogOutIcon, NoteIcon } from './icons';
+import { useShellLayoutStore } from '../store/useShellLayoutStore';
+import { ChevronLeftIcon, ChevronRightIcon, LogOutIcon, NoteIcon } from './icons';
 import { ThemeToggle } from './ThemeToggle';
 
 export function SideNav() {
@@ -12,12 +13,118 @@ export function SideNav() {
   const { user, signOut } = useAuthStore();
   const optionalFeatures = useProfileStore((s) => s.profile?.enabled_addons);
   const items = buildSideNavItems(optionalFeatures);
+  const sideNavCollapsed = useShellLayoutStore((s) => s.sideNavCollapsed);
+  const toggleSideNav = useShellLayoutStore((s) => s.toggleSideNav);
+
+  if (sideNavCollapsed) {
+    return (
+      <aside className="flex h-full w-[4.25rem] shrink-0 flex-col border-r border-border-strong bg-nav">
+        <div className="flex flex-col items-center gap-2 border-b border-border-strong px-2 py-3">
+          <button
+            type="button"
+            onClick={toggleSideNav}
+            className="btn-ghost h-9 w-9 shrink-0 p-0"
+            title="Expand navigation"
+            aria-expanded={false}
+            aria-controls="app-primary-nav"
+          >
+            <ChevronRightIcon className="h-5 w-5" />
+          </button>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white shadow-card">
+            <NoteIcon className="h-4 w-4" />
+          </div>
+          <ThemeToggle />
+        </div>
+
+        <nav id="app-primary-nav" className="flex flex-1 flex-col overflow-y-auto px-1.5 py-2" aria-label="Primary">
+          <ul className="flex flex-1 flex-col gap-1">
+            {items.map(({ id, label, Icon, accent }) => {
+              const active = view === id;
+              const accentClasses =
+                accent === 'blue'
+                  ? {
+                      tile: 'bg-blue-500/15 text-blue-200 shadow-[0_0_0_1px_rgb(59_130_246_/0.22),0_0_28px_rgb(59_130_246_/0.22)]',
+                      tileIdle: 'bg-blue-500/8 text-blue-300/80',
+                      dot: 'bg-blue-400',
+                    }
+                  : accent === 'purple'
+                    ? {
+                        tile: 'bg-purple-500/15 text-purple-200 shadow-[0_0_0_1px_rgb(168_85_247_/0.22),0_0_28px_rgb(168_85_247_/0.22)]',
+                        tileIdle: 'bg-purple-500/8 text-purple-300/80',
+                        dot: 'bg-purple-400',
+                      }
+                    : accent === 'amber'
+                      ? {
+                          tile: 'bg-amber-500/15 text-amber-200 shadow-[0_0_0_1px_rgb(245_158_11_/0.22),0_0_28px_rgb(245_158_11_/0.18)]',
+                          tileIdle: 'bg-amber-500/8 text-amber-300/80',
+                          dot: 'bg-amber-400',
+                        }
+                      : accent === 'green'
+                        ? {
+                            tile: 'bg-emerald-500/15 text-emerald-200 shadow-[0_0_0_1px_rgb(16_185_129_/0.22),0_0_28px_rgb(16_185_129_/0.18)]',
+                            tileIdle: 'bg-emerald-500/8 text-emerald-300/80',
+                            dot: 'bg-emerald-400',
+                          }
+                        : {
+                            tile: 'bg-brand-500/18 text-brand-200 shadow-[0_0_0_1px_rgb(99_102_241_/0.22),0_0_28px_rgb(99_102_241_/0.20)]',
+                            tileIdle: 'bg-brand-500/10 text-brand-300/80',
+                            dot: 'bg-brand-400',
+                          };
+              return (
+                <li key={id}>
+                  <button
+                    onClick={() => navigate(viewPath(id))}
+                    aria-current={active ? 'page' : undefined}
+                    title={label}
+                    className={[
+                      'relative flex w-full items-center justify-center rounded-lg p-2 transition-colors focus-ring',
+                      active
+                        ? 'bg-nav-raised text-text shadow-card ring-1 ring-border-strong'
+                        : 'text-text-muted hover:bg-nav-raised hover:text-text',
+                    ].join(' ')}
+                  >
+                    <span
+                      className={[
+                        'flex h-8 w-8 items-center justify-center rounded-md',
+                        active ? accentClasses.tile : accentClasses.tileIdle,
+                      ].join(' ')}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    {active ? (
+                      <span
+                        className={['absolute right-1 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full', accentClasses.dot].join(
+                          ' ',
+                        )}
+                      />
+                    ) : null}
+                    <span className="sr-only">{label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        <div className="mt-auto border-t border-border-strong px-1.5 py-2">
+          <button
+            onClick={() => signOut()}
+            className="btn-ghost flex w-full justify-center p-2"
+            title={user?.email ? `Sign out (${user.email})` : 'Sign out'}
+          >
+            <LogOutIcon className="h-4 w-4" />
+            <span className="sr-only">Sign out</span>
+          </button>
+        </div>
+      </aside>
+    );
+  }
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border-strong bg-nav">
-      <div className="flex items-center justify-between gap-3 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white shadow-card">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border-strong bg-nav">
+      <div className="flex items-center justify-between gap-2 border-b border-border-strong px-3 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-card">
             <NoteIcon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
@@ -25,10 +132,22 @@ export function SideNav() {
             <p className="truncate text-xs text-text-muted">{user?.email ?? 'Your workspace'}</p>
           </div>
         </div>
-        <ThemeToggle />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={toggleSideNav}
+            className="btn-ghost h-8 w-8 shrink-0 p-0"
+            title="Collapse navigation"
+            aria-expanded={true}
+            aria-controls="app-primary-nav"
+          >
+            <ChevronLeftIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <nav className="px-2">
+      <nav id="app-primary-nav" className="px-2 pt-2" aria-label="Primary">
         <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
           Navigation
         </p>
@@ -110,4 +229,3 @@ export function SideNav() {
     </aside>
   );
 }
-
