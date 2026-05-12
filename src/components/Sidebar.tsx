@@ -174,20 +174,24 @@ export function Sidebar() {
             No sections yet. Create one to start adding notes.
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-2">
             {notebookSections.map((section) => (
-              <SectionGroup
+              <div
                 key={section.id}
-                section={section}
-                notes={notesBySection.get(section.id) ?? []}
-                activeNoteId={activeId}
-                isCollapsed={collapsed.has(section.id)}
-                onToggleCollapsed={() => toggleCollapsed(section.id)}
-                onSelectNote={setActive}
-                onNewNote={() => handleNewNote(section.id)}
-                onRenameSection={renameSection}
-                onDeleteSection={deleteSection}
-              />
+                className="rounded-xl border border-border/70 bg-surface-raised/40 p-1 shadow-[0_1px_2px_rgb(0_0_0_/0.04)] ring-1 ring-black/[0.03] dark:bg-surface-raised/25 dark:ring-white/[0.06]"
+              >
+                <SectionGroup
+                  section={section}
+                  notes={notesBySection.get(section.id) ?? []}
+                  activeNoteId={activeId}
+                  isCollapsed={collapsed.has(section.id)}
+                  onToggleCollapsed={() => toggleCollapsed(section.id)}
+                  onSelectNote={setActive}
+                  onNewNote={() => handleNewNote(section.id)}
+                  onRenameSection={renameSection}
+                  onDeleteSection={deleteSection}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -374,7 +378,7 @@ function SectionGroup({
 
   return (
     <div>
-      <div className="group flex items-center gap-1 rounded-md px-1 py-1 hover:bg-surface-raised/50">
+      <div className="group flex items-center gap-1 rounded-lg bg-surface-sunken/40 px-1.5 py-1.5 hover:bg-surface-sunken/70 dark:bg-surface-sunken/20">
         <button
           onClick={onToggleCollapsed}
           className="shrink-0 p-0.5 text-text-subtle hover:text-text"

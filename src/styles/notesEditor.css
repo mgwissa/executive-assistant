@@ -43,6 +43,89 @@
   line-height: 1.65;
 }
 
+/* When the editor sits in the card on the Notes page, slightly tighten padding. */
+.notes-editor-page .notes-editor .bn-editor {
+  padding-inline: clamp(1rem, 3vw, 2rem);
+  padding-block: 1.35rem 3rem;
+}
+
+/* Tables: stronger column / header treatment for matrix-style notes. */
+.notes-editor .bn-editor [data-content-type="table"] .tableWrapper {
+  margin-block: 1.25rem;
+  overflow: hidden auto;
+  max-width: 100%;
+  border-radius: calc(var(--bn-border-radius, 8px) + 4px);
+  border: 1px solid rgb(var(--border-strong) / 0.85);
+  background: rgb(var(--surface-sunken));
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.05),
+    0 0 0 1px rgb(var(--surface-raised)),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.dark .notes-editor .bn-editor [data-content-type="table"] .tableWrapper {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+.notes-editor .bn-editor [data-content-type="table"] table {
+  width: 100% !important;
+  border-collapse: collapse;
+}
+
+.notes-editor .bn-editor [data-content-type="table"] thead th {
+  background: rgb(99 102 241 / 0.07);
+  color: rgb(var(--text));
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-align: left;
+  vertical-align: bottom;
+  border-bottom: 2px solid rgb(99 102 241 / 0.25);
+  padding: 0.65rem 1rem !important;
+}
+
+.dark .notes-editor .bn-editor [data-content-type="table"] thead th {
+  background: rgb(99 102 241 / 0.12);
+  border-bottom-color: rgb(129 140 248 / 0.28);
+}
+
+/* First row acts as headers even when Markdown omits `<thead>`. */
+.notes-editor .bn-editor [data-content-type="table"] tbody > tr:first-child > th {
+  background: rgb(99 102 241 / 0.07);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  border-bottom: 2px solid rgb(99 102 241 / 0.25);
+  padding: 0.65rem 1rem !important;
+}
+
+.dark .notes-editor .bn-editor [data-content-type="table"] tbody > tr:first-child > th {
+  background: rgb(99 102 241 / 0.12);
+  border-bottom-color: rgb(129 140 248 / 0.28);
+}
+
+.notes-editor .bn-editor [data-content-type="table"] td,
+.notes-editor .bn-editor [data-content-type="table"] tbody th {
+  border: 1px solid rgb(var(--border) / 0.95);
+  padding: 0.55rem 0.95rem !important;
+  vertical-align: top;
+}
+
+.notes-editor .bn-editor [data-content-type="table"] tbody td:nth-child(odd) {
+  background: rgb(99 102 241 / 0.035);
+}
+
+.dark .notes-editor .bn-editor [data-content-type="table"] tbody td:nth-child(odd) {
+  background: rgb(129 140 248 / 0.05);
+}
+
+.notes-editor .bn-editor [data-content-type="table"] td p,
+.notes-editor .bn-editor [data-content-type="table"] th p {
+  min-height: 1.35rem;
+}
+
 /* Tighten the block side-menu offset a bit; default is pretty wide. */
 .notes-editor .bn-block-outer > .bn-side-menu {
   margin-left: -0.25rem;
