@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { isNotebookShared } from '../lib/notebookSharing';
 import { extractPreview, formatRelative } from '../lib/format';
 import { getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
@@ -6,11 +6,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useSharingStore } from '../store/useSharingStore';
+import { useShellLayoutStore } from '../store/useShellLayoutStore';
 import type { Notebook, Section } from '../types';
 import { ShareNotebookModal } from './ShareNotebookModal';
 import {
   BookIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   FolderIcon,
   NoteIcon,
@@ -18,6 +20,31 @@ import {
   TrashIcon,
 } from './icons';
 import { SearchBar } from './SearchBar';
+
+/** Subtle alternating washes — same family as the app brand, not a rainbow. */
+const SECTION_TONES = [
+  {
+    shell:
+      'border-indigo-200/55 bg-gradient-to-br from-indigo-50/75 via-surface-raised to-white shadow-sm ring-indigo-950/[0.04] dark:border-indigo-500/20 dark:from-indigo-950/35 dark:via-surface-raised/30 dark:to-surface-raised/15 dark:ring-indigo-400/10',
+    header: 'bg-indigo-50/50 dark:bg-indigo-950/20',
+    rail: 'border-l-indigo-200/70 dark:border-l-indigo-500/25',
+    folder: 'text-indigo-600 dark:text-indigo-400',
+  },
+  {
+    shell:
+      'border-slate-200/70 bg-gradient-to-br from-slate-50/90 via-surface-raised to-white shadow-sm ring-slate-900/[0.03] dark:border-zinc-600/35 dark:from-zinc-800/40 dark:via-surface-raised/25 dark:to-surface-raised/12 dark:ring-white/[0.05]',
+    header: 'bg-slate-100/55 dark:bg-zinc-800/35',
+    rail: 'border-l-slate-300/80 dark:border-l-zinc-600/40',
+    folder: 'text-slate-600 dark:text-zinc-400',
+  },
+  {
+    shell:
+      'border-brand-200/60 bg-gradient-to-br from-brand-50/85 via-surface-raised to-white shadow-sm ring-brand-900/[0.04] dark:border-brand-500/22 dark:from-brand-950/30 dark:via-surface-raised/28 dark:to-surface-raised/12 dark:ring-brand-400/10',
+    header: 'bg-brand-50/60 dark:bg-brand-950/22',
+    rail: 'border-l-brand-300/75 dark:border-l-brand-500/30',
+    folder: 'text-brand-700 dark:text-brand-400',
+  },
+] as const;
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
@@ -102,10 +129,27 @@ export function Sidebar() {
 
   const firstSection = notebookSections[0];
 
+  const toggleNotesSidebar = useShellLayoutStore((s) => s.toggleNotesSidebar);
+
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-border-strong bg-surface-sunken">
+    <aside className="relative flex h-full w-72 shrink-0 flex-col border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] dark:to-brand-950/[0.12]">
+      <div className="relative z-[1] flex shrink-0 items-center justify-end border-b border-border-strong bg-surface-sunken/40 px-2 py-1 dark:bg-black/10">
+        <button
+          type="button"
+          className="btn-ghost h-8 w-8 p-0"
+          title="Hide note list (more space for editor)"
+          aria-expanded={true}
+          onClick={toggleNotesSidebar}
+        >
+          <ChevronLeftIcon className="h-4 w-4" />
+        </button>
+      </div>
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-brand-200/0 via-brand-300/25 to-brand-200/0 dark:via-brand-500/20"
+        aria-hidden
+      />
       {/* Notebook picker */}
-      <div className="border-b border-border-strong px-3 py-3">
+      <div className="relative border-b border-border-strong bg-gradient-to-br from-surface-raised/90 via-brand-50/25 to-brand-100/15 px-3 py-3 dark:from-surface-raised/40 dark:via-brand-950/15 dark:to-surface-raised/20">
         <NotebookPicker
           notebooks={notebooks}
           memberCountByNotebook={memberCountByNotebook}
@@ -137,7 +181,7 @@ export function Sidebar() {
       ) : null}
 
       {/* Search + new section */}
-      <div className="space-y-2 border-b border-border-strong px-3 py-3">
+      <div className="relative space-y-2 border-b border-border-strong bg-gradient-to-b from-brand-50/20 to-transparent px-3 py-3 dark:from-brand-950/12">
         <SearchBar />
         <div className="flex gap-2">
           <button
@@ -164,7 +208,7 @@ export function Sidebar() {
       </div>
 
       {/* Section tree */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-transparent to-brand-50/[0.08] px-2 py-3 dark:to-brand-950/[0.06]">
         {!activeNotebook ? (
           <div className="px-3 py-10 text-center text-xs text-text-muted">
             No notebook selected.
@@ -174,21 +218,32 @@ export function Sidebar() {
             No sections yet. Create one to start adding notes.
           </div>
         ) : (
-          <div className="space-y-1">
-            {notebookSections.map((section) => (
-              <SectionGroup
-                key={section.id}
-                section={section}
-                notes={notesBySection.get(section.id) ?? []}
-                activeNoteId={activeId}
-                isCollapsed={collapsed.has(section.id)}
-                onToggleCollapsed={() => toggleCollapsed(section.id)}
-                onSelectNote={setActive}
-                onNewNote={() => handleNewNote(section.id)}
-                onRenameSection={renameSection}
-                onDeleteSection={deleteSection}
-              />
-            ))}
+          <div className="space-y-2.5">
+            {notebookSections.map((section, sectionIndex) => {
+              const tone = SECTION_TONES[sectionIndex % SECTION_TONES.length];
+              return (
+                <div
+                  key={section.id}
+                  className={[
+                    'rounded-xl border p-1 ring-1',
+                    tone.shell,
+                  ].join(' ')}
+                >
+                  <SectionGroup
+                    tone={tone}
+                    section={section}
+                    notes={notesBySection.get(section.id) ?? []}
+                    activeNoteId={activeId}
+                    isCollapsed={collapsed.has(section.id)}
+                    onToggleCollapsed={() => toggleCollapsed(section.id)}
+                    onSelectNote={setActive}
+                    onNewNote={() => handleNewNote(section.id)}
+                    onRenameSection={renameSection}
+                    onDeleteSection={deleteSection}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -334,6 +389,7 @@ function NotebookPicker({
 /* ---------- Section group ---------- */
 
 function SectionGroup({
+  tone,
   section,
   notes,
   activeNoteId,
@@ -344,6 +400,7 @@ function SectionGroup({
   onRenameSection,
   onDeleteSection,
 }: {
+  tone: (typeof SECTION_TONES)[number];
   section: Section;
   notes: { id: string; title: string; content: string; updated_at: string }[];
   activeNoteId: string | null;
@@ -374,10 +431,16 @@ function SectionGroup({
 
   return (
     <div>
-      <div className="group flex items-center gap-1 rounded-md px-1 py-1 hover:bg-surface-raised/50">
+      <div
+        className={[
+          'group flex items-center gap-1 rounded-lg px-1.5 py-1.5 transition-colors',
+          tone.header,
+          'hover:brightness-[0.99] dark:hover:brightness-110',
+        ].join(' ')}
+      >
         <button
           onClick={onToggleCollapsed}
-          className="shrink-0 p-0.5 text-text-subtle hover:text-text"
+          className="shrink-0 rounded p-0.5 text-text-subtle hover:bg-black/[0.04] hover:text-text dark:hover:bg-white/[0.06]"
           aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
         >
           {isCollapsed ? (
@@ -386,7 +449,7 @@ function SectionGroup({
             <ChevronDownIcon className="h-3.5 w-3.5" />
           )}
         </button>
-        <FolderIcon className="h-3.5 w-3.5 shrink-0 text-text-subtle" />
+        <FolderIcon className={['h-3.5 w-3.5 shrink-0 opacity-90', tone.folder].join(' ')} />
         {editing ? (
           <input
             ref={inputRef}
@@ -405,7 +468,7 @@ function SectionGroup({
           />
         ) : (
           <button
-            className="min-w-0 flex-1 truncate text-left text-xs font-semibold uppercase tracking-wider text-text-muted"
+            className="min-w-0 flex-1 truncate text-left text-xs font-semibold uppercase tracking-wider text-text"
             onDoubleClick={() => {
               setDraft(section.name);
               setEditing(true);
@@ -440,9 +503,9 @@ function SectionGroup({
       </div>
 
       {!isCollapsed && (
-        <ul className="ml-5 space-y-0.5 border-l border-border/50 pl-2 pt-0.5">
+        <ul className={['ml-5 space-y-0.5 border-l-2 pl-2.5 pt-0.5', tone.rail].join(' ')}>
           {notes.length === 0 ? (
-            <li className="px-2 py-2 text-[11px] text-text-subtle">No notes</li>
+            <li className="px-2 py-2 text-[11px] text-text-muted">No notes</li>
           ) : (
             notes.map((note) => {
               const isActive = note.id === activeNoteId;
@@ -454,13 +517,20 @@ function SectionGroup({
                     className={[
                       'w-full rounded-md px-2.5 py-1.5 text-left transition-colors',
                       isActive
-                        ? 'border-l-2 border-brand-600 bg-brand-50 shadow-card ring-1 ring-border dark:border-brand-400 dark:bg-surface-raised dark:ring-border-strong'
-                        : 'hover:bg-surface-raised',
+                        ? 'border-l-2 border-brand-600 bg-brand-50 shadow-card ring-1 ring-brand-200/60 dark:border-brand-400 dark:bg-brand-950/35 dark:ring-brand-500/25'
+                        : 'hover:bg-black/[0.03] hover:ring-1 hover:ring-black/[0.04] dark:hover:bg-white/[0.04] dark:hover:ring-white/[0.06]',
                     ].join(' ')}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-1.5">
-                        <NoteIcon className="h-3 w-3 shrink-0 text-text-subtle" />
+                        <NoteIcon
+                          className={[
+                            'h-3 w-3 shrink-0',
+                            isActive
+                              ? 'text-brand-600 dark:text-brand-400'
+                              : 'text-text-subtle opacity-80',
+                          ].join(' ')}
+                        />
                         <span className="truncate text-sm font-medium text-text">
                           {note.title || 'Untitled'}
                         </span>

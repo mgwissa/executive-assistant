@@ -3,7 +3,6 @@ import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import { Auth } from './components/Auth';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
-import { Editor } from './components/Editor';
 import { EmergencyBanner } from './components/EmergencyBanner';
 import { EmergencyMode } from './components/EmergencyMode';
 import { OwedToMePage } from './components/OwedToMePage';
@@ -12,6 +11,8 @@ import { RequireOptionalFeature } from './components/RequireOptionalFeature';
 import { ResetPassword } from './components/ResetPassword';
 import { TimeTrackingPage } from './components/TimeTrackingPage';
 import { UsefulLinksPage } from './components/UsefulLinksPage';
+import { Editor } from './components/Editor';
+import { BookIcon, ChevronRightIcon } from './components/icons';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
@@ -24,6 +25,7 @@ import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
 import { viewPath } from './lib/routes';
 import { useAuthStore } from './store/useAuthStore';
 import { useEmergencyStore } from './store/useEmergencyStore';
+import { useShellLayoutStore } from './store/useShellLayoutStore';
 import { useEventsStore } from './store/useEventsStore';
 import { useNotebooksStore } from './store/useNotebooksStore';
 import { useNotesStore } from './store/useNotesStore';
@@ -37,10 +39,25 @@ import { useWeeklyRoutineStore } from './store/useWeeklyRoutineStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
+  const notesSidebarCollapsed = useShellLayoutStore((s) => s.notesSidebarCollapsed);
+  const toggleNotesSidebar = useShellLayoutStore((s) => s.toggleNotesSidebar);
   useNotebookRealtime(user?.id);
   return (
     <div className="flex h-full min-w-0 flex-1">
-      <Sidebar />
+      {notesSidebarCollapsed ? (
+        <button
+          type="button"
+          onClick={toggleNotesSidebar}
+          className="flex h-full w-11 shrink-0 flex-col items-center gap-3 border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] pt-3 text-text-muted transition-colors hover:bg-black/[0.04] hover:text-text dark:to-brand-950/[0.12] dark:hover:bg-white/[0.05]"
+          title="Show note list"
+          aria-expanded={false}
+        >
+          <ChevronRightIcon className="h-5 w-5 shrink-0" />
+          <BookIcon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+        </button>
+      ) : (
+        <Sidebar />
+      )}
       <main className="min-w-0 flex-1 bg-surface">
         <Editor />
       </main>
