@@ -1,7 +1,13 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  calendarYmdNow,
   computeDailyBuckets,
+  computeDailyBucketsForYmdRange,
   computeWeeklyBuckets,
+  rollingDayRangeInclusive,
+  sumSecondsInWeekStartingMonday,
+  sumSecondsOnCalendarDay,
+  thisWeekMondayYmd,
   type TimeChartBucket,
 } from '../lib/timeTrackingCharts';
 import { formatDurationSeconds, formatDurationShort } from '../lib/timeTrackingFormat';
@@ -35,7 +41,17 @@ export function TimeTrackingBarChart({
   tz: string;
   projects: TimeProject[];
 }) {
-  const [mode, setMode] = useState<'daily' | 'weekly'>('daily');
+  const [mode, setMode] = useState<'daily' | 'weekly' | 'custom'>('daily');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  useEffect(() => {
+    if (mode !== 'custom') return;
+    if (customStart && customEnd) return;
+    const { startYmd, endYmd } = rollingDayRangeInclusive(tz, 7);
+    setCustomStart(startYmd);
+    setCustomEnd(endYmd);
+  }, [mode, tz, customStart, customEnd]);
 
   const resolveProjectName = useCallback(
     (id: string | null) => {
@@ -54,7 +70,33 @@ export function TimeTrackingBarChart({
     [completed, tz, resolveProjectName],
   );
 
-  const buckets: TimeChartBucket[] = mode === 'daily' ? dailyBuckets : weeklyBuckets;
+  const customBuckets = useMemo(() => {
+    if (!customStart || !customEnd || customStart > customEnd) return [];
+    return computeDailyBucketsForYmdRange(
+      completed,
+      tz,
+      customStart,
+      customEnd,
+      resolveProjectName,
+    );
+  }, [completed, tz, customStart, customEnd, resolveProjectName]);
+
+  const customRangeValid = Boolean(customStart && customEnd && customStart <= customEnd);
+
+  const todayYmd = useMemo(() => calendarYmdNow(tz), [tz]);
+  const weekMondayYmd = useMemo(() => thisWeekMondayYmd(tz), [tz]);
+  const todaySeconds = useMemo(
+    () => sumSecondsOnCalendarDay(completed, tz, todayYmd),
+    [completed, tz, todayYmd],
+  );
+  const thisWeekSeconds = useMemo(
+    () => sumSecondsInWeekStartingMonday(completed, tz, weekMondayYmd),
+    [completed, tz, weekMondayYmd],
+  );
+
+  const buckets: TimeChartBucket[] =
+    mode === 'daily' ? dailyBuckets : mode === 'weekly' ? weeklyBuckets : customBuckets;
+  const chartScroll = mode === 'custom' && buckets.length > 21;
   const maxSec = useMemo(
     () => Math.max(1, ...buckets.map((b) => b.seconds)),
     [buckets],
@@ -113,15 +155,42 @@ export function TimeTrackingBarChart({
       }));
   }, [buckets, projectOrder, resolveProjectName, fillClassForProject]);
 
+  const chartCaption =
+    mode === 'daily'
+      ? `last ${DAILY_COUNT} days`
+      : mode === 'weekly'
+        ? `last ${WEEKLY_COUNT} weeks`
+        : customRangeValid
+          ? `${customStart} → ${customEnd}`
+          : 'custom range';
+
   return (
     <Card tone="sunken">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">Today</p>
+          <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-text">
+            {formatDurationSeconds(todaySeconds)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-text-muted">Completed sessions (start day in {tz})</p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface/50 px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+            This week
+          </p>
+          <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-text">
+            {formatDurationSeconds(thisWeekSeconds)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-text-muted">Mon–Sun in your profile timezone</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-text">Activity</h2>
           <p className="mt-0.5 text-xs text-text-muted">
-            Tracked time by{' '}
-            {mode === 'daily' ? `day (last ${DAILY_COUNT} days)` : `week (last ${WEEKLY_COUNT} weeks)`}{' '}
-            in your profile timezone. Bars stack by project; sessions count on the day they started.
+            Tracked time by {chartCaption}. Bars stack by project; sessions count on the day they
+            started.
           </p>
         </div>
         <div
@@ -157,8 +226,57 @@ export function TimeTrackingBarChart({
           >
             Weekly
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'custom'}
+            className={[
+              'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+              mode === 'custom'
+                ? 'bg-surface text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            ].join(' ')}
+            onClick={() => setMode('custom')}
+          >
+            Custom
+          </button>
         </div>
       </div>
+
+      {mode === 'custom' ? (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="space-y-1.5">
+            <label htmlFor="time-chart-start" className="block text-xs font-medium text-text-muted">
+              From
+            </label>
+            <input
+              id="time-chart-start"
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="input font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="time-chart-end" className="block text-xs font-medium text-text-muted">
+              Through
+            </label>
+            <input
+              id="time-chart-end"
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="input font-mono text-xs"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {mode === 'custom' && customStart && customEnd && customStart > customEnd ? (
+        <p className="mt-2 text-xs text-amber-800 dark:text-amber-200" role="status">
+          Choose an end date on or after the start date.
+        </p>
+      ) : null}
 
       {hasAny ? (
         <p className="mt-3 text-xs text-text-muted">
@@ -174,13 +292,25 @@ export function TimeTrackingBarChart({
         role="img"
         aria-label={`Tracked time ${mode} chart by project, ${formatDurationShort(totalPeriod)} total`}
       >
-        <div className="flex h-[7.5rem] gap-1 sm:h-36 sm:gap-1.5">
+        <div className={chartScroll ? 'overflow-x-auto pb-1' : undefined}>
+          <div
+            className={[
+              'flex h-[7.5rem] gap-1 sm:h-36 sm:gap-1.5',
+              chartScroll ? 'min-w-max' : '',
+            ].join(' ')}
+          >
           {buckets.map((b) => {
             const pctRaw = maxSec > 0 ? (b.seconds / maxSec) * 100 : 0;
             const pct = b.seconds > 0 ? Math.max(pctRaw, 6) : 0;
             const tip = `${b.label}: ${formatDurationShort(b.seconds)} (${formatDurationSeconds(b.seconds)})`;
             return (
-              <div key={`${mode}-${b.key}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div
+                key={`${mode}-${b.key}`}
+                className={[
+                  'flex min-h-0 flex-col',
+                  chartScroll ? 'w-8 shrink-0 sm:w-9' : 'min-w-0 flex-1',
+                ].join(' ')}
+              >
                 <div className="flex min-h-0 flex-1 flex-col justify-end">
                   {b.seconds > 0 && b.segments.length > 0 ? (
                     <div
@@ -217,6 +347,7 @@ export function TimeTrackingBarChart({
               </div>
             );
           })}
+          </div>
         </div>
       </div>
 
