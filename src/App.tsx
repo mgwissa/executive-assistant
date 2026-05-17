@@ -41,24 +41,46 @@ function NotesView() {
   const user = useAuthStore((s) => s.user);
   const notesSidebarCollapsed = useShellLayoutStore((s) => s.notesSidebarCollapsed);
   const toggleNotesSidebar = useShellLayoutStore((s) => s.toggleNotesSidebar);
+  const activeNoteId = useNotesStore((s) => s.activeId);
   useNotebookRealtime(user?.id);
+
+  // Mobile single-pane: list when no note selected, editor when one is open.
+  // Tailwind md breakpoint (768px) toggles us back to the two-pane layout.
+  const showSidebarOnMobile = !activeNoteId;
+
   return (
     <div className="flex h-full min-w-0 flex-1">
-      {notesSidebarCollapsed ? (
-        <button
-          type="button"
-          onClick={toggleNotesSidebar}
-          className="flex h-full w-11 shrink-0 flex-col items-center gap-3 border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] pt-3 text-text-muted transition-colors hover:bg-black/[0.04] hover:text-text dark:to-brand-950/[0.12] dark:hover:bg-white/[0.05]"
-          title="Show note list"
-          aria-expanded={false}
-        >
-          <ChevronRightIcon className="h-5 w-5 shrink-0" />
-          <BookIcon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-        </button>
-      ) : (
-        <Sidebar />
-      )}
-      <main className="min-w-0 flex-1 bg-surface">
+      {/* Sidebar: visible on desktop always; on mobile only when no note open. */}
+      <div
+        className={[
+          showSidebarOnMobile ? 'flex w-full' : 'hidden',
+          'md:flex md:w-auto',
+        ].join(' ')}
+      >
+        {notesSidebarCollapsed ? (
+          <button
+            type="button"
+            onClick={toggleNotesSidebar}
+            className="hidden h-full w-11 shrink-0 flex-col items-center gap-3 border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] pt-3 text-text-muted transition-colors hover:bg-black/[0.04] hover:text-text dark:to-brand-950/[0.12] dark:hover:bg-white/[0.05] md:flex"
+            title="Show note list"
+            aria-expanded={false}
+          >
+            <ChevronRightIcon className="h-5 w-5 shrink-0" />
+            <BookIcon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+          </button>
+        ) : (
+          <Sidebar />
+        )}
+      </div>
+
+      {/* Editor: full width on mobile when a note is open. */}
+      <main
+        className={[
+          showSidebarOnMobile ? 'hidden' : 'flex w-full',
+          'md:flex md:w-auto md:min-w-0 md:flex-1',
+          'min-w-0 flex-1 bg-surface',
+        ].join(' ')}
+      >
         <Editor />
       </main>
     </div>
@@ -72,12 +94,29 @@ function Shell() {
   const bypassEmergency = useEmergencyStore((s) => s.bypass);
   const setBypassEmergency = useEmergencyStore((s) => s.setBypass);
   const clearEmergency = useEmergencyStore((s) => s.clear);
+  const mobileNavOpen = useShellLayoutStore((s) => s.mobileNavOpen);
+  const closeMobileNav = useShellLayoutStore((s) => s.closeMobileNav);
 
   useEffect(() => {
     if (!emergency.active) setBypassEmergency(false);
   }, [emergency.active, setBypassEmergency]);
 
   useEffect(() => () => clearEmergency(), [clearEmergency]);
+
+  // Mobile nav drawer UX: close on Escape, lock background scroll while open.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMobileNav();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mobileNavOpen, closeMobileNav]);
 
   const fetchNotebooks = useNotebooksStore((s) => s.fetchAll);
   const ensureDefaultNotebook = useNotebooksStore((s) => s.ensureDefault);
@@ -210,7 +249,41 @@ function Shell() {
 
   return (
     <div className="app-shell flex h-full min-h-0">
-      <SideNav />
+      {/* Persistent left rail on tablet/desktop. */}
+      <div className="hidden md:flex">
+        <SideNav />
+      </div>
+
+      {/* Mobile slide-out drawer. Rendered always so the slide animation can
+          play on close; pointer events disabled when hidden. */}
+      <div
+        className={[
+          'fixed inset-0 z-40 md:hidden',
+          mobileNavOpen ? 'pointer-events-auto' : 'pointer-events-none',
+        ].join(' ')}
+        aria-hidden={!mobileNavOpen}
+      >
+        <button
+          type="button"
+          tabIndex={mobileNavOpen ? 0 : -1}
+          aria-label="Close navigation"
+          onClick={closeMobileNav}
+          className={[
+            'absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200',
+            mobileNavOpen ? 'opacity-100' : 'opacity-0',
+          ].join(' ')}
+        />
+        <div
+          id="mobile-primary-nav"
+          className={[
+            'absolute inset-y-0 left-0 transition-transform duration-200 ease-out',
+            mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+          ].join(' ')}
+        >
+          <SideNav mobile />
+        </div>
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col">
         {showEmergencyBanner ? <EmergencyBanner reason={emergency} /> : null}
         <TopBar />

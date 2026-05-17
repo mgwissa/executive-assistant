@@ -58,9 +58,38 @@
     height: 100%;
   }
 
+  html {
+    /* Prevent iOS Safari from auto-zooming when focusing inputs (<16px text). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-surface text-text antialiased;
     font-feature-settings: 'cv11', 'ss01';
+    /* Allow content to slide under iOS home indicator / notch with our own paddings. */
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer utilities {
+  /* iOS safe-area paddings — use on shells / sticky bars. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right);
+  }
+  /* Min 44px tap targets — Apple HIG recommended hit area. */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
@@ -230,8 +259,3 @@
   @apply list-none;
 }
 
-input, textarea {
-  cursor: text !important; /* Standard text selection beam */
-  /* OR try a custom image if the default beam is broken on your system */
-  /* cursor: url('custom-cursor.png'), auto; */
-}

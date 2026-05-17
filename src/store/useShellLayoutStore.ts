@@ -23,15 +23,23 @@ function writeBool(key: string, value: boolean) {
 }
 
 type ShellLayoutState = {
+  /** Desktop: side nav rendered as a collapsed icon-rail. Persisted. */
   sideNavCollapsed: boolean;
+  /** Desktop: notes-list sidebar collapsed to an edge-rail. Persisted. */
   notesSidebarCollapsed: boolean;
+  /** Mobile: slide-out nav drawer visible. Not persisted (resets per session). */
+  mobileNavOpen: boolean;
   toggleSideNav: () => void;
   toggleNotesSidebar: () => void;
+  openMobileNav: () => void;
+  closeMobileNav: () => void;
+  toggleMobileNav: () => void;
 };
 
 export const useShellLayoutStore = create<ShellLayoutState>((set, get) => ({
   sideNavCollapsed: readBool(K_NAV, false),
   notesSidebarCollapsed: readBool(K_NOTES, false),
+  mobileNavOpen: false,
   toggleSideNav: () => {
     const next = !get().sideNavCollapsed;
     writeBool(K_NAV, next);
@@ -42,4 +50,7 @@ export const useShellLayoutStore = create<ShellLayoutState>((set, get) => ({
     writeBool(K_NOTES, next);
     set({ notesSidebarCollapsed: next });
   },
+  openMobileNav: () => set({ mobileNavOpen: true }),
+  closeMobileNav: () => set({ mobileNavOpen: false }),
+  toggleMobileNav: () => set({ mobileNavOpen: !get().mobileNavOpen }),
 }));

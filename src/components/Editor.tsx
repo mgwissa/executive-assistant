@@ -4,10 +4,10 @@ import { useNotesStore } from '../store/useNotesStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { formatRelative } from '../lib/format';
 import { NotesEditor } from './NotesEditor';
-import { BookIcon, FolderIcon, TrashIcon } from './icons';
+import { BookIcon, ChevronLeftIcon, FolderIcon, TrashIcon } from './icons';
 
 export function Editor() {
-  const { notes, activeId, updateNote, deleteNote } = useNotesStore();
+  const { notes, activeId, updateNote, deleteNote, setActive } = useNotesStore();
   const notebooks = useNotebooksStore((s) => s.notebooks);
   const sections = useNotebooksStore((s) => s.sections);
   const theme = useThemeStore((s) => s.theme);
@@ -43,7 +43,7 @@ export function Editor() {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-surface-raised">
-      <header className="border-b border-border bg-surface/90 px-4 py-3.5 shadow-sm backdrop-blur sm:px-6">
+      <header className="border-b border-border bg-surface/90 px-3 py-3 shadow-sm backdrop-blur sm:px-6 sm:py-3.5">
         {breadcrumb && (
           <nav
             className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-text-muted"
@@ -62,14 +62,24 @@ export function Editor() {
             </span>
           </nav>
         )}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Mobile only: back to notes list (clears active note). */}
+          <button
+            type="button"
+            onClick={() => setActive(null)}
+            className="btn-ghost tap-target -ml-1 shrink-0 p-0 md:hidden"
+            aria-label="Back to notes list"
+            title="Back to notes list"
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
           <input
             value={note.title}
             onChange={(e) => {
               updateNote(note.id, { title: e.target.value });
             }}
             placeholder="Untitled"
-            className="min-w-0 flex-1 bg-transparent text-2xl font-semibold tracking-tight text-text outline-none placeholder:text-text-subtle md:text-[1.625rem]"
+            className="min-w-0 flex-1 bg-transparent text-xl font-semibold tracking-tight text-text outline-none placeholder:text-text-subtle sm:text-2xl md:text-[1.625rem]"
           />
           <div className="flex shrink-0 items-center gap-2">
             {savedLabel ? (
@@ -92,7 +102,7 @@ export function Editor() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-surface-raised">
-        <div className="notes-editor-document w-full max-w-none px-5 py-8 sm:px-8 sm:py-10 lg:px-12">
+        <div className="notes-editor-document w-full max-w-none px-4 py-6 sm:px-8 sm:py-10 lg:px-12">
           <NotesEditor
             key={note.id}
             noteId={note.id}

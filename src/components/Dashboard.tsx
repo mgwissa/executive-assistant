@@ -286,8 +286,8 @@ export function Dashboard() {
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-5xl px-8 py-10">
-        <header className="mb-10">
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <header className="mb-6 sm:mb-8 lg:mb-10">
           <Badge variant="subtle" className="uppercase tracking-wider">
             {dateLabel}
           </Badge>

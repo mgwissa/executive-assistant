@@ -132,8 +132,10 @@ export function Sidebar() {
   const toggleNotesSidebar = useShellLayoutStore((s) => s.toggleNotesSidebar);
 
   return (
-    <aside className="relative flex h-full w-72 shrink-0 flex-col border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] dark:to-brand-950/[0.12]">
-      <div className="relative z-[1] flex shrink-0 items-center justify-end border-b border-border-strong bg-surface-sunken/40 px-2 py-1 dark:bg-black/10">
+    <aside className="relative flex h-full w-full shrink-0 flex-col border-r border-border-strong bg-gradient-to-b from-surface-sunken via-surface-sunken to-brand-50/[0.12] md:w-72 dark:to-brand-950/[0.12]">
+      {/* Desktop-only collapse toggle. On mobile there's no other pane to
+          reveal — the editor takes the full width when a note is selected. */}
+      <div className="relative z-[1] hidden shrink-0 items-center justify-end border-b border-border-strong bg-surface-sunken/40 px-2 py-1 md:flex dark:bg-black/10">
         <button
           type="button"
           className="btn-ghost h-8 w-8 p-0"

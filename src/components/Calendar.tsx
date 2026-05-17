@@ -65,7 +65,7 @@ export function Calendar() {
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-8">
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-8 sm:py-10">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <IconBadge tone="blue" size="md" className="mt-0.5">

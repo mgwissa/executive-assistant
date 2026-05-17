@@ -32,7 +32,7 @@ export function Profile() {
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-2xl px-8 py-10">
+      <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-8 sm:py-10">
         <header className="mb-8 flex items-center gap-4">
           <IconBadge size="lg" tone="brand" className="rounded-full">
             <UserIcon className="h-6 w-6" />
