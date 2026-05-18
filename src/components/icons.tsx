@@ -173,6 +173,17 @@ export function FolderIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Folder with an arrow leaving it — used for "Move note". */
+export function MoveIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v3" />
+      <path d="M9 14h12" />
+      <path d="m17 10 4 4-4 4" />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} {...props}>

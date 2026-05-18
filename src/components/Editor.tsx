@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { formatRelative } from '../lib/format';
+import { MoveNoteModal } from './MoveNoteModal';
 import { NotesEditor } from './NotesEditor';
-import { BookIcon, ChevronLeftIcon, FolderIcon, TrashIcon } from './icons';
+import { BookIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
 
 export function Editor() {
   const { notes, activeId, updateNote, deleteNote, setActive } = useNotesStore();
@@ -12,6 +13,7 @@ export function Editor() {
   const sections = useNotebooksStore((s) => s.sections);
   const theme = useThemeStore((s) => s.theme);
   const note = notes.find((n) => n.id === activeId) ?? null;
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const breadcrumb = useMemo(() => {
     if (!note?.section_id) return null;
@@ -88,6 +90,14 @@ export function Editor() {
               </span>
             ) : null}
             <button
+              onClick={() => setMoveOpen(true)}
+              className="btn-ghost h-9 w-9 rounded-lg p-0"
+              aria-label="Move note"
+              title="Move note"
+            >
+              <MoveIcon className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => {
                 if (confirm('Delete this note?')) deleteNote(note.id);
               }}
@@ -100,6 +110,8 @@ export function Editor() {
           </div>
         </div>
       </header>
+
+      <MoveNoteModal open={moveOpen} onClose={() => setMoveOpen(false)} note={note} />
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-surface-raised">
         <div className="notes-editor-document w-full max-w-none px-4 py-6 sm:px-8 sm:py-10 lg:px-12">
