@@ -19,7 +19,7 @@ import {
   sortOptionalFeatureIds,
   type OptionalFeatureId,
 } from '../lib/optionalFeatures';
-import { CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
+import { BellIcon, CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -64,6 +64,19 @@ export function Profile() {
               key={`esc-${JSON.stringify(profile.priority_escalation)}`}
               userId={user.id}
               rawConfig={profile.priority_escalation}
+              loading={loading}
+              saving={saving}
+              updateProfile={updateProfile}
+              fetchProfile={fetchProfile}
+            />
+          )}
+
+          {user && profile && (
+            <EmailNotificationsSection
+              key={`notify-${profile.notify_email_enabled}-${profile.notify_email_digest_enabled}-${profile.notify_email_digest_local_time}-${profile.notify_email_escalation_enabled}-${profile.notify_email_address ?? ''}`}
+              userId={user.id}
+              profile={profile}
+              accountEmail={user.email ?? ''}
               loading={loading}
               saving={saving}
               updateProfile={updateProfile}
@@ -237,6 +250,173 @@ function PriorityEscalationSection({
           onClick={() => void save()}
         >
           {saving ? 'Saving…' : 'Save escalation settings'}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function EmailNotificationsSection({
+  userId,
+  profile,
+  accountEmail,
+  loading,
+  saving,
+  updateProfile,
+  fetchProfile,
+}: {
+  userId: string;
+  profile: Profile;
+  accountEmail: string;
+  loading: boolean;
+  saving: boolean;
+  updateProfile: (uid: string, patch: ProfileUpdate) => Promise<void>;
+  fetchProfile: (uid: string) => Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(profile.notify_email_enabled);
+  const [digestEnabled, setDigestEnabled] = useState(profile.notify_email_digest_enabled);
+  const [escalationEnabled, setEscalationEnabled] = useState(
+    profile.notify_email_escalation_enabled,
+  );
+  const [digestTime, setDigestTime] = useState(
+    profile.notify_email_digest_local_time?.slice(0, 5) || '07:30',
+  );
+  const [overrideAddress, setOverrideAddress] = useState(profile.notify_email_address ?? '');
+  const [message, setMessage] = useState<string | null>(null);
+
+  const savedDigestTime = profile.notify_email_digest_local_time?.slice(0, 5) || '07:30';
+  const savedOverride = profile.notify_email_address ?? '';
+  const dirty =
+    enabled !== profile.notify_email_enabled ||
+    digestEnabled !== profile.notify_email_digest_enabled ||
+    escalationEnabled !== profile.notify_email_escalation_enabled ||
+    digestTime !== savedDigestTime ||
+    overrideAddress.trim() !== savedOverride.trim();
+
+  const save = async () => {
+    setMessage(null);
+    const safeTime = /^\d{2}:\d{2}$/.test(digestTime) ? `${digestTime}:00` : '07:30:00';
+    const trimmedOverride = overrideAddress.trim();
+    if (trimmedOverride && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedOverride)) {
+      setMessage('That doesn\u2019t look like a valid email address.');
+      return;
+    }
+    await updateProfile(userId, {
+      notify_email_enabled: enabled,
+      notify_email_digest_enabled: digestEnabled,
+      notify_email_digest_local_time: safeTime,
+      notify_email_escalation_enabled: escalationEnabled,
+      notify_email_address: trimmedOverride === '' ? null : trimmedOverride,
+    });
+    await fetchProfile(userId);
+    setMessage('Saved.');
+    setTimeout(() => setMessage(null), 2500);
+  };
+
+  return (
+    <Card tone="sunken">
+      <div className="mb-4 flex items-start gap-3">
+        <IconBadge tone="brand" size="md">
+          <BellIcon className="h-5 w-5" />
+        </IconBadge>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text">Email notifications</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Get a daily digest of today's work, and an instant heads-up when a task
+            escalates to Critical. Sent to the email on your account.
+          </p>
+        </div>
+      </div>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          disabled={loading}
+          className="rounded border-border"
+        />
+        Enable email notifications
+      </label>
+
+      <fieldset
+        disabled={!enabled || loading}
+        className={enabled ? 'mt-4 space-y-4' : 'mt-4 space-y-4 opacity-60'}
+      >
+        <div className="space-y-2 rounded-lg border border-border bg-surface-raised p-3">
+          <Field id="notify-recipient" label="Send to" hint={`Leave blank to use your account email (${accountEmail || 'unknown'}).`}>
+            <input
+              id="notify-recipient"
+              type="email"
+              autoComplete="email"
+              placeholder={accountEmail || 'you@example.com'}
+              value={overrideAddress}
+              onChange={(e) => setOverrideAddress(e.target.value)}
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-border bg-surface-raised p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={digestEnabled}
+              onChange={(e) => setDigestEnabled(e.target.checked)}
+              className="rounded border-border"
+            />
+            Daily digest
+          </label>
+          <p className="text-xs text-text-muted">
+            Open tasks (critical, due today, overdue), waiting-on items, and today's
+            calendar events.
+          </p>
+          <div className="grid gap-2 sm:max-w-xs">
+            <Field id="digest-time" label="Send at (your time)">
+              <input
+                id="digest-time"
+                type="time"
+                step={60}
+                value={digestTime}
+                onChange={(e) => setDigestTime(e.target.value)}
+                disabled={!digestEnabled}
+                className="input"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-border bg-surface-raised p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={escalationEnabled}
+              onChange={(e) => setEscalationEnabled(e.target.checked)}
+              className="rounded border-border"
+            />
+            Alert when a task escalates to Critical
+          </label>
+          <p className="text-xs text-text-muted">
+            Fired when a task's due date hits today or escalation auto-promotes it to
+            Critical. One email per task transition.
+          </p>
+        </div>
+      </fieldset>
+
+      {message && (
+        <p className="mt-3 text-sm text-text-muted" role="status">
+          {message}
+        </p>
+      )}
+
+      <div className="mt-4 flex justify-end border-t border-border pt-4">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={loading || saving || !dirty}
+          onClick={() => void save()}
+        >
+          {saving ? 'Saving…' : 'Save notification settings'}
         </button>
       </div>
     </Card>

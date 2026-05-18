@@ -80,6 +80,93 @@ Each sync replaces previously imported rows (`events.source = 'outlook_ics'`) an
 
 The **Calendar** page and client fetch use the same Monday–Sunday window.
 
+### 5. (Optional) Email notifications
+
+Opt-in email notifications: a daily digest (critical / due today / overdue tasks, waiting-on items, today's events) and an instant alert when a task escalates to Critical. Free, using [Resend](https://resend.com) for sending.
+
+**Cost**: $0 for personal use. Resend's free tier is 100 emails/day, 3,000/month.
+
+**One-time setup**:
+
+1. **Run the migration** `supabase/migrations/2026-05-08_025_email_notifications.sql`. This adds the notification preference columns to `profiles` and installs a DB trigger that fires when a task becomes Critical. It will no-op until you finish the setup below.
+
+2. **Sign up at [resend.com](https://resend.com)** (free, no credit card). Create an API key from **API Keys → Create**.
+
+   For first deploys you can send from `onboarding@resend.dev`, but Resend's sandbox only delivers to the email address you signed up with. To send to anyone else, add and verify a domain under **Domains** and use something like `notifications@your-domain.com`.
+
+3. **Generate a `CRON_SECRET`** (random string used to authenticate calls from pg_cron / DB triggers to the Edge Functions):
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+4. **Set Edge Function secrets** so the functions can authenticate to Resend and verify internal calls:
+
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
+   supabase secrets set RESEND_FROM_EMAIL="Notes <notifications@your-domain.com>"
+   supabase secrets set CRON_SECRET=<the random string from step 3>
+   ```
+
+5. **Deploy the Edge Functions**:
+
+   ```bash
+   supabase functions deploy send-daily-digest
+   supabase functions deploy send-task-escalation
+   ```
+
+   Both deploy with `verify_jwt = false` (see `supabase/config.toml`). They reject any call that doesn't carry the matching `x-cron-secret` header.
+
+6. **Store the same `CRON_SECRET` in Supabase Vault** so pg_cron and the DB trigger can attach it on their calls. Run this in **SQL Editor**, replacing the values:
+
+   ```sql
+   select vault.create_secret('https://YOUR-PROJECT-REF.supabase.co', 'project_url');
+   select vault.create_secret('YOUR-CRON-SECRET-FROM-STEP-3',          'cron_secret');
+   ```
+
+7. **Schedule the daily digest cron** (also in SQL Editor):
+
+   ```sql
+   select cron.schedule(
+     'send-daily-digest',
+     '*/15 * * * *',
+     $cron$
+     select net.http_post(
+       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
+              || '/functions/v1/send-daily-digest',
+       headers := jsonb_build_object(
+         'Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+       ),
+       body := '{}'::jsonb
+     );
+     $cron$
+   );
+   ```
+
+   The function runs every 15 minutes, picks up users whose local time has reached their configured digest time, and dedupes per-day using `profiles.notify_email_last_digest_at`.
+
+8. **Turn it on in the app**: open **Profile → Email notifications**, flip the master switch, set your preferred digest time, and save. Defaults: digest ON, escalation alerts ON, time `07:30` local.
+
+**Verifying it works**:
+
+- Test the escalation path by editing any open task and setting its due date to today (the auto-promotion trigger fires `priority → critical`, which fires the DB trigger, which calls the Edge Function).
+- For the digest, you can force-trigger it from the SQL editor (it will send if "now" in your tz is past your digest time and you haven't received one yet today):
+
+  ```sql
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
+           || '/functions/v1/send-daily-digest',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+    ),
+    body := '{}'::jsonb
+  );
+  ```
+
+  Logs are visible under **Edge Functions → send-daily-digest → Invocations**.
+
 ## Scripts
 
 | Command         | What it does                    |

@@ -105,6 +105,14 @@ export type Database = {
           outlook_ics_last_synced_at: string | null;
           priority_escalation: Json | null;
           enabled_addons: string[];
+          notify_email_enabled: boolean;
+          notify_email_digest_enabled: boolean;
+          /** Stored as a Postgres `time` value, e.g. `'07:30:00'`. */
+          notify_email_digest_local_time: string;
+          notify_email_escalation_enabled: boolean;
+          notify_email_last_digest_at: string | null;
+          /** Override recipient — when null, the user's auth email is used. */
+          notify_email_address: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -116,6 +124,12 @@ export type Database = {
           outlook_ics_last_synced_at?: string | null;
           priority_escalation?: Json | null;
           enabled_addons?: string[];
+          notify_email_enabled?: boolean;
+          notify_email_digest_enabled?: boolean;
+          notify_email_digest_local_time?: string;
+          notify_email_escalation_enabled?: boolean;
+          notify_email_last_digest_at?: string | null;
+          notify_email_address?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -127,6 +141,12 @@ export type Database = {
           outlook_ics_last_synced_at?: string | null;
           priority_escalation?: Json | null;
           enabled_addons?: string[];
+          notify_email_enabled?: boolean;
+          notify_email_digest_enabled?: boolean;
+          notify_email_digest_local_time?: string;
+          notify_email_escalation_enabled?: boolean;
+          notify_email_last_digest_at?: string | null;
+          notify_email_address?: string | null;
           created_at?: string;
           updated_at?: string;
         };

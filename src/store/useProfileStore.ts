@@ -20,6 +20,11 @@ type ProfileState = {
       outlook_ics_url?: string | null;
       priority_escalation?: Json | null;
       enabled_addons?: string[];
+      notify_email_enabled?: boolean;
+      notify_email_digest_enabled?: boolean;
+      notify_email_digest_local_time?: string;
+      notify_email_escalation_enabled?: boolean;
+      notify_email_address?: string | null;
     },
   ) => Promise<void>;
   clear: () => void;

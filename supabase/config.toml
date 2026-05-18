@@ -6,3 +6,12 @@
 
 [functions.sync-outlook-calendar]
 verify_jwt = false
+
+# Internal-only: called by pg_cron / DB trigger via net.http_post.
+# Authorization is enforced inside the function by checking `x-cron-secret`
+# against the `CRON_SECRET` env var.
+[functions.send-daily-digest]
+verify_jwt = false
+
+[functions.send-task-escalation]
+verify_jwt = false
