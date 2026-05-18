@@ -74,6 +74,19 @@ export function priorityRank(p: TaskPriority): number {
   return i === -1 ? 2 : i;
 }
 
+/**
+ * Sort comparator for due dates: earliest first, with `null` (no due date) last.
+ * Dates are compared as `YYYY-MM-DD` strings, which is lexicographically correct.
+ */
+export function compareDueDate(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 /** After `[Pn]` or `(Pn)`, whitespace before the title is optional (e.g. `[P1]Buy` works). */
 const P_TAG = /^\s*(?:\[(P[0-4])\]|\((P[0-4])\))\s*/i;
 

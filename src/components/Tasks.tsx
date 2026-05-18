@@ -13,7 +13,7 @@ import {
 } from '../lib/format';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import type { TaskPriority } from '../lib/priority';
-import { PRIORITY_HINT, PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked, priorityRank } from '../lib/priority';
+import { PRIORITY_HINT, PRIORITY_LABEL, PRIORITY_ORDER, compareDueDate, isPriorityLocked, priorityRank } from '../lib/priority';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { priorityRowClass, prioritySelectClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import { useAuthStore } from '../store/useAuthStore';
@@ -50,6 +50,8 @@ export function Tasks() {
       const pa = priorityRank((a.priority as TaskPriority) ?? 'normal');
       const pb = priorityRank((b.priority as TaskPriority) ?? 'normal');
       if (pa !== pb) return pa - pb;
+      const due = compareDueDate(a.due_date, b.due_date);
+      if (due !== 0) return due;
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
     return list;
@@ -89,6 +91,10 @@ export function Tasks() {
         b.kind === 'task' ? ((b.task.priority as TaskPriority) ?? 'normal') : b.item.priority,
       );
       if (pa !== pb) return pa - pb;
+      const dueA = a.kind === 'task' ? a.task.due_date : a.item.dueDate;
+      const dueB = b.kind === 'task' ? b.task.due_date : b.item.dueDate;
+      const due = compareDueDate(dueA, dueB);
+      if (due !== 0) return due;
       const sa =
         a.kind === 'task'
           ? new Date(a.task.updated_at).getTime()

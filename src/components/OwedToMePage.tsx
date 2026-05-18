@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { viewPath } from '../lib/routes';
 import type { TaskPriority } from '../lib/priority';
-import { priorityRank } from '../lib/priority';
+import { compareDueDate, priorityRank } from '../lib/priority';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Task } from '../types';
 import { ArrowRightIcon, InboxIcon, SquareIcon } from './icons';
@@ -38,6 +38,8 @@ export function OwedToMePage() {
       const pa = priorityRank((a.priority as TaskPriority) ?? 'normal');
       const pb = priorityRank((b.priority as TaskPriority) ?? 'normal');
       if (pa !== pb) return pa - pb;
+      const due = compareDueDate(a.due_date, b.due_date);
+      if (due !== 0) return due;
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
     return list;

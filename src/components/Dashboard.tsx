@@ -19,7 +19,7 @@ import {
   toggleActionItemLine,
 } from '../lib/format';
 import type { TaskPriority } from '../lib/priority';
-import { PRIORITY_ORDER, PRIORITY_PILL, priorityRank } from '../lib/priority';
+import { PRIORITY_ORDER, PRIORITY_PILL, compareDueDate, priorityRank } from '../lib/priority';
 import { priorityInlineLabelClass, priorityRowClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import type { Task } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
@@ -82,6 +82,10 @@ function workRowStamp(row: DashboardWorkRow): number {
     : new Date(row.item.noteUpdatedAt).getTime();
 }
 
+function workRowDueDate(row: DashboardWorkRow): string | null {
+  return row.kind === 'task' ? row.task.due_date : row.item.dueDate;
+}
+
 function buildWorkRows(
   openTasks: Task[],
   actionItems: ActionItem[],
@@ -114,6 +118,8 @@ function buildWorkRows(
   rows.sort((a, b) => {
     const pr = priorityRank(a.priority) - priorityRank(b.priority);
     if (pr !== 0) return pr;
+    const due = compareDueDate(workRowDueDate(a), workRowDueDate(b));
+    if (due !== 0) return due;
     return workRowStamp(b) - workRowStamp(a);
   });
   return rows;
