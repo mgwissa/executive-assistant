@@ -50,7 +50,7 @@ create or replace function public.notify_task_escalated_to_critical()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, extensions
+set search_path = public, net, extensions
 as $$
 declare
   v_url text;
@@ -69,7 +69,7 @@ begin
     return new;
   end if;
 
-  perform extensions.http_post(
+  perform net.http_post(
     url := v_url || '/functions/v1/send-task-escalation',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
