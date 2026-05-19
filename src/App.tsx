@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import { Auth } from './components/Auth';
+import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
 import { EmergencyBanner } from './components/EmergencyBanner';
@@ -333,6 +334,14 @@ export default function App() {
       <Route element={<Shell />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route
+          path="assistant"
+          element={
+            <RequireOptionalFeature featureId="assistant">
+              <AssistantPage />
+            </RequireOptionalFeature>
+          }
+        />
         <Route path="calendar" element={<Calendar />} />
         <Route path="links" element={<UsefulLinksPage />} />
         <Route path="tasks" element={<Tasks />} />

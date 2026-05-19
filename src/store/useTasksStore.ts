@@ -138,6 +138,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       due_date,
       description: '',
       waiting_on: null,
+      reschedule_count: 0,
       created_at: now,
       updated_at: now,
     };
@@ -195,6 +196,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const now = new Date().toISOString();
     const task = get().tasks.find((t) => t.id === id);
     const promote = locked && task && !task.done && task.priority !== 'critical';
+    // Only count as a reschedule when moving an existing due date (not initial assignment)
+    const isReschedule = !id.startsWith('tmp-') && task?.due_date != null && task.due_date !== dueDate;
 
     set({
       tasks: get().tasks.map((t) => {
@@ -204,6 +207,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
           updates.priority = 'critical';
           updates.priority_set_at = now;
           updates.updated_at = now;
+        }
+        if (isReschedule) {
+          updates.reschedule_count = (t.reschedule_count ?? 0) + 1;
         }
         return { ...t, ...updates };
       }),
@@ -215,6 +221,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       dbPatch.priority = 'critical';
       dbPatch.priority_set_at = now;
     }
+    // The DB trigger also handles this, but we keep local state consistent
     const { error } = await supabase
       .from('tasks')
       .update(dbPatch)

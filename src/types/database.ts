@@ -162,6 +162,7 @@ export type Database = {
           due_date: string | null;
           description: string;
           waiting_on: string | null;
+          reschedule_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -175,6 +176,7 @@ export type Database = {
           due_date?: string | null;
           description?: string;
           waiting_on?: string | null;
+          reschedule_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -188,6 +190,7 @@ export type Database = {
           due_date?: string | null;
           description?: string;
           waiting_on?: string | null;
+          reschedule_count?: number;
           created_at?: string;
           updated_at?: string;
         };

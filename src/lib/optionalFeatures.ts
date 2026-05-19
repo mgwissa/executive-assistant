@@ -3,6 +3,7 @@ import type { SVGProps } from 'react';
 import {
   CalendarIcon,
   BookIcon,
+  BrainIcon,
   CheckSquareIcon,
   ClockIcon,
   HomeIcon,
@@ -15,7 +16,7 @@ import type { View } from './routes';
 import type { Profile } from '../types';
 
 /** IDs for optional features the user can turn on in Profile (`profiles.enabled_addons`). */
-export const OPTIONAL_FEATURE_IDS = ['time', 'routine'] as const;
+export const OPTIONAL_FEATURE_IDS = ['time', 'routine', 'assistant'] as const;
 export type OptionalFeatureId = (typeof OPTIONAL_FEATURE_IDS)[number];
 
 export function isOptionalFeatureId(value: string): value is OptionalFeatureId {
@@ -62,6 +63,13 @@ export const OPTIONAL_FEATURE_NAV: Record<
       'Follow a product-leader operating rhythm with daily blocks, rituals, and progress tracking.',
     Icon: BookIcon,
     accent: 'purple',
+  },
+  assistant: {
+    label: 'Executive Assistant',
+    description:
+      'Proactive daily briefings, blind-spot detection, schedule gap analysis, and nudges when tasks keep getting rescheduled.',
+    Icon: BrainIcon,
+    accent: 'brand',
   },
 };
 
