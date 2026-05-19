@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
 import { viewPath } from '../lib/routes';
-import { generateBriefing, briefingSummaryLines } from '../lib/assistantBriefing';
+import { generateBriefing } from '../lib/assistantBriefing';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
