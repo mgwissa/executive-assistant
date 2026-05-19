@@ -35,14 +35,20 @@ type Task = {
   priority: string;
   due_date: string | null;
   waiting_on: string | null;
+  reschedule_count: number | null;
+  priority_set_at: string | null;
+  updated_at: string;
 };
 
 type Event = {
   id: string;
   title: string;
   start_at: string;
+  end_at: string | null;
   timezone: string;
 };
+
+// ─── Priority helpers ────────────────────────────────────────────────────────
 
 const PRIORITY_LABEL: Record<string, string> = {
   critical: 'Critical',
@@ -52,10 +58,16 @@ const PRIORITY_LABEL: Record<string, string> = {
   low: 'Later',
 };
 
+const PRIORITY_COLOR: Record<string, string> = {
+  critical: '#dc2626',
+  urgent: '#d97706',
+  high: '#2563eb',
+  normal: '#6b7280',
+  low: '#9ca3af',
+};
+
 function priorityRank(p: string): number {
-  const order = ['critical', 'urgent', 'high', 'normal', 'low'];
-  const i = order.indexOf(p);
-  return i === -1 ? 2 : i;
+  return ['critical', 'urgent', 'high', 'normal', 'low'].indexOf(p) ?? 2;
 }
 
 function compareDueDate(a: string | null, b: string | null): number {
@@ -73,76 +85,340 @@ function sortTasks(tasks: Task[]): Task[] {
   });
 }
 
-function formatDueLabel(dueDate: string | null, todayLocalDate: string): string {
-  if (!dueDate) return '';
-  if (dueDate === todayLocalDate) return 'due today';
-  if (dueDate < todayLocalDate) return `overdue (was due ${dueDate})`;
-  return `due ${dueDate}`;
+// ─── Time-of-day mode ────────────────────────────────────────────────────────
+
+type BriefingMode = 'morning' | 'midday' | 'afternoon' | 'evening';
+
+function getBriefingMode(localHour: number): BriefingMode {
+  if (localHour >= 6 && localHour < 10) return 'morning';
+  if (localHour >= 10 && localHour < 14) return 'midday';
+  if (localHour >= 14 && localHour < 18) return 'afternoon';
+  return 'evening';
 }
 
-function renderTaskList(tasks: Task[], todayLocalDate: string): string {
-  if (tasks.length === 0) return '<p style="margin:0;color:#6b7280">Nothing.</p>';
-  const items = tasks
-    .map((t) => {
-      const due = formatDueLabel(t.due_date, todayLocalDate);
-      const dueSpan = due
-        ? ` <span style="color:#6b7280;font-size:13px">— ${escapeHtml(due)}</span>`
-        : '';
-      const priorityChip = `<span style="display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#6b7280;margin-right:6px">${escapeHtml(PRIORITY_LABEL[t.priority] ?? 'Routine')}</span>`;
-      const waitingChip = t.waiting_on?.trim()
-        ? ` <span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:1px 6px;border-radius:8px;margin-left:6px">Waiting on ${escapeHtml(t.waiting_on.trim())}</span>`
-        : '';
-      return `<li style="margin:8px 0;line-height:1.45">${priorityChip}<strong>${escapeHtml(t.title)}</strong>${dueSpan}${waitingChip}</li>`;
-    })
-    .join('');
-  return `<ul style="padding-left:18px;margin:0">${items}</ul>`;
+const MODE_META: Record<BriefingMode, { label: string; greeting: string; icon: string }> = {
+  morning: { label: 'Morning Briefing', greeting: 'Good morning', icon: '☀️' },
+  midday:  { label: 'Midday Pulse',     greeting: 'Hey',           icon: '⚡' },
+  afternoon: { label: 'Afternoon Check-in', greeting: 'Good afternoon', icon: '🌤️' },
+  evening: { label: 'Evening Prep',     greeting: 'Good evening',  icon: '🌙' },
+};
+
+// ─── Staleness detection ─────────────────────────────────────────────────────
+
+const STALE_SLA_DAYS: Record<string, number> = {
+  critical: 1,
+  urgent: 3,
+  high: 7,
+  normal: 14,
+  low: 30,
+};
+
+function daysBetween(a: string, b: Date): number {
+  const ms = b.getTime() - new Date(a).getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
 
-function renderEventList(events: Event[], userTz: string): string {
-  if (events.length === 0) return '<p style="margin:0;color:#6b7280">No events today.</p>';
-  const items = events
-    .map((e) => {
-      const when = friendlyTimeLabel(new Date(e.start_at), userTz);
-      return `<li style="margin:6px 0;line-height:1.45"><strong>${escapeHtml(when)}</strong> — ${escapeHtml(e.title)}</li>`;
-    })
-    .join('');
-  return `<ul style="padding-left:18px;margin:0">${items}</ul>`;
+type Insight = {
+  kind: 'warning' | 'nudge' | 'info';
+  text: string;
+};
+
+function buildInsights(tasks: Task[], events: Event[], now: Date, todayLocalDate: string, userTz: string): {
+  watchList: Insight[];
+  nudges: Insight[];
+} {
+  const watchList: Insight[] = [];
+  const nudges: Insight[] = [];
+
+  // ── Reschedule nudges (≥3 times) ─────────────────────────────────────────
+  for (const t of tasks) {
+    const count = t.reschedule_count ?? 0;
+    if (count >= 3) {
+      nudges.push({
+        kind: 'nudge',
+        text: `"${t.title}" has been rescheduled ${count} time${count === 1 ? '' : 's'}. Is this actually getting done?`,
+      });
+    }
+  }
+
+  // ── Stale high-priority tasks ─────────────────────────────────────────────
+  for (const t of tasks) {
+    const sla = STALE_SLA_DAYS[t.priority];
+    if (!sla) continue;
+    const ref = t.priority_set_at ?? t.updated_at;
+    const age = daysBetween(ref, now);
+    if (age > sla) {
+      nudges.push({
+        kind: 'nudge',
+        text: `"${t.title}" is marked ${PRIORITY_LABEL[t.priority] ?? t.priority} but hasn't moved in ${age} days.`,
+      });
+    }
+  }
+
+  // ── Back-to-back meetings ─────────────────────────────────────────────────
+  const todayEvents = events
+    .filter((e) => localDateString(new Date(e.start_at), userTz) === todayLocalDate)
+    .sort((a, b) => a.start_at < b.start_at ? -1 : 1);
+
+  for (let i = 0; i < todayEvents.length - 1; i++) {
+    const curr = todayEvents[i];
+    const next = todayEvents[i + 1];
+    if (!curr.end_at) continue;
+    const gapMs = new Date(next.start_at).getTime() - new Date(curr.end_at).getTime();
+    const gapMin = Math.floor(gapMs / 60000);
+    if (gapMin >= 0 && gapMin < 10) {
+      watchList.push({
+        kind: 'warning',
+        text: `Back-to-back: "${curr.title}" flows straight into "${next.title}" with only ${gapMin} min gap.`,
+      });
+    }
+  }
+
+  // ── Owed-to-me: waiting_on person appears in today's event titles ─────────
+  const waitingTasks = tasks.filter((t) => t.waiting_on?.trim());
+  for (const task of waitingTasks) {
+    const person = (task.waiting_on ?? '').trim().toLowerCase();
+    const inMeeting = todayEvents.some((e) => e.title.toLowerCase().includes(person));
+    if (inMeeting) {
+      watchList.push({
+        kind: 'info',
+        text: `You're meeting with ${task.waiting_on} today — still waiting on their input for "${task.title}". Good chance to follow up.`,
+      });
+    }
+  }
+
+  // ── Critical/urgent tasks with no due date ────────────────────────────────
+  for (const t of tasks) {
+    if ((t.priority === 'critical' || t.priority === 'urgent') && !t.due_date) {
+      watchList.push({
+        kind: 'warning',
+        text: `"${t.title}" is ${PRIORITY_LABEL[t.priority]} but has no due date — when does it actually need to happen?`,
+      });
+    }
+  }
+
+  // ── Tomorrow events with no prep ──────────────────────────────────────────
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowLocalDate = localDateString(tomorrow, userTz);
+  const tomorrowEvents = events.filter(
+    (e) => localDateString(new Date(e.start_at), userTz) === tomorrowLocalDate,
+  );
+  for (const e of tomorrowEvents) {
+    const titleWords = e.title.toLowerCase().split(/\s+/);
+    const hasPrepTask = tasks.some((t) =>
+      titleWords.some((w) => w.length > 3 && t.title.toLowerCase().includes(w)),
+    );
+    if (!hasPrepTask && tomorrowEvents.length <= 3) {
+      watchList.push({
+        kind: 'info',
+        text: `"${e.title}" is on your calendar tomorrow — no prep task found. Worth adding one?`,
+      });
+    }
+  }
+
+  return { watchList, nudges };
+}
+
+// ─── HTML rendering ──────────────────────────────────────────────────────────
+
+function chip(label: string, color: string, bg: string): string {
+  return `<span style="display:inline-block;font-size:11px;font-weight:700;letter-spacing:0.4px;padding:2px 8px;border-radius:20px;background:${bg};color:${color};margin-right:4px">${escapeHtml(label)}</span>`;
+}
+
+function renderStatStrip(args: {
+  overdue: number;
+  dueToday: number;
+  meetings: number;
+  waitingOn: number;
+  openTasks: number;
+}): string {
+  const stat = (label: string, val: number, urgent: boolean) => {
+    const color = urgent && val > 0 ? '#dc2626' : '#374151';
+    const bg = urgent && val > 0 ? '#fee2e2' : '#f3f4f6';
+    return `<div style="text-align:center;padding:10px 12px;background:${bg};border-radius:8px;min-width:60px">
+      <div style="font-size:22px;font-weight:700;color:${color}">${val}</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:2px;white-space:nowrap">${escapeHtml(label)}</div>
+    </div>`;
+  };
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
+    ${stat('Overdue', args.overdue, true)}
+    ${stat('Due Today', args.dueToday, true)}
+    ${stat('Meetings', args.meetings, false)}
+    ${stat('Waiting On', args.waitingOn, false)}
+    ${stat('Open Tasks', args.openTasks, false)}
+  </div>`;
+}
+
+function renderTaskRow(t: Task, todayLocalDate: string): string {
+  const priorityColor = PRIORITY_COLOR[t.priority] ?? '#6b7280';
+  const priorityBg = t.priority === 'critical' ? '#fee2e2'
+    : t.priority === 'urgent' ? '#fef3c7'
+    : '#f3f4f6';
+  const priorityLabel = PRIORITY_LABEL[t.priority] ?? 'Routine';
+  const overdueFlag = t.due_date && t.due_date < todayLocalDate;
+  const dueTodayFlag = t.due_date === todayLocalDate;
+  const dueLabel = overdueFlag
+    ? `<span style="color:#dc2626;font-size:12px;margin-left:6px">overdue (${t.due_date})</span>`
+    : dueTodayFlag
+    ? `<span style="color:#d97706;font-size:12px;margin-left:6px">due today</span>`
+    : t.due_date
+    ? `<span style="color:#6b7280;font-size:12px;margin-left:6px">due ${t.due_date}</span>`
+    : '';
+  const waitingChip = t.waiting_on?.trim()
+    ? `<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:1px 6px;border-radius:8px;margin-left:6px">Waiting: ${escapeHtml(t.waiting_on.trim())}</span>`
+    : '';
+  const rescheduleFlag = (t.reschedule_count ?? 0) >= 3
+    ? `<span style="display:inline-block;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:600;padding:1px 6px;border-radius:8px;margin-left:6px">↻ ${t.reschedule_count}×</span>`
+    : '';
+
+  return `<li style="margin:10px 0;line-height:1.5;list-style:none;padding-left:0">
+    <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:2px">
+      ${chip(priorityLabel, priorityColor, priorityBg)}
+      <strong style="font-size:14px">${escapeHtml(t.title)}</strong>
+      ${dueLabel}${waitingChip}${rescheduleFlag}
+    </div>
+  </li>`;
+}
+
+function renderEventRow(e: Event, userTz: string): string {
+  const when = friendlyTimeLabel(new Date(e.start_at), userTz);
+  return `<li style="margin:8px 0;line-height:1.45;list-style:none">
+    <span style="display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600;padding:2px 8px;border-radius:8px;margin-right:8px">${escapeHtml(when)}</span>
+    ${escapeHtml(e.title)}
+  </li>`;
+}
+
+function renderInsightRow(insight: Insight): string {
+  const colors = {
+    warning: { bg: '#fffbeb', border: '#f59e0b', icon: '⚠️' },
+    nudge:   { bg: '#faf5ff', border: '#a855f7', icon: '💡' },
+    info:    { bg: '#eff6ff', border: '#3b82f6', icon: '👁' },
+  };
+  const c = colors[insight.kind];
+  return `<li style="margin:10px 0;list-style:none;background:${c.bg};border-left:3px solid ${c.border};padding:8px 12px;border-radius:0 6px 6px 0;font-size:13px;line-height:1.5">
+    ${c.icon} ${escapeHtml(insight.text)}
+  </li>`;
+}
+
+function renderSection(title: string, subtitle: string, body: string): string {
+  return `<section style="margin-top:28px">
+    <h2 style="font-size:13px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#374151;margin:0 0 2px">${escapeHtml(title)}</h2>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 12px">${escapeHtml(subtitle)}</p>
+    ${body}
+  </section>`;
 }
 
 function renderDigestHtml(args: {
-  greeting: string;
+  mode: BriefingMode;
+  name: string;
   dateLabel: string;
   criticalTasks: Task[];
   dueTodayTasks: Task[];
   overdueTasks: Task[];
   waitingOnTasks: Task[];
   eventsToday: Event[];
+  watchList: Insight[];
+  nudges: Insight[];
   todayLocalDate: string;
   userTz: string;
+  totalOpenTasks: number;
 }): string {
-  const section = (title: string, count: number, body: string) => `
-    <section style="margin-top:24px">
-      <h2 style="font-size:13px;letter-spacing:0.6px;text-transform:uppercase;color:#374151;margin:0 0 10px">${escapeHtml(title)} <span style="color:#9ca3af;font-weight:500">${count}</span></h2>
-      ${body}
-    </section>`;
+  const meta = MODE_META[args.mode];
+
+  // Nuts & Bolts: critical first, then overdue, then due today, then schedule
+  const nutsTasksAll = sortTasks([
+    ...args.criticalTasks,
+    ...args.overdueTasks.filter((t) => t.priority !== 'critical'),
+    ...args.dueTodayTasks,
+  ]);
+  // Deduplicate by id
+  const seen = new Set<string>();
+  const nutsTasks = nutsTasksAll.filter((t) => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+
+  const nutsTasksHtml = nutsTasks.length === 0
+    ? '<p style="color:#6b7280;font-size:13px;margin:0">You\'re clear — no critical, overdue, or due-today tasks.</p>'
+    : `<ul style="padding:0;margin:0">${nutsTasks.map((t) => renderTaskRow(t, args.todayLocalDate)).join('')}</ul>`;
+
+  const nutsEventsHtml = args.eventsToday.length === 0
+    ? '<p style="color:#6b7280;font-size:13px;margin:0">No events today.</p>'
+    : `<ul style="padding:0;margin:0">${args.eventsToday.map((e) => renderEventRow(e, args.userTz)).join('')}</ul>`;
+
+  const nutsSection = renderSection(
+    'Nuts & Bolts',
+    'What needs your attention right now.',
+    `${nutsTasksHtml}
+     <div style="margin-top:16px">
+       <p style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px">Today's Schedule</p>
+       ${nutsEventsHtml}
+     </div>`,
+  );
+
+  // Watch List
+  const watchHtml = args.watchList.length === 0
+    ? '<p style="color:#6b7280;font-size:13px;margin:0">Nothing flagged for your radar today.</p>'
+    : `<ul style="padding:0;margin:0">${args.watchList.map(renderInsightRow).join('')}</ul>`;
+
+  const watchSection = renderSection(
+    'Watch List',
+    "Here's what I'd keep an eye on today…",
+    watchHtml,
+  );
+
+  // The Nudge
+  const nudgeHtml = args.nudges.length === 0
+    ? '<p style="color:#6b7280;font-size:13px;margin:0">No nudges today — looking clean.</p>'
+    : `<ul style="padding:0;margin:0">${args.nudges.map(renderInsightRow).join('')}</ul>`;
+
+  const nudgeSection = renderSection(
+    'The Nudge',
+    "Honest check-ins you might not want to hear, but need to.",
+    nudgeHtml,
+  );
+
+  // Waiting on section (always shown if non-empty)
+  const waitingSection = args.waitingOnTasks.length > 0
+    ? renderSection(
+        'Waiting On',
+        'Tasks blocked on someone else.',
+        `<ul style="padding:0;margin:0">${args.waitingOnTasks.map((t) => renderTaskRow(t, args.todayLocalDate)).join('')}</ul>`,
+      )
+    : '';
 
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:24px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;padding:28px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
-      <p style="margin:0;color:#6b7280;font-size:13px">${escapeHtml(args.dateLabel)}</p>
-      <h1 style="margin:6px 0 0;font-size:22px;font-weight:600">Good morning, ${escapeHtml(args.greeting)}.</h1>
-      ${section('Critical', args.criticalTasks.length, renderTaskList(args.criticalTasks, args.todayLocalDate))}
-      ${section('Due today', args.dueTodayTasks.length, renderTaskList(args.dueTodayTasks, args.todayLocalDate))}
-      ${section('Overdue', args.overdueTasks.length, renderTaskList(args.overdueTasks, args.todayLocalDate))}
-      ${section('Waiting on', args.waitingOnTasks.length, renderTaskList(args.waitingOnTasks, args.todayLocalDate))}
-      ${section("Today's events", args.eventsToday.length, renderEventList(args.eventsToday, args.userTz))}
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px"/>
+    <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+
+      <!-- Header -->
+      <div style="border-bottom:1px solid #f3f4f6;padding-bottom:20px;margin-bottom:4px">
+        <p style="margin:0 0 4px;color:#9ca3af;font-size:12px;letter-spacing:0.5px;text-transform:uppercase">${meta.icon} ${escapeHtml(meta.label)} · ${escapeHtml(args.dateLabel)}</p>
+        <h1 style="margin:0;font-size:24px;font-weight:700">${escapeHtml(meta.greeting)}, ${escapeHtml(args.name)}.</h1>
+      </div>
+
+      <!-- Stat strip -->
+      ${renderStatStrip({
+        overdue: args.overdueTasks.length,
+        dueToday: args.dueTodayTasks.length,
+        meetings: args.eventsToday.length,
+        waitingOn: args.waitingOnTasks.length,
+        openTasks: args.totalOpenTasks,
+      })}
+
+      ${nutsSection}
+      ${watchSection}
+      ${nudgeSection}
+      ${waitingSection}
+
+      <!-- Footer -->
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0 16px"/>
       <p style="margin:0;font-size:12px;color:#9ca3af">You're getting this because email notifications are enabled in your Notes profile. Disable any time on the Profile page.</p>
     </div>
   </body>
 </html>`;
 }
+
+// ─── Data fetching ────────────────────────────────────────────────────────────
 
 async function fetchUserEmail(
   admin: SupabaseClient,
@@ -186,9 +462,10 @@ async function processProfile(
     : await fetchUserEmail(admin, profile.user_id);
   if (!email) return { status: 'skipped:no-email', userId: profile.user_id };
 
+  // Fetch all open tasks including reschedule_count and priority_set_at
   const { data: openTasks, error: tasksErr } = await admin
     .from('tasks')
-    .select('id, title, priority, due_date, waiting_on')
+    .select('id, title, priority, due_date, waiting_on, reschedule_count, priority_set_at, updated_at')
     .eq('user_id', profile.user_id)
     .eq('done', false);
   if (tasksErr) throw tasksErr;
@@ -210,21 +487,22 @@ async function processProfile(
     tasks.filter((t) => t.waiting_on && t.waiting_on.trim().length > 0),
   );
 
-  // Pull a generous UTC window around today's local date and filter in JS so
-  // we don't have to reason about tz arithmetic in SQL.
+  // Pull a generous UTC window for events (today + tomorrow for prep detection)
   const windowStart = new Date(now.getTime() - 36 * 3600 * 1000).toISOString();
-  const windowEnd = new Date(now.getTime() + 36 * 3600 * 1000).toISOString();
+  const windowEnd = new Date(now.getTime() + 60 * 3600 * 1000).toISOString();
   const { data: rawEvents, error: eventsErr } = await admin
     .from('events')
-    .select('id, title, start_at, timezone')
+    .select('id, title, start_at, end_at, timezone')
     .eq('user_id', profile.user_id)
     .gte('start_at', windowStart)
     .lt('start_at', windowEnd)
     .order('start_at', { ascending: true });
   if (eventsErr) throw eventsErr;
-  const eventsToday = (rawEvents ?? []).filter(
+  const allEvents = (rawEvents ?? []) as Event[];
+
+  const eventsToday = allEvents.filter(
     (e) => localDateString(new Date(e.start_at), userTz) === todayLocalDate,
-  ) as Event[];
+  );
 
   const hasAnything =
     criticalTasks.length +
@@ -233,9 +511,8 @@ async function processProfile(
       waitingOnTasks.length +
       eventsToday.length >
     0;
+
   if (!hasAnything) {
-    // Still record that today's digest "ran" so we don't keep retrying every
-    // 15 minutes for the rest of the day.
     await admin
       .from('profiles')
       .update({ notify_email_last_digest_at: now.toISOString() })
@@ -243,22 +520,36 @@ async function processProfile(
     return { status: 'skipped:nothing-to-send', userId: profile.user_id };
   }
 
-  const greeting = profile.first_name?.trim() || 'there';
+  // Determine briefing mode from local hour
+  const localHour = parseInt(localTimeString(now, userTz).split(':')[0], 10);
+  const mode = getBriefingMode(localHour);
+
+  // Build intelligence insights
+  const { watchList, nudges } = buildInsights(tasks, allEvents, now, todayLocalDate, userTz);
+
+  const name = profile.first_name?.trim() || 'there';
+  const dateLabel = friendlyDateLabel(now, userTz);
+
   const html = renderDigestHtml({
-    greeting,
-    dateLabel: friendlyDateLabel(now, userTz),
+    mode,
+    name,
+    dateLabel,
     criticalTasks,
     dueTodayTasks,
     overdueTasks,
     waitingOnTasks,
     eventsToday,
+    watchList,
+    nudges,
     todayLocalDate,
     userTz,
+    totalOpenTasks: tasks.length,
   });
 
+  const modeMeta = MODE_META[mode];
   await sendEmail({
     to: email,
-    subject: `Your day — ${friendlyDateLabel(now, userTz)}`,
+    subject: `${modeMeta.label} — ${dateLabel}`,
     html,
   });
 
@@ -269,6 +560,8 @@ async function processProfile(
 
   return { status: 'sent', userId: profile.user_id };
 }
+
+// ─── Entry point ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
