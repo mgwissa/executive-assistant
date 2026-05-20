@@ -44,9 +44,15 @@ type Event = {
   id: string;
   title: string;
   start_at: string;
-  end_at: string | null;
+  duration_minutes: number | null;
   timezone: string;
 };
+
+/** Compute event end time from start_at + duration_minutes. */
+function eventEndAt(e: Event): Date | null {
+  if (e.duration_minutes == null) return null;
+  return new Date(new Date(e.start_at).getTime() + e.duration_minutes * 60_000);
+}
 
 // ─── Priority helpers ────────────────────────────────────────────────────────
 
@@ -163,8 +169,9 @@ function buildInsights(tasks: Task[], events: Event[], now: Date, todayLocalDate
   for (let i = 0; i < todayEvents.length - 1; i++) {
     const curr = todayEvents[i];
     const next = todayEvents[i + 1];
-    if (!curr.end_at) continue;
-    const gapMs = new Date(next.start_at).getTime() - new Date(curr.end_at).getTime();
+    const currEnd = eventEndAt(curr);
+    if (!currEnd) continue;
+    const gapMs = new Date(next.start_at).getTime() - currEnd.getTime();
     const gapMin = Math.floor(gapMs / 60000);
     if (gapMin >= 0 && gapMin < 10) {
       watchList.push({
@@ -492,7 +499,7 @@ async function processProfile(
   const windowEnd = new Date(now.getTime() + 60 * 3600 * 1000).toISOString();
   const { data: rawEvents, error: eventsErr } = await admin
     .from('events')
-    .select('id, title, start_at, end_at, timezone')
+    .select('id, title, start_at, duration_minutes, timezone')
     .eq('user_id', profile.user_id)
     .gte('start_at', windowStart)
     .lt('start_at', windowEnd)
@@ -608,6 +615,7 @@ Deno.serve(async (req) => {
       results.push(await processProfile(admin, p, now));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error(`send-daily-digest failed for user ${p.user_id}:`, msg);
       results.push({ status: 'error', userId: p.user_id, error: msg });
     }
   }
