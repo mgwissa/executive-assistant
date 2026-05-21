@@ -1,0 +1,33 @@
+---
+description: Always read AGENTS.md at the start of work in this repo; keep it updated as a living document so we don't need to get it perfect in one pass.
+alwaysApply: true
+---
+
+# Project context — read + keep updated
+
+This repo is a personal Supabase-backed workspace (notes + tasks + calendar + assistant). `AGENTS.md` at the repo root is the single source of truth for stack, routes, data model, conventions, and known gotchas.
+
+## At the start of every task
+
+1. **Read `AGENTS.md`** before writing or changing code.
+2. If the task touches the data model, also skim `supabase/migrations/` chronologically.
+3. Follow existing patterns documented in the file — don't introduce a new state lib, routing system, or CSS approach.
+
+## Keep AGENTS.md alive
+
+The doc is intentionally imperfect. Treat it as a living document and **update it in the same change** whenever any of these happens:
+
+- You add a new route, page, Zustand store, optional addon, or external service.
+- You add or change a DB table/column, an Edge Function, a cron job, or a DB trigger.
+- You discover a gotcha worth a future agent's time (an undocumented quirk, a footgun, a surprising integration behavior).
+- You change an established convention (naming, sort order, file layout, env/secret handling).
+- You learned something this session that the doc doesn't already say.
+
+If the change is small, a one- or two-line addition to the relevant section is enough. Don't refactor the whole doc — just append.
+
+## Other hard rules
+
+- When you change a DB table, update the matching migration **and** `src/types/database.ts` in the same change.
+- Don't commit unless the user asks. When you do, match the lowercase conventional-commit style already in `git log` (`feat:`, `fix:`, `fix(scope):`).
+- Owner is on Windows + PowerShell — avoid bash-only syntax (`&&` chaining, heredocs) in shell commands. Use `;` or split commands.
+- Use Tailwind tokens from the design system (`surface-*`, `text-*`, `brand-50…brand-950`); don't hard-code colors.
