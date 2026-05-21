@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -6,14 +6,27 @@ import { formatRelative } from '../lib/format';
 import { MoveNoteModal } from './MoveNoteModal';
 import { NotesEditor } from './NotesEditor';
 import { BookIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
+import type { Json } from '../types/database';
 
 export function Editor() {
-  const { notes, activeId, updateNote, deleteNote, setActive } = useNotesStore();
+  const note = useNotesStore((s) =>
+    s.activeId ? (s.notes.find((n) => n.id === s.activeId) ?? null) : null,
+  );
+  const updateNote = useNotesStore((s) => s.updateNote);
+  const deleteNote = useNotesStore((s) => s.deleteNote);
+  const setActive = useNotesStore((s) => s.setActive);
   const notebooks = useNotebooksStore((s) => s.notebooks);
   const sections = useNotebooksStore((s) => s.sections);
   const theme = useThemeStore((s) => s.theme);
-  const note = notes.find((n) => n.id === activeId) ?? null;
   const [moveOpen, setMoveOpen] = useState(false);
+
+  const onNoteContentChange = useCallback(
+    (payload: { content: string; content_blocks: Json }) => {
+      if (!note) return;
+      void updateNote(note.id, payload);
+    },
+    [note?.id, updateNote],
+  );
 
   const breadcrumb = useMemo(() => {
     if (!note?.section_id) return null;
@@ -123,7 +136,7 @@ export function Editor() {
             noteId={note.id}
             initialMarkdown={note.content ?? ''}
             initialBlocks={note.content_blocks ?? null}
-            onChange={(payload) => updateNote(note.id, payload)}
+            onChange={onNoteContentChange}
             theme={theme}
           />
         </div>

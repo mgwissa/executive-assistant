@@ -30,6 +30,9 @@ const notesDictionary = {
   },
 };
 
+/** Debounce markdown export + store writes — blocksToMarkdownLossy is too heavy per keystroke. */
+const EMIT_DEBOUNCE_MS = 300;
+
 type NotesEditorProps = {
   /**
    * Note id. Used as a stable identity marker — parents should also pass
@@ -77,6 +80,21 @@ export function NotesEditor({
   const initialBlocksRef = useRef(initialBlocks);
   const initializedRef = useRef(false);
   const lastEmittedSnapshotRef = useRef<string>('');
+  const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const flushPending = () => {
+    if (emitTimerRef.current) {
+      clearTimeout(emitTimerRef.current);
+      emitTimerRef.current = null;
+    }
+    if (!initializedRef.current) return;
+    const snap = JSON.stringify(editor.document);
+    if (snap === lastEmittedSnapshotRef.current) return;
+    lastEmittedSnapshotRef.current = snap;
+    onChangeRef.current(noteDocumentFromEditor(editor));
+  };
 
   useEffect(() => {
     if (isPersistedBlockDocument(initialBlocksRef.current)) {
@@ -93,6 +111,8 @@ export function NotesEditor({
     // Intentionally run once per mount; parent remounts on note switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => () => flushPending(), [editor]);
 
   const slashGetItems = useMemo(
     () => async (query: string) =>
@@ -112,10 +132,8 @@ export function NotesEditor({
         formattingToolbar={false}
         onChange={() => {
           if (!initializedRef.current) return;
-          const snap = JSON.stringify(editor.document);
-          if (snap === lastEmittedSnapshotRef.current) return;
-          lastEmittedSnapshotRef.current = snap;
-          onChange(noteDocumentFromEditor(editor));
+          if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
+          emitTimerRef.current = setTimeout(flushPending, EMIT_DEBOUNCE_MS);
         }}
       >
         <SuggestionMenuController triggerCharacter="/" getItems={slashGetItems} />

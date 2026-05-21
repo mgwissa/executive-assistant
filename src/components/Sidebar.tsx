@@ -1,7 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { isNotebookShared } from '../lib/notebookSharing';
 import { extractPreview, formatRelative } from '../lib/format';
-import { getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
@@ -50,7 +49,11 @@ const SECTION_TONES = [
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
-  const { notes, activeId, query, setActive, createNote } = useNotesStore();
+  const notes = useNotesStore((s) => s.notes);
+  const activeId = useNotesStore((s) => s.activeId);
+  const query = useNotesStore((s) => s.query);
+  const setActive = useNotesStore((s) => s.setActive);
+  const createNote = useNotesStore((s) => s.createNote);
   const {
     notebooks,
     sections,
@@ -96,7 +99,7 @@ export function Sidebar() {
     return notesInNotebook.filter(
       (n) =>
         n.title.toLowerCase().includes(q) ||
-        getNoteCanonicalMarkdown(n).toLowerCase().includes(q),
+        (n.content ?? '').toLowerCase().includes(q),
     );
   }, [notesInNotebook, query]);
 
@@ -513,7 +516,7 @@ function SectionGroup({
           ) : (
             notes.map((note) => {
               const isActive = note.id === activeNoteId;
-              const preview = extractPreview(getNoteCanonicalMarkdown(note));
+              const preview = extractPreview(note.content ?? '');
               return (
                 <li key={note.id}>
                   <button
