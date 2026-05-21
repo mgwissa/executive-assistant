@@ -21,27 +21,29 @@ import {
 } from './icons';
 import { SearchBar } from './SearchBar';
 
-/** Subtle alternating washes — same family as the app brand, not a rainbow. */
+/** Subtle alternating washes — same family as the app brand, not a rainbow.
+ * Dark mode uses faint accent tints over the dark surface so every section
+ * reads as "dark with a hint of color" rather than a bright patch. */
 const SECTION_TONES = [
   {
     shell:
-      'border-indigo-200/55 bg-gradient-to-br from-indigo-50/75 via-surface-raised to-white shadow-sm ring-indigo-950/[0.04] dark:border-indigo-500/20 dark:from-indigo-950/35 dark:via-surface-raised/30 dark:to-surface-raised/15 dark:ring-indigo-400/10',
-    header: 'bg-indigo-50/50 dark:bg-indigo-950/20',
-    rail: 'border-l-indigo-200/70 dark:border-l-indigo-500/25',
+      'border-indigo-200/55 bg-gradient-to-br from-indigo-50/75 via-surface-raised to-white shadow-sm ring-indigo-950/[0.04] dark:border-indigo-500/15 dark:from-indigo-500/[0.06] dark:via-surface-raised/30 dark:to-surface-raised/10 dark:ring-indigo-400/10',
+    header: 'bg-indigo-50/50 dark:bg-indigo-500/[0.05]',
+    rail: 'border-l-indigo-200/70 dark:border-l-indigo-500/30',
     folder: 'text-indigo-600 dark:text-indigo-400',
   },
   {
     shell:
-      'border-slate-200/70 bg-gradient-to-br from-slate-50/90 via-surface-raised to-white shadow-sm ring-slate-900/[0.03] dark:border-zinc-600/35 dark:from-zinc-800/40 dark:via-surface-raised/25 dark:to-surface-raised/12 dark:ring-white/[0.05]',
-    header: 'bg-slate-100/55 dark:bg-zinc-800/35',
-    rail: 'border-l-slate-300/80 dark:border-l-zinc-600/40',
+      'border-slate-200/70 bg-gradient-to-br from-slate-50/90 via-surface-raised to-white shadow-sm ring-slate-900/[0.03] dark:border-zinc-600/25 dark:from-white/[0.025] dark:via-surface-raised/30 dark:to-surface-raised/10 dark:ring-white/[0.03]',
+    header: 'bg-slate-100/55 dark:bg-white/[0.03]',
+    rail: 'border-l-slate-300/80 dark:border-l-zinc-500/45',
     folder: 'text-slate-600 dark:text-zinc-400',
   },
   {
     shell:
-      'border-brand-200/60 bg-gradient-to-br from-brand-50/85 via-surface-raised to-white shadow-sm ring-brand-900/[0.04] dark:border-brand-500/22 dark:from-brand-950/30 dark:via-surface-raised/28 dark:to-surface-raised/12 dark:ring-brand-400/10',
-    header: 'bg-brand-50/60 dark:bg-brand-950/22',
-    rail: 'border-l-brand-300/75 dark:border-l-brand-500/30',
+      'border-brand-200/60 bg-gradient-to-br from-brand-50/85 via-surface-raised to-white shadow-sm ring-brand-900/[0.04] dark:border-brand-500/18 dark:from-brand-500/[0.06] dark:via-surface-raised/30 dark:to-surface-raised/10 dark:ring-brand-400/10',
+    header: 'bg-brand-50/60 dark:bg-brand-500/[0.05]',
+    rail: 'border-l-brand-300/75 dark:border-l-brand-500/35',
     folder: 'text-brand-700 dark:text-brand-400',
   },
 ] as const;
