@@ -31,7 +31,7 @@ export function Editor() {
 
   if (!note) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <div className="rounded-2xl border border-border bg-surface-raised p-8 shadow-card ring-1 ring-border/80">
           <p className="text-sm font-medium text-text">No note open</p>
           <p className="mt-1 max-w-sm text-xs text-text-muted">
@@ -44,7 +44,10 @@ export function Editor() {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-surface-raised">
+    // `flex-1 w-full`: parent (`<main>`) is a flex row. Without grow/width we
+    // size to content — for a fresh empty note that's basically zero, which
+    // makes the editor look like it "shrinks" until you start typing.
+    <div className="flex h-full w-full min-w-0 flex-1 flex-col bg-surface-raised">
       <header className="border-b border-border bg-surface/90 px-3 py-3 shadow-sm backdrop-blur sm:px-6 sm:py-3.5">
         {breadcrumb && (
           <nav

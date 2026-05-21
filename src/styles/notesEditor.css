@@ -115,6 +115,41 @@
   letter-spacing: 0;
 }
 
+/*
+ * List items: the same flex layout that fills the editable column also pushes
+ * the empty-block ::after placeholder to the far right (the "List" label was
+ * floating on the right edge). Apply the same absolute-positioning fix as
+ * above, offset by the bullet/checkbox column (~28px) so the hint sits where
+ * the caret will land.
+ */
+.notes-editor
+  .bn-block-content[data-content-type='bulletListItem']:has(.ProseMirror-trailingBreak:only-child),
+.notes-editor
+  .bn-block-content[data-content-type='numberedListItem']:has(.ProseMirror-trailingBreak:only-child),
+.notes-editor
+  .bn-block-content[data-content-type='checkListItem']:has(.ProseMirror-trailingBreak:only-child) {
+  position: relative;
+}
+
+.notes-editor
+  .bn-block-content[data-content-type='bulletListItem']:has(.ProseMirror-trailingBreak:only-child)::after,
+.notes-editor
+  .bn-block-content[data-content-type='numberedListItem']:has(.ProseMirror-trailingBreak:only-child)::after,
+.notes-editor
+  .bn-block-content[data-content-type='checkListItem']:has(.ProseMirror-trailingBreak:only-child)::after {
+  position: absolute;
+  inset-inline-start: 28px;
+  inset-block-start: 3px;
+  margin-inline: 0;
+  z-index: 0;
+  pointer-events: none;
+  color: rgb(var(--text-muted));
+  opacity: 0.85;
+  font-size: 1rem;
+  font-style: normal;
+  letter-spacing: 0;
+}
+
 .notes-editor .bn-editor [data-content-type="table"] .tableWrapper {
   margin-block: 1.25rem;
   overflow: hidden auto;
