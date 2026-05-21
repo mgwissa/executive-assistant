@@ -1,7 +1,6 @@
 import { useActiveView } from '../lib/routes';
 import { useShellLayoutStore } from '../store/useShellLayoutStore';
 import { MenuIcon } from './icons';
-import { SearchBar } from './SearchBar';
 
 const titles: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -15,10 +14,23 @@ const titles: Record<string, string> = {
   routine: 'Weekly routine',
 };
 
+const subtitles: Record<string, string> = {
+  dashboard: 'Your daily command center.',
+  notes: 'Browse notebooks in the sidebar; search filters the notes list there.',
+  tasks: 'Your open work, sorted by priority.',
+  calendar: 'Today, this week, and beyond.',
+  owed: "Tasks you're waiting on from other people.",
+  links: 'Quick-access bookmarks.',
+  profile: 'Account, preferences, and notifications.',
+  time: 'Where your hours are going.',
+  routine: 'This week\u2019s rhythm.',
+  assistant: 'Your morning briefing in full.',
+};
+
 export function TopBar() {
   const view = useActiveView();
   const title = titles[view] ?? 'Workspace';
-  const notesContext = view === 'notes';
+  const subtitle = subtitles[view] ?? '';
   const openMobileNav = useShellLayoutStore((s) => s.openMobileNav);
 
   return (
@@ -38,23 +50,10 @@ export function TopBar() {
           <h1 className="truncate text-base font-semibold tracking-tight text-text sm:text-lg">
             {title}
           </h1>
-          <p className="mt-0.5 hidden text-xs text-text-muted sm:block">
-            {notesContext
-              ? 'Browse notebooks in the sidebar; search filters the notes list there.'
-              : 'Your daily command center.'}
-          </p>
+          {subtitle ? (
+            <p className="mt-0.5 hidden text-xs text-text-muted sm:block">{subtitle}</p>
+          ) : null}
         </div>
-
-        {/* Search lives in the notes sidebar in notes context. On phones, hide it
-            in the top bar to leave room for the title; users can scroll into
-            page content where each page provides its own controls. */}
-        {!notesContext ? (
-          <div className="hidden w-full max-w-md sm:block">
-            <div className="rounded-xl bg-surface-raised/60 p-1 ring-1 ring-border backdrop-blur">
-              <SearchBar />
-            </div>
-          </div>
-        ) : null}
       </div>
     </header>
   );
