@@ -21,28 +21,20 @@ type EntryWithProject = {
   project_id: string | null;
 };
 
-/** First UTC instant on calendar day `ymd` in IANA zone `tz`. */
+/**
+ * First UTC instant on calendar day `ymd` in IANA zone `tz`.
+ *
+ * Previous implementation walked back one millisecond at a time which
+ * cost ~25M iterations per call (one `formatInTimeZone` each) — clicking
+ * "Custom" in the chart locked the tab. `fromZonedTime` does this in O(1).
+ */
 export function startOfZonedDayUtc(ymd: string, tz: string): Date {
-  const [yStr, mStr, dStr] = ymd.split('-');
-  const y = Number(yStr);
-  const m = Number(mStr);
-  const d = Number(dStr);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return new Date(NaN);
+  const [y, m, d] = ymd.split('-').map(Number);
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
     return new Date(NaN);
   }
-  let t = Date.UTC(y, m - 1, d, 12, 0, 0, 0);
-  let guard = 0;
-  for (;;) {
-    const got = formatInTimeZone(new Date(t), tz, 'yyyy-MM-dd');
-    if (got === ymd) break;
-    if (got < ymd) t += 24 * 3_600_000;
-    else t -= 24 * 3_600_000;
-    if (++guard > 400) return new Date(NaN);
-  }
-  while (t > 0 && formatInTimeZone(new Date(t - 1), tz, 'yyyy-MM-dd') === ymd) {
-    t -= 1;
-  }
-  return new Date(t);
+  return fromZonedTime(`${ymd}T00:00:00.000`, tz);
 }
 
 function addCalendarDaysInTz(fromUtc: Date, tz: string, delta: number): Date {
@@ -193,7 +185,12 @@ export function computeDailyBucketsForYmdRange(
   const endStart = startOfZonedDayUtc(endYmd, tz);
   if (Number.isNaN(cursor.getTime()) || Number.isNaN(endStart.getTime())) return [];
 
+  // ~27 years of days; well past any reasonable custom range. Guards against
+  // an addCalendarDaysInTz returning a non-advancing date and causing a hang.
+  const MAX_DAYS = 10_000;
+  let safety = 0;
   while (cursor.getTime() <= endStart.getTime()) {
+    if (++safety > MAX_DAYS) break;
     days.push({
       key: formatInTimeZone(cursor, tz, 'yyyy-MM-dd'),
       label: formatInTimeZone(cursor, tz, 'EEE M/d'),
