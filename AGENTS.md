@@ -31,6 +31,7 @@ src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
   components/          UI components (one file per concern)
+    TaskQuickAddForm.tsx  Shared task create form (Tasks, Dashboard, Assistant)
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
     ui/                Generic primitives: Card, Badge, EmptyState, SectionHeader, ...
   hooks/               useCriticalOverload, useNotebookRealtime
@@ -80,7 +81,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc) |
-| `tasks` | Standalone tasks | `priority` (critical/urgent/high/normal/low), `due_date`, `waiting_on`, `description`, `priority_set_at`, `reschedule_count`, `done` |
+| `tasks` | Standalone tasks | `priority` (critical/urgent/high/normal/low), `due_date`, `due_time` (optional; requires `due_date`), `reminder_sent_at` (email dedupe; future cron), `linked_event_id` (FK → `events`), `waiting_on`, `description`, `priority_set_at`, `reschedule_count`, `done` |
 | `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields |
 | `useful_links` | Bookmarks | `title`, `url`, `category` |
 | `time_entries`, `time_projects` | Time tracking | day-grouped, project-tagged |
@@ -107,7 +108,7 @@ Conventions:
 | `useProfileStore` | profile row; `updateProfile(userId, patch)` |
 | `useNotebooksStore` | notebooks + sections + member counts + `activeNotebookId` |
 | `useNotesStore` | notes + `activeId` + free-text `query` (consumed only by notes Sidebar) |
-| `useTasksStore` | tasks; also runs `applyDueDatePromotion` and `applyEscalationFromProfile` post-fetch |
+| `useTasksStore` | tasks; `createTask(userId, title, options?)` accepts optional `priority` / `dueDate` / `dueTime`; `setDueTime`, `setLinkedEvent`; `deleteTask` prompts via `window.confirm` (returns `boolean`); runs `applyDueDatePromotion` and `applyEscalationFromProfile` post-fetch |
 | `useEventsStore` | events; range-based fetch via `eventsFetchIsoRange(timezone)` |
 | `useUsefulLinksStore` | links |
 | `useTimeEntriesStore`, `useTimeProjectsStore` | time tracking |
@@ -134,7 +135,12 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 **Sort order everywhere** (tasks list, dashboard, owed-to-me):
 1. `priorityRank` (critical first)
 2. `compareDueDate` (earliest first, nulls last)
-3. `updated_at` desc (recent first)
+3. `compareDueTime` on the Tasks page when due dates tie — timed tasks first, earliest first (`src/lib/taskSchedule.ts`)
+4. `updated_at` desc (recent first)
+
+**Task schedule helpers:** `src/lib/taskSchedule.ts` — `normalizeDueTime` (Postgres `time` → `HH:MM`), `taskDueLabel`, `compareDueTime`. Clearing `due_date` also clears `due_time`, `linked_event_id`, and `reminder_sent_at`. `reminder_sent_at` + email cron are planned (migration `2026-05-21_028_task_due_time.sql`); not wired yet.
+
+**Quick add:** `TaskQuickAddForm` — title + priority + optional date/time. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
 
 ## Notes editor
 
@@ -209,6 +215,7 @@ If you change anything related to notification auth, update *both* secret stores
 - **Single child of a flex container needs `flex-1` (or `w-full`)** to fill its parent — a flex item defaults to `flex: 0 1 auto`, so it sizes to content. We hit this on `<Editor>` inside `<main>` of `NotesView`: a fresh empty note collapsed to placeholder width because the outer Editor div lacked grow. Add `flex-1 w-full` (or restructure the parent) whenever a single child should fill a flex parent.
 - **Never walk milliseconds to find a date boundary.** `timeTrackingCharts.startOfZonedDayUtc` originally walked back `t -= 1` until the day flipped — that's ~25M `formatInTimeZone` calls per invocation and locked the browser tab when clicking "Custom" in the time-tracking chart. Use `date-fns-tz`'s `fromZonedTime('yyyy-MM-ddT00:00:00', tz)` (O(1)). Same lesson applies anywhere you need start-of-day in a non-UTC zone.
 - **BlockNote empty-block placeholders are a `::after`** on the `.bn-block-content` flex row. Since we set `flex: 1` on the first child (so the editable column fills), the placeholder gets pushed to the right edge of the row by default. Fix in `src/styles/notesEditor.css`: `position: absolute` the `::after` and pin it with `inset-inline-start`. List items need an offset (`28px`) to clear the bullet/checkbox; non-list blocks use `0`.
+- **`deleteTask` confirmation lives in the store** — don't add per-page `window.confirm` calls; `deleteTask` returns `false` when the user cancels.
 - **Notes perf:** never call `getNoteCanonicalMarkdown()` (runs `blocksToMarkdownLossy`) inside render loops — e.g. sidebar previews/search should use `note.content`. Editor `onChange` debounces markdown export (~300ms) before hitting Zustand; flush on unmount so note switches don't lose edits.
 
 ## Scripts

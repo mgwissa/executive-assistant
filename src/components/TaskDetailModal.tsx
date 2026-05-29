@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatInTimeZone } from 'date-fns-tz';
 import type { TaskPriority } from '../lib/priority';
 import { PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked } from '../lib/priority';
+import { normalizeDueTime } from '../lib/taskSchedule';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { prioritySelectClass } from '../lib/priorityUiClasses';
 import { MarkdownPreview } from './MarkdownPreview';
+import { useEventsStore } from '../store/useEventsStore';
+import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Task } from '../types';
 import { CheckSquareIcon, NoteIcon, SquareIcon, TrashIcon } from './icons';
@@ -17,8 +21,10 @@ export function TaskDetailModal({
   task: Task;
   onClose: () => void;
 }) {
-  const { setTaskPriority, setDueDate, setWaitingOn, updateDescription, renameTask, toggleDone, deleteTask } =
+  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, updateDescription, renameTask, toggleDone, deleteTask } =
     useTasksStore();
+  const events = useEventsStore((s) => s.events);
+  const profileTz = useProfileStore((s) => s.profile?.timezone);
 
   const fresh = useTasksStore((s) => s.tasks.find((t) => t.id === task.id));
   const t = fresh ?? task;
@@ -59,6 +65,16 @@ export function TaskDetailModal({
   };
 
   const hasNotes = t.description.length > 0;
+
+  const eventOptions = useMemo(() => {
+    const tz = profileTz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return [...events]
+      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
+      .map((e) => ({
+        id: e.id,
+        label: `${formatInTimeZone(new Date(e.start_at), tz, 'EEE M/d h:mm a')} — ${e.title}`,
+      }));
+  }, [events, profileTz]);
 
   return (
     <div
@@ -165,14 +181,56 @@ export function TaskDetailModal({
               className="input mt-0 min-h-[2rem] py-1 text-sm"
             />
           </div>
+          {t.due_date ? (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-text-muted" htmlFor={`modal-time-${t.id}`}>
+                Time
+              </label>
+              <input
+                id={`modal-time-${t.id}`}
+                type="time"
+                value={normalizeDueTime(t.due_time) ?? ''}
+                onChange={(e) => void setDueTime(t.id, e.target.value || null)}
+                className="input mt-0 min-h-[2rem] py-1 text-sm"
+              />
+              {t.due_time ? (
+                <button
+                  type="button"
+                  onClick={() => void setDueTime(t.id, null)}
+                  className="text-xs text-text-muted hover:text-text"
+                >
+                  Clear time
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-xs">
+            <label className="shrink-0 text-xs font-medium text-text-muted" htmlFor={`modal-event-${t.id}`}>
+              Meeting
+            </label>
+            <select
+              id={`modal-event-${t.id}`}
+              value={t.linked_event_id ?? ''}
+              onChange={(e) => void setLinkedEvent(t.id, e.target.value || null)}
+              className="input mt-0 min-h-[2rem] min-w-0 flex-1 py-1 text-sm"
+              disabled={eventOptions.length === 0}
+              title={eventOptions.length === 0 ? 'No events loaded for this week' : undefined}
+            >
+              <option value="">No linked meeting</option>
+              {eventOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Delete this task?')) {
-                  void deleteTask(t.id);
-                  onClose();
-                }
+                void deleteTask(t.id).then((deleted) => {
+                  if (deleted) onClose();
+                });
               }}
               className="btn-ghost h-8 w-8 p-0 text-red-600 hover:bg-red-600/10 dark:text-red-300"
               aria-label="Delete task"

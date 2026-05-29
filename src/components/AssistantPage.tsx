@@ -30,6 +30,7 @@ import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
+import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
 
 type Tab = 'nuts' | 'watch' | 'nudge';
 
@@ -131,10 +132,9 @@ export function AssistantPage() {
     if (!user) return;
     setAccepting(proposal.id);
     try {
-      const title = proposal.suggestedDueDate
-        ? `${proposal.suggestedTaskTitle} [due:${proposal.suggestedDueDate}]`
-        : proposal.suggestedTaskTitle;
-      await createTask(user.id, title);
+      await createTask(user.id, proposal.suggestedTaskTitle, {
+        ...(proposal.suggestedDueDate ? { dueDate: proposal.suggestedDueDate } : {}),
+      });
       setAcceptedProposals((prev) => new Set(prev).add(proposal.id));
     } finally {
       setAccepting(null);
@@ -193,6 +193,26 @@ export function AssistantPage() {
 
         {/* Nuts at a glance — stat strip */}
         <NutsStrip report={report} onNavigate={navigate} />
+
+        <section className="mt-6">
+          <SectionHeader
+            icon={<CheckSquareIcon className="h-4 w-4" />}
+            title="Quick add"
+            accent="amber"
+          />
+          <Card padded="none" className="mt-3 overflow-hidden">
+            <TaskQuickAddForm
+              variant="embedded"
+              disabled={!user}
+              idPrefix="assistant-quick-add"
+              titlePlaceholder="Capture a task…"
+              onSubmit={async (payload) => {
+                if (!user) return;
+                await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+              }}
+            />
+          </Card>
+        </section>
 
         {/* Main insight tabs */}
         <section className="mt-8">

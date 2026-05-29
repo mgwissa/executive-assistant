@@ -51,6 +51,7 @@ import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { SectionHeader } from './ui/SectionHeader';
+import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
 import { UsefulLinksSection } from './UsefulLinksSection';
 
 const RECENT_LIMIT = 5;
@@ -372,11 +373,14 @@ export function Dashboard() {
             >
             {/* Inner clips scroll; outer stays overflow-visible so card-pop ::after glow isn’t clipped */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card">
-              <QuickAddTodo
+              <TaskQuickAddForm
+                variant="embedded"
                 disabled={!user}
-                onAdd={async (title) => {
+                idPrefix="dashboard-quick-add"
+                titlePlaceholder="Quick add a todo…"
+                onSubmit={async (payload) => {
                   if (!user) return;
-                  await createTask(user.id, title);
+                  await createTask(user.id, payload.title, toCreateTaskOptions(payload));
                 }}
               />
               <div className="shrink-0 space-y-2 border-b border-border bg-surface-raised/35 px-4 py-2.5">
@@ -787,40 +791,6 @@ function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
 function statusFromDb(status: string): RoutineStatus {
   if (status === 'done' || status === 'skipped') return status;
   return 'pending';
-}
-
-function QuickAddTodo({
-  disabled,
-  onAdd,
-}: {
-  disabled: boolean;
-  onAdd: (title: string) => Promise<void>;
-}) {
-  const [title, setTitle] = useState('');
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const trimmed = title.trim();
-        if (!trimmed) return;
-        await onAdd(trimmed);
-        setTitle('');
-      }}
-      className="flex items-center gap-2 border-b border-border px-4 py-3"
-    >
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="input"
-        placeholder="Quick add a todo…"
-        maxLength={200}
-        disabled={disabled}
-      />
-      <button type="submit" className="btn-primary whitespace-nowrap" disabled={disabled}>
-        Add
-      </button>
-    </form>
-  );
 }
 
 function AssistantDashboardCard({
