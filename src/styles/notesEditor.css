@@ -65,10 +65,27 @@
 .notes-editor
   .bn-block-content:not([data-content-type='table']):not([data-file-block]):not(
     [data-content-type='toggleListItem']
-  )
+  ):not([data-content-type='checkListItem'])
   > *:first-child {
   flex: 1 1 0%;
   min-width: 0;
+}
+
+/*
+ * Checklist rows: first child is the checkbox shell, not the editable text.
+ * Growing the checkbox column (via the rule above) lets .bn-inline-content
+ * (width: 100% in BlockNote) overlap the checkbox and steal clicks.
+ */
+.notes-editor .bn-block-content[data-content-type='checkListItem'] > div:has(> input) {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.notes-editor .bn-block-content[data-content-type='checkListItem'] > .bn-inline-content {
+  flex: 1 1 0%;
+  min-width: 0;
+  width: auto;
 }
 
 .notes-editor .bn-block-content .bn-inline-content {
