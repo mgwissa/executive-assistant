@@ -143,7 +143,7 @@ export function gapKindLabel(kind: DirectiveGap['kind']): string {
     no_calendar: 'Calendar',
     pick_focus: 'Focus',
     orphan_followup: 'Follow-up',
-    stale_waiting: 'Waiting',
+    delegation_chase: 'Chase',
   };
   return map[kind] ?? kind;
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
+import { listChaseCandidates, snoozeChaseUntil } from '../lib/delegationChase';
 import {
   computeDayHudMetrics,
   formatHudHours,
@@ -10,7 +11,9 @@ import {
 } from '../lib/dayHudMetrics';
 import type { DirectiveReport } from '../lib/executiveDirective';
 import { viewPath } from '../lib/routes';
-import { ArrowRightIcon, CalendarIcon, CheckSquareIcon, ClockIcon } from './icons';
+import { useTasksStore } from '../store/useTasksStore';
+import type { Task } from '../types';
+import { ArrowRightIcon, CalendarIcon, CheckSquareIcon } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 
@@ -222,6 +225,94 @@ function MeetingsCard({ metrics }: { metrics: DayHudMetrics }) {
   );
 }
 
+function DelegationChaseCard({ tasks, onRefresh }: { tasks: Task[]; onRefresh?: () => void }) {
+  const navigate = useNavigate();
+  const snoozeChase = useTasksStore((s) => s.snoozeChase);
+  const recordChase = useTasksStore((s) => s.recordChase);
+  const toggleDone = useTasksStore((s) => s.toggleDone);
+  const items = useMemo(() => listChaseCandidates(tasks), [tasks]);
+
+  if (items.length === 0) {
+    const owedOpen = tasks.filter((t) => !t.done && t.waiting_on?.trim()).length;
+    return (
+      <Card padded="sm">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Delegation chase</p>
+        <p className="mt-2 text-sm text-text-muted">No stale follow-ups right now.</p>
+        {owedOpen > 0 && (
+          <button
+            type="button"
+            onClick={() => navigate(viewPath('owed'))}
+            className="mt-3 flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600 dark:text-brand-300"
+          >
+            {owedOpen} open on Owed to me
+            <ArrowRightIcon className="h-3 w-3" />
+          </button>
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <Card padded="sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Delegation chase</p>
+        <Badge variant="amber">{items.length}</Badge>
+      </div>
+      <ul className="mt-3 space-y-2.5">
+        {items.map((item) => (
+          <li key={item.taskId} className="rounded-lg border border-border bg-surface-sunken/50 px-3 py-2.5">
+            <p className="truncate text-sm font-medium text-text" title={item.title}>
+              {item.title}
+            </p>
+            <p className="mt-0.5 text-xs text-text-muted">
+              Waiting on <span className="font-medium text-text-subtle">{item.waitingOn}</span>
+              {' · '}
+              {item.daysIdle}d idle
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className="btn-primary py-1 text-[11px]"
+                onClick={() => {
+                  void recordChase(item.taskId).then(() => onRefresh?.());
+                }}
+              >
+                Chase
+              </button>
+              <button
+                type="button"
+                className="btn-ghost py-1 text-[11px]"
+                onClick={() => {
+                  void snoozeChase(item.taskId, snoozeChaseUntil()).then(() => onRefresh?.());
+                }}
+              >
+                Snooze
+              </button>
+              <button
+                type="button"
+                className="btn-ghost py-1 text-[11px]"
+                onClick={() => {
+                  void toggleDone(item.taskId, true).then(() => onRefresh?.());
+                }}
+              >
+                Received
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => navigate(viewPath('owed'))}
+        className="mt-3 flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600 dark:text-brand-300"
+      >
+        All owed items
+        <ArrowRightIcon className="h-3 w-3" />
+      </button>
+    </Card>
+  );
+}
+
 function ReservedSlot({
   icon,
   title,
@@ -263,19 +354,21 @@ export function ExecutiveDayHud({ directive, briefing }: ExecutiveDayHudProps) {
   );
 }
 
-export function ExecutiveHudSidebar() {
+export function ExecutiveHudSidebar({
+  tasks,
+  onRefresh,
+}: {
+  tasks: Task[];
+  onRefresh?: () => void;
+}) {
   return (
     <div className="space-y-3">
+      <DelegationChaseCard tasks={tasks} onRefresh={onRefresh} />
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-subtle">Coming soon</p>
       <ReservedSlot
         icon={<CheckSquareIcon className="h-4 w-4" />}
         title="Decision queue"
         subtitle="Commit, delegate, or drop ambiguous items"
-      />
-      <ReservedSlot
-        icon={<ClockIcon className="h-4 w-4" />}
-        title="Delegation chase"
-        subtitle="Active follow-ups on owed items"
       />
       <ReservedSlot
         icon={<CalendarIcon className="h-4 w-4" />}

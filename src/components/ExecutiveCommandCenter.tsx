@@ -22,6 +22,8 @@ import {
   followUpTaskTitle,
   prepTaskTitle,
 } from '../lib/meetingLifecycle';
+import { bumpPriorityOneLevel, snoozeChaseUntil } from '../lib/delegationChase';
+import type { TaskPriority } from '../lib/priority';
 import {
   ArrowRightIcon,
   BrainIcon,
@@ -391,6 +393,9 @@ function GapCard({
   const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
   const createTask = useTasksStore((s) => s.createTask);
   const toggleDone = useTasksStore((s) => s.toggleDone);
+  const setTaskPriority = useTasksStore((s) => s.setTaskPriority);
+  const snoozeChase = useTasksStore((s) => s.snoozeChase);
+  const recordChase = useTasksStore((s) => s.recordChase);
   const updateNote = useNotesStore((s) => s.updateNote);
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
@@ -659,6 +664,42 @@ function GapCard({
         label: 'Mark done',
         onClick: () => void toggleDone(taskRef.taskId, true),
       });
+    }
+
+    if (gap.kind === 'delegation_chase' && gap.ref?.kind === 'task') {
+      const taskRef = gap.ref;
+      btns.push({
+        label: 'Mark received',
+        primary: true,
+        onClick: () => void toggleDone(taskRef.taskId, true),
+      });
+      btns.push({
+        label: 'Chase again',
+        onClick: () => void recordChase(taskRef.taskId),
+      });
+      btns.push({
+        label: 'Snooze 7d',
+        onClick: () => void snoozeChase(taskRef.taskId, snoozeChaseUntil()),
+      });
+      const task = useTasksStore.getState().tasks.find((t) => t.id === taskRef.taskId);
+      const nextPriority = task
+        ? bumpPriorityOneLevel((task.priority as TaskPriority) ?? 'normal')
+        : null;
+      if (nextPriority) {
+        btns.push({
+          label: 'Bump priority',
+          onClick: () => void setTaskPriority(taskRef.taskId, nextPriority),
+        });
+      }
+      btns.push({
+        label: 'Open in Owed',
+        onClick: () => navigate(viewPath('owed')),
+      });
+      btns.push({
+        label: 'Open task',
+        onClick: () => navigate(viewPath('tasks')),
+      });
+      return btns;
     }
 
     return btns;

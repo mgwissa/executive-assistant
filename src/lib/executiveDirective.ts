@@ -21,6 +21,12 @@ import {
   isInDebriefWindow,
 } from './meetingDebrief';
 import { PREP_BLOCK_MINUTES, hasOpenLinkedTask, prepBlockStart, prepTaskTitle } from './meetingLifecycle';
+import {
+  CHASE_THRESHOLD_DAYS,
+  chaseSeverity,
+  daysIdle,
+  isChaseSnoozed,
+} from './delegationChase';
 import type { Event, MeetingDebriefState, Task } from '../types';
 
 const TASK_BLOCK_MINUTES = 30;
@@ -73,7 +79,7 @@ export type GapKind =
   | 'no_calendar'
   | 'pick_focus'
   | 'orphan_followup'
-  | 'stale_waiting';
+  | 'delegation_chase';
 
 export type DirectiveGap = {
   id: string;
@@ -92,6 +98,8 @@ export type DirectiveGap = {
   /** Suggested HH:MM (profile TZ) for set-time actions. */
   suggestedTime?: string;
   suggestedDate?: string;
+  /** Counterparty for delegation chase gaps. */
+  waitingOn?: string;
 };
 
 export type DirectiveReport = {
@@ -527,20 +535,22 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     });
   }
 
-  // Stale waiting
-  for (const w of work) {
-    if (!w.waitingOn?.trim()) continue;
-    const days = Math.floor((now.getTime() - new Date(w.updatedAt).getTime()) / 86_400_000);
-    if (days >= 14) {
-      gaps.push({
-        id: nextGapId(),
-        kind: 'stale_waiting',
-        severity: 'info',
-        headline: `Still waiting on ${w.waitingOn.trim()}?`,
-        detail: `"${w.title}" hasn't moved in ${days} days.`,
-        ref: { kind: 'task', taskId: w.taskId! },
-      });
-    }
+  // Delegation chase — open tasks waiting on someone with no movement
+  for (const t of input.tasks) {
+    if (t.done || !t.waiting_on?.trim()) continue;
+    if (isChaseSnoozed(t, now)) continue;
+    const days = daysIdle(t, now);
+    if (days < CHASE_THRESHOLD_DAYS) continue;
+    const who = t.waiting_on.trim();
+    gaps.push({
+      id: nextGapId(),
+      kind: 'delegation_chase',
+      severity: chaseSeverity(days),
+      headline: `Chase ${who} on "${t.title}"?`,
+      detail: `No movement in ${days} day${days === 1 ? '' : 's'}. Ping them, bump priority, or mark received.`,
+      ref: { kind: 'task', taskId: t.id },
+      waitingOn: who,
+    });
   }
 
   // Too many critical

@@ -399,7 +399,10 @@ export function Dashboard() {
                   compact
                   hideBriefingBadges
                 />
-                <ExecutiveHudSidebar />
+                <ExecutiveHudSidebar
+                  tasks={tasks}
+                  onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                />
               </aside>
             </div>
 

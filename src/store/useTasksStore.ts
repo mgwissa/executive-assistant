@@ -33,6 +33,8 @@ type TasksState = {
   renameTask: (id: string, rawTitle: string) => Promise<void>;
   toggleDone: (id: string, done: boolean) => Promise<void>;
   setWaitingOn: (id: string, value: string | null) => Promise<void>;
+  snoozeChase: (id: string, untilIso: string) => Promise<void>;
+  recordChase: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<boolean>;
   clear: () => void;
 };
@@ -160,6 +162,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       linked_event_id: options?.linkedEventId ?? null,
       description: '',
       waiting_on: null,
+      chase_snoozed_until: null,
+      last_chased_at: null,
       reschedule_count: 0,
       created_at: now,
       updated_at: now,
@@ -387,6 +391,35 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     });
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('tasks').update({ waiting_on: next }).eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  snoozeChase: async (id, untilIso) => {
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, chase_snoozed_until: untilIso } : t,
+      ),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase
+      .from('tasks')
+      .update({ chase_snoozed_until: untilIso })
+      .eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  recordChase: async (id) => {
+    const now = new Date().toISOString();
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, last_chased_at: now } : t,
+      ),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase
+      .from('tasks')
+      .update({ last_chased_at: now })
+      .eq('id', id);
     if (error) set({ error: error.message });
   },
 
