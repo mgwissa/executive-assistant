@@ -116,6 +116,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       source: payload.source ?? 'manual',
       prep_required: payload.prep_required ?? true,
       allow_back_to_back: payload.allow_back_to_back ?? false,
+      debrief_required: payload.debrief_required ?? true,
       created_at: now,
       updated_at: now,
     };
@@ -137,6 +138,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
         source: payload.source ?? 'manual',
         prep_required: payload.prep_required ?? true,
         allow_back_to_back: payload.allow_back_to_back ?? false,
+        debrief_required: payload.debrief_required ?? true,
       })
       .select()
       .single();

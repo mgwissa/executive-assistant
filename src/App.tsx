@@ -22,12 +22,15 @@ import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
 import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
 import { eventsFetchIsoRange } from './lib/eventQueries';
+import { debriefFetchRangeForDay } from './lib/meetingDebrief';
+import { resolveCalendarTimeZone } from './lib/calendarWeek';
 import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
 import { viewPath } from './lib/routes';
 import { useAuthStore } from './store/useAuthStore';
 import { useEmergencyStore } from './store/useEmergencyStore';
 import { useShellLayoutStore } from './store/useShellLayoutStore';
 import { useEventsStore } from './store/useEventsStore';
+import { useMeetingDebriefStore } from './store/useMeetingDebriefStore';
 import { useNotebooksStore } from './store/useNotebooksStore';
 import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
@@ -141,6 +144,8 @@ function Shell() {
   const clearWeeklyRoutine = useWeeklyRoutineStore((s) => s.clear);
   const fetchEventsRange = useEventsStore((s) => s.fetchRange);
   const clearEvents = useEventsStore((s) => s.clear);
+  const fetchDebriefRange = useMeetingDebriefStore((s) => s.fetchRange);
+  const clearDebrief = useMeetingDebriefStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -151,8 +156,11 @@ function Shell() {
       fetchUsefulLinks(user.id);
       fetchTimeEntries(user.id);
       void fetchTimeProjects(user.id);
+      const tz = resolveCalendarTimeZone(profile?.timezone);
       const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
       fetchEventsRange(user.id, fromIso, toIso);
+      const debriefRange = debriefFetchRangeForDay(new Date(), tz);
+      void fetchDebriefRange(user.id, debriefRange.fromIso, debriefRange.toIso);
     } else {
       clearNotebooks();
       clearNotes();
@@ -164,6 +172,7 @@ function Shell() {
       clearTimeProjects();
       clearWeeklyRoutine();
       clearEvents();
+      clearDebrief();
     }
   }, [
     user,
@@ -177,6 +186,7 @@ function Shell() {
     fetchProfile,
     clearProfile,
     fetchEventsRange,
+    fetchDebriefRange,
     fetchTasks,
     clearTasks,
     fetchUsefulLinks,
@@ -187,6 +197,7 @@ function Shell() {
     clearTimeProjects,
     clearWeeklyRoutine,
     clearEvents,
+    clearDebrief,
   ]);
 
   useEffect(() => {

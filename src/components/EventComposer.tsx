@@ -2,7 +2,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { useEffect, useMemo, useState } from 'react';
 import type { Event } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
-import { DEFAULT_ALLOW_BACK_TO_BACK, DEFAULT_PREP_REQUIRED } from '../lib/meetingTemperament';
+import { DEFAULT_ALLOW_BACK_TO_BACK, DEFAULT_DEBRIEF_REQUIRED, DEFAULT_PREP_REQUIRED } from '../lib/meetingTemperament';
 import { Card } from './ui/Card';
 
 export type ComposerValue = {
@@ -17,6 +17,7 @@ export type ComposerValue = {
   count: number;
   prep_required: boolean;
   allow_back_to_back: boolean;
+  debrief_required: boolean;
 };
 
 function defaultComposerValue(now: Date): ComposerValue {
@@ -34,6 +35,7 @@ function defaultComposerValue(now: Date): ComposerValue {
     count: 10,
     prep_required: DEFAULT_PREP_REQUIRED,
     allow_back_to_back: DEFAULT_ALLOW_BACK_TO_BACK,
+    debrief_required: DEFAULT_DEBRIEF_REQUIRED,
   };
 }
 
@@ -53,6 +55,7 @@ function valueFromEvent(event: Event, timezone: string): ComposerValue {
     count: event.count ?? 10,
     prep_required: event.prep_required ?? DEFAULT_PREP_REQUIRED,
     allow_back_to_back: event.allow_back_to_back ?? DEFAULT_ALLOW_BACK_TO_BACK,
+    debrief_required: event.debrief_required ?? DEFAULT_DEBRIEF_REQUIRED,
   };
 }
 
@@ -107,6 +110,7 @@ export function EventComposer({
       source: 'manual',
       prep_required: v.prep_required,
       allow_back_to_back: v.allow_back_to_back,
+      debrief_required: v.debrief_required,
       created_at: startAtIso,
       updated_at: startAtIso,
     };
@@ -124,6 +128,7 @@ export function EventComposer({
     v.count,
     v.prep_required,
     v.allow_back_to_back,
+    v.debrief_required,
     startAtIso,
     timezone,
   ]);
@@ -166,6 +171,7 @@ export function EventComposer({
                 await onUpdate(initialEvent.id, {
                   prep_required: v.prep_required,
                   allow_back_to_back: v.allow_back_to_back,
+                  debrief_required: v.debrief_required,
                 });
               } else {
                 await onUpdate(initialEvent.id, {
@@ -183,6 +189,7 @@ export function EventComposer({
                   count: v.endMode === 'count' ? Math.max(1, v.count) : null,
                   prep_required: v.prep_required,
                   allow_back_to_back: v.allow_back_to_back,
+                  debrief_required: v.debrief_required,
                 });
               }
             } else {
@@ -201,6 +208,7 @@ export function EventComposer({
                 count: v.endMode === 'count' ? Math.max(1, v.count) : null,
                 prep_required: v.prep_required,
                 allow_back_to_back: v.allow_back_to_back,
+                debrief_required: v.debrief_required,
               });
             }
             onClose();
@@ -414,6 +422,20 @@ export function EventComposer({
                 <span className="block text-sm font-medium text-text">Back-to-back OK</span>
                 <span className="block text-xs text-text-muted">
                   When on, no warning if the next meeting starts within 10 minutes.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={v.debrief_required}
+                onChange={(e) => setV((p) => ({ ...p, debrief_required: e.target.checked }))}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium text-text">Debrief required</span>
+                <span className="block text-xs text-text-muted">
+                  When off, the assistant won&apos;t prompt for outcomes after this meeting.
                 </span>
               </span>
             </label>

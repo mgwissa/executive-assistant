@@ -1,0 +1,114 @@
+import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
+import { randomUUID } from '../lib/uuid';
+import type { MeetingDebriefState } from '../types';
+
+export type DebriefStatus = 'done' | 'skipped' | 'snoozed';
+
+type MeetingDebriefStateStore = {
+  states: MeetingDebriefState[];
+  loading: boolean;
+  error: string | null;
+
+  fetchRange: (userId: string, fromIso: string, toIso: string) => Promise<void>;
+  upsertState: (
+    userId: string,
+    payload: {
+      eventId: string;
+      occurrenceStartAt: string;
+      status: DebriefStatus;
+      snoozedUntil?: string | null;
+      notes?: string;
+    },
+  ) => Promise<MeetingDebriefState | null>;
+  clear: () => void;
+};
+
+export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get) => ({
+  states: [],
+  loading: false,
+  error: null,
+
+  fetchRange: async (userId, fromIso, toIso) => {
+    set({ loading: true, error: null });
+    const { data, error } = await supabase
+      .from('meeting_debrief_states')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('occurrence_start_at', fromIso)
+      .lte('occurrence_start_at', toIso)
+      .order('occurrence_start_at', { ascending: false });
+
+    if (error) {
+      set({ loading: false, error: error.message });
+      return;
+    }
+    set({ states: data ?? [], loading: false });
+  },
+
+  upsertState: async (userId, payload) => {
+    const now = new Date().toISOString();
+    const existing = get().states.find(
+      (s) =>
+        s.event_id === payload.eventId &&
+        s.occurrence_start_at === payload.occurrenceStartAt,
+    );
+
+    const optimistic: MeetingDebriefState = {
+      id: existing?.id ?? `tmp-${randomUUID()}`,
+      user_id: userId,
+      event_id: payload.eventId,
+      occurrence_start_at: payload.occurrenceStartAt,
+      status: payload.status,
+      snoozed_until: payload.snoozedUntil ?? null,
+      notes: payload.notes ?? '',
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    };
+
+    set({
+      states: existing
+        ? get().states.map((s) => (s.id === existing.id ? optimistic : s))
+        : [...get().states, optimistic],
+    });
+
+    const { data, error } = await supabase
+      .from('meeting_debrief_states')
+      .upsert(
+        {
+          user_id: userId,
+          event_id: payload.eventId,
+          occurrence_start_at: payload.occurrenceStartAt,
+          status: payload.status,
+          snoozed_until: payload.snoozedUntil ?? null,
+          notes: payload.notes ?? '',
+        },
+        { onConflict: 'user_id,event_id,occurrence_start_at' },
+      )
+      .select()
+      .single();
+
+    if (error || !data) {
+      set({
+        states: existing
+          ? get().states.map((s) => (s.id === existing.id ? existing : s))
+          : get().states.filter((s) => s.id !== optimistic.id),
+        error: error?.message ?? 'Failed to save debrief state',
+      });
+      return null;
+    }
+
+    set({
+      states: get().states.map((s) =>
+        s.event_id === payload.eventId && s.occurrence_start_at === payload.occurrenceStartAt
+          ? data
+          : s.id === optimistic.id
+            ? data
+            : s,
+      ),
+    });
+    return data;
+  },
+
+  clear: () => set({ states: [], loading: false, error: null }),
+}));

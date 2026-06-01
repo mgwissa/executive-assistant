@@ -15,6 +15,7 @@ import { extractActionItems } from '../lib/format';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
+import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
@@ -85,6 +86,7 @@ export function AssistantPage() {
   const notes = useNotesStore((s) => s.notes);
   const setActive = useNotesStore((s) => s.setActive);
   const events = useEventsStore((s) => s.events);
+  const debriefStates = useMeetingDebriefStore((s) => s.states);
 
   const [activeTab, setActiveTab] = useState<Tab>('watch');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -105,9 +107,10 @@ export function AssistantPage() {
         now: new Date(),
         hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
         meetingRules: parseMeetingRules(profile?.meeting_rules),
+        debriefStates,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, refreshKey],
+    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, refreshKey],
   );
 
   const report: BriefingReport = useMemo(

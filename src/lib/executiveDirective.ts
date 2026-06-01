@@ -14,7 +14,13 @@ import {
   isBackToBackPair,
   resolveMeetingTemperament,
 } from './meetingTemperament';
-import type { Event, Task } from '../types';
+import {
+  DEBRIEF_WINDOW_MS,
+  findDebriefState,
+  isDebriefSuppressed,
+  isInDebriefWindow,
+} from './meetingDebrief';
+import type { Event, MeetingDebriefState, Task } from '../types';
 
 const TASK_BLOCK_MINUTES = 30;
 const PREP_WINDOW_MS = 30 * 60 * 1000;
@@ -44,7 +50,7 @@ export type TimelineEntry = {
   suggested?: boolean;
 };
 
-export type NowKind = 'in_meeting' | 'prep' | 'work' | 'gap' | 'wind_down' | 'free';
+export type NowKind = 'in_meeting' | 'prep' | 'debrief' | 'work' | 'gap' | 'wind_down' | 'free';
 
 export type NowDirective = {
   kind: NowKind;
@@ -53,12 +59,15 @@ export type NowDirective = {
   until?: Date;
   ref?: WorkItemRef;
   eventId?: string;
+  /** ISO start of the meeting occurrence (debrief). */
+  occurrenceStartAt?: string;
 };
 
 export type GapKind =
   | 'untimed_today'
   | 'prep_needed'
   | 'back_to_back'
+  | 'meeting_debrief'
   | 'overlap'
   | 'no_calendar'
   | 'pick_focus'
@@ -77,6 +86,8 @@ export type DirectiveGap = {
   relatedEventId?: string;
   /** Meeting title for temperament rule actions. */
   meetingTitle?: string;
+  /** ISO start of the specific meeting occurrence. */
+  occurrenceStartAt?: string;
   /** Suggested HH:MM (profile TZ) for set-time actions. */
   suggestedTime?: string;
   suggestedDate?: string;
@@ -104,6 +115,8 @@ export interface DirectiveInput {
   hasCalendarSource: boolean;
   /** Title-based temperament overrides from profile. */
   meetingRules?: MeetingRule[];
+  /** Per-occurrence debrief dismiss / snooze / done states. */
+  debriefStates?: MeetingDebriefState[];
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +146,7 @@ type MeetingBlock = {
   end: Date;
   prepRequired: boolean;
   allowBackToBack: boolean;
+  debriefRequired: boolean;
 };
 
 function addMinutes(d: Date, minutes: number): Date {
@@ -226,7 +240,12 @@ function getMeetings(
     .map((o) => {
       const parent = eventById.get(o.eventId);
       const temperament = resolveMeetingTemperament(
-        parent ?? { title: o.title, prep_required: true, allow_back_to_back: false },
+        parent ?? {
+          title: o.title,
+          prep_required: true,
+          allow_back_to_back: false,
+          debrief_required: true,
+        },
         meetingRules,
       );
       return {
@@ -237,6 +256,7 @@ function getMeetings(
         end: o.end,
         prepRequired: temperament.prepRequired,
         allowBackToBack: temperament.allowBackToBack,
+        debriefRequired: temperament.debriefRequired,
       };
     })
     .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -285,6 +305,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   const { start: dayStart, end: dayEnd, todayIso } = dayBounds(now, tz);
   const work = toUnifiedWork(input.tasks, input.actionItems, todayIso);
   const meetingRules = input.meetingRules ?? [];
+  const debriefStates = input.debriefStates ?? [];
   const meetings = getMeetings(input.events, dayStart, meetingRules);
 
   const timeline: TimelineEntry[] = [];
@@ -445,21 +466,46 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     }
   }
 
+  // Post-meeting debrief (0–15 min after end)
+  for (const m of meetings) {
+    if (!m.debriefRequired) continue;
+    if (!isInDebriefWindow(now, m.end)) continue;
+    const state = findDebriefState(debriefStates, m.eventId, m.start);
+    if (isDebriefSuppressed(state, now)) continue;
+    const minsAgo = Math.max(1, Math.round((now.getTime() - m.end.getTime()) / 60_000));
+    gaps.push({
+      id: nextGapId(),
+      kind: 'meeting_debrief',
+      severity: 'warning',
+      headline: `Capture outcomes from "${m.title}"?`,
+      detail: `Meeting ended ${minsAgo} min ago — note follow-ups while it's fresh.`,
+      eventId: m.eventId,
+      meetingTitle: m.title,
+      occurrenceStartAt: m.start.toISOString(),
+    });
+  }
+
   // Orphan follow-ups (linked event passed, task still open)
   for (const w of work) {
     if (w.kind !== 'task' || !w.linkedEventId) continue;
-    const meeting = meetings.find((m) => m.eventId === w.linkedEventId);
-    if (meeting && meeting.end < now) {
-      gaps.push({
-        id: nextGapId(),
-        kind: 'orphan_followup',
-        severity: 'warning',
-        headline: `Follow up after "${meeting.title}"?`,
-        detail: `"${w.title}" was linked to a meeting that already ended.`,
-        ref: { kind: 'task', taskId: w.taskId! },
-        eventId: w.linkedEventId,
-      });
-    }
+    const meeting = meetings.find((m) => m.eventId === w.linkedEventId && m.end < now);
+    if (!meeting) continue;
+    const debriefActive = gaps.some(
+      (g) =>
+        g.kind === 'meeting_debrief' &&
+        g.eventId === meeting.eventId &&
+        g.occurrenceStartAt === meeting.start.toISOString(),
+    );
+    if (debriefActive) continue;
+    gaps.push({
+      id: nextGapId(),
+      kind: 'orphan_followup',
+      severity: 'warning',
+      headline: `Follow up after "${meeting.title}"?`,
+      detail: `"${w.title}" was linked to a meeting that already ended.`,
+      ref: { kind: 'task', taskId: w.taskId! },
+      eventId: w.linkedEventId,
+    });
   }
 
   // Stale waiting
@@ -517,7 +563,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   timeline.sort((a, b) => a.start.getTime() - b.start.getTime());
 
   // NOW directive
-  const nowDirective = buildNowDirective(now, tz, meetings, timeline, work, dayEnd);
+  const nowDirective = buildNowDirective(now, tz, meetings, timeline, work, dayEnd, debriefStates);
 
   // NEXT: entries starting within ~3 hours after now
   const horizon = addMinutes(now, 180);
@@ -541,6 +587,7 @@ function buildNowDirective(
   timeline: TimelineEntry[],
   work: UnifiedWork[],
   dayEnd: Date,
+  debriefStates: MeetingDebriefState[],
 ): NowDirective {
   const inMeeting = meetings.find((m) => now >= m.start && now < m.end);
   if (inMeeting) {
@@ -550,6 +597,24 @@ function buildNowDirective(
       detail: `In meeting until ${formatTime(inMeeting.end, tz)}`,
       until: inMeeting.end,
       eventId: inMeeting.eventId,
+    };
+  }
+
+  const debriefMeeting = meetings.find((m) => {
+    if (!m.debriefRequired) return false;
+    if (!isInDebriefWindow(now, m.end)) return false;
+    const state = findDebriefState(debriefStates, m.eventId, m.start);
+    return !isDebriefSuppressed(state, now);
+  });
+  if (debriefMeeting) {
+    const minsAgo = Math.max(1, Math.round((now.getTime() - debriefMeeting.end.getTime()) / 60_000));
+    return {
+      kind: 'debrief',
+      headline: debriefMeeting.title,
+      detail: `Meeting ended ${minsAgo} min ago — capture outcomes and follow-ups.`,
+      until: new Date(debriefMeeting.end.getTime() + DEBRIEF_WINDOW_MS),
+      eventId: debriefMeeting.eventId,
+      occurrenceStartAt: debriefMeeting.start.toISOString(),
     };
   }
 

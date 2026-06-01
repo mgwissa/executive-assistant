@@ -29,6 +29,12 @@ export type RoutineItemState = Database['public']['Tables']['routine_item_states
 export type RoutineItemStateInsert = Database['public']['Tables']['routine_item_states']['Insert'];
 export type RoutineItemStateUpdate = Database['public']['Tables']['routine_item_states']['Update'];
 
+export type MeetingDebriefState = Database['public']['Tables']['meeting_debrief_states']['Row'];
+export type MeetingDebriefStateInsert =
+  Database['public']['Tables']['meeting_debrief_states']['Insert'];
+export type MeetingDebriefStateUpdate =
+  Database['public']['Tables']['meeting_debrief_states']['Update'];
+
 export type Event = Database['public']['Tables']['events']['Row'];
 export type EventInsert = Database['public']['Tables']['events']['Insert'];
 export type EventUpdate = Database['public']['Tables']['events']['Update'];

@@ -307,6 +307,7 @@ function countBackToBack(
         title: a.title,
         prep_required: true,
         allow_back_to_back: false,
+        debrief_required: true,
       },
       meetingRules,
     );
@@ -315,6 +316,7 @@ function countBackToBack(
         title: b.title,
         prep_required: true,
         allow_back_to_back: false,
+        debrief_required: true,
       },
       meetingRules,
     );

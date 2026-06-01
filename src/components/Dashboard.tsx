@@ -9,6 +9,7 @@ import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
+import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
@@ -55,6 +56,7 @@ import { EmptyState } from './ui/EmptyState';
 import { SectionHeader } from './ui/SectionHeader';
 import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
+import { ExecutiveDayHud, ExecutiveHudSidebar } from './ExecutiveDayHud';
 import { UsefulLinksSection } from './UsefulLinksSection';
 
 const RECENT_LIMIT = 5;
@@ -196,6 +198,7 @@ export function Dashboard() {
   const notes = useNotesStore((s) => s.notes);
   const loading = useNotesStore((s) => s.loading);
   const events = useEventsStore((s) => s.events);
+  const debriefStates = useMeetingDebriefStore((s) => s.states);
   const deleteEvent = useEventsStore((s) => s.deleteEvent);
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
@@ -309,9 +312,10 @@ export function Dashboard() {
       now: new Date(),
       hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
       meetingRules: parseMeetingRules(profile?.meeting_rules),
+      debriefStates,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, directiveRefresh]);
+  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, directiveRefresh]);
 
   const briefing = useMemo(() => {
     if (!assistantEnabled) return null;
@@ -328,7 +332,12 @@ export function Dashboard() {
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div
+        className={[
+          'mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10',
+          assistantEnabled && directive ? 'max-w-[90rem]' : 'max-w-5xl',
+        ].join(' ')}
+      >
         <header className="mb-6 sm:mb-8 lg:mb-10">
           <Badge variant="subtle" className="uppercase tracking-wider">
             {dateLabel}
@@ -357,25 +366,66 @@ export function Dashboard() {
 
         {assistantEnabled && directive ? (
           <>
-            <ExecutiveCommandCenter
-              directive={directive}
-              briefing={briefing ?? undefined}
-              onRefresh={() => setDirectiveRefresh((k) => k + 1)}
-            />
-            <Card padded="none" className="mb-8 mt-6 overflow-hidden">
-              <TaskQuickAddForm
-                variant="embedded"
-                disabled={!user}
-                idPrefix="dashboard-directive-add"
-                titlePlaceholder="Capture something quickly…"
-                onSubmit={async (payload) => {
-                  if (!user) return;
-                  await createTask(user.id, payload.title, toCreateTaskOptions(payload));
-                  setDirectiveRefresh((k) => k + 1);
-                }}
+            <ExecutiveDayHud directive={directive} briefing={briefing} />
+
+            {/* Wide: directive left, schedule rail right */}
+            <div className="hidden xl:grid xl:grid-cols-12 xl:items-start xl:gap-8">
+              <div className="xl:col-span-8 space-y-6">
+                <ExecutiveCommandCenter
+                  directive={directive}
+                  onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                  sections={['now', 'gaps']}
+                  hideBriefingBadges
+                />
+                <Card padded="none" className="overflow-hidden">
+                  <TaskQuickAddForm
+                    variant="embedded"
+                    disabled={!user}
+                    idPrefix="dashboard-directive-add"
+                    titlePlaceholder="Capture something quickly…"
+                    onSubmit={async (payload) => {
+                      if (!user) return;
+                      await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+                      setDirectiveRefresh((k) => k + 1);
+                    }}
+                  />
+                </Card>
+              </div>
+              <aside className="xl:col-span-4 space-y-4 xl:sticky xl:top-4">
+                <ExecutiveCommandCenter
+                  directive={directive}
+                  onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                  sections={['next', 'timeline']}
+                  compact
+                  hideBriefingBadges
+                />
+                <ExecutiveHudSidebar />
+              </aside>
+            </div>
+
+            {/* Narrow: full stack */}
+            <div className="xl:hidden space-y-6">
+              <ExecutiveCommandCenter
+                directive={directive}
+                onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                hideBriefingBadges
               />
-            </Card>
-            <details className="mb-8 rounded-xl border border-border bg-surface-raised">
+              <Card padded="none" className="overflow-hidden">
+                <TaskQuickAddForm
+                  variant="embedded"
+                  disabled={!user}
+                  idPrefix="dashboard-directive-add-mobile"
+                  titlePlaceholder="Capture something quickly…"
+                  onSubmit={async (payload) => {
+                    if (!user) return;
+                    await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+                    setDirectiveRefresh((k) => k + 1);
+                  }}
+                />
+              </Card>
+            </div>
+
+            <details className="mb-8 mt-6 rounded-xl border border-border bg-surface-raised">
               <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text-muted hover:text-text">
                 Reference — schedule & notes
               </summary>

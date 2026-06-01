@@ -67,7 +67,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `Dashboard` | Daily command center (briefing + action items + schedule + recent notes) |
+| `/dashboard` | `Dashboard` | Daily command center; with **assistant** addon: executive HUD (day score, capacity) + directive split layout on wide screens |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/tasks` | `Tasks` | Standalone tasks + extracted action items from notes |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -91,7 +91,8 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc) |
 | `tasks` | Standalone tasks | `priority` (critical/urgent/high/normal/low), `due_date`, `due_time` (optional; requires `due_date`), `reminder_sent_at` (email dedupe; future cron), `linked_event_id` (FK → `events`), `waiting_on`, `description`, `priority_set_at`, `reschedule_count`, `done` |
-| `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required` (default true), `allow_back_to_back` (default false) — assistant temperament; Outlook rows can edit flags only |
+| `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required`, `allow_back_to_back`, `debrief_required` (assistant temperament; Outlook rows flags-only on edit) |
+| `meeting_debrief_states` | Per-occurrence post-meeting debrief progress | `event_id`, `occurrence_start_at`, `status` ('done' \| 'skipped' \| 'snoozed'), `snoozed_until`, `notes` |
 | `useful_links` | Bookmarks | `title`, `url`, `category` |
 | `time_entries`, `time_projects` | Time tracking | day-grouped, project-tagged |
 | `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status` |
@@ -119,6 +120,7 @@ Conventions:
 | `useNotesStore` | notes + `activeId` + free-text `query` (consumed only by notes Sidebar) |
 | `useTasksStore` | tasks; `createTask(userId, title, options?)` accepts optional `priority` / `dueDate` / `dueTime`; `setDueTime`, `setLinkedEvent`; `deleteTask` prompts via `window.confirm` (returns `boolean`); runs `applyDueDatePromotion` and `applyEscalationFromProfile` post-fetch |
 | `useEventsStore` | events; range-based fetch via `eventsFetchIsoRange(timezone)` |
+| `useMeetingDebriefStore` | per-occurrence debrief dismiss/snooze/done (`meeting_debrief_states`) |
 | `useUsefulLinksStore` | links |
 | `useTimeEntriesStore`, `useTimeProjectsStore` | time tracking |
 | `useWeeklyRoutineStore` | routine item states |
@@ -151,7 +153,9 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 
 **Quick add:** `TaskQuickAddForm` — title + priority + optional date/time. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
 
-**Executive directive** (`lib/executiveDirective.ts`, `ExecutiveCommandCenter.tsx`, `lib/meetingTemperament.ts`): When `assistant` addon is on, `generateDirective()` produces `now`, `next`, `gaps`, and `timeline` from tasks + note action items + events. Untimed due-today items get **suggested slots** in free gaps; gaps call out missing calendar, prep, back-to-back, overlaps, stale waiting, etc. **Meeting temperament:** per-event `prep_required` / `allow_back_to_back` plus profile `meeting_rules` (title regex) suppress false-positive prep and back-to-back gaps. Gap dismiss actions persist flags on the event and optionally append a profile rule (“Apply to all like this”). Calendar `EventComposer` exposes the same toggles; Outlook imports are flags-only on edit. Uses profile timezone via `resolveCalendarTimeZone`.
+**Executive directive** (`lib/executiveDirective.ts`, `ExecutiveCommandCenter.tsx`, `lib/meetingTemperament.ts`, `lib/meetingDebrief.ts`, `MeetingDebriefModal.tsx`, `ExecutiveDayHud.tsx`, `lib/dayHudMetrics.ts`): When `assistant` addon is on, `generateDirective()` produces `now`, `next`, `gaps`, and `timeline`. Gaps include prep, back-to-back, debrief, overlaps, untimed work, etc. **Meeting temperament** + **debrief states** per B0/B. **Dashboard HUD:** `computeDayHudMetrics()` → day score (0–100), capacity bar (meetings + timed work + 30m×untimed gaps vs time until 6pm), workload/calendar stats; `ExecutiveDayHud` top strip. **`xl+` split layout:** NOW + gaps + capture left; Next/Rest + reserved “coming soon” slots (decision queue, delegation, evening) right. Below `xl`, full stack. Max width `90rem` when assistant on.
+
+**Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → **B meeting lifecycle** (debrief first) → C delegation → D capacity → E decisions → F capture/evening → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
 
 ## Notes editor
 
@@ -229,7 +233,8 @@ If you change anything related to notification auth, update *both* secret stores
 - **BlockNote empty-block placeholders are a `::after`** on the `.bn-block-content` flex row. Since we set `flex: 1` on the first child (so the editable column fills), the placeholder gets pushed to the right edge of the row by default. Fix in `src/styles/notesEditor.css`: `position: absolute` the `::after` and pin it with `inset-inline-start`. List items need an offset (`28px`) to clear the bullet/checkbox; non-list blocks use `0`.
 - **`deleteTask` confirmation lives in the store** — don't add per-page `window.confirm` calls; `deleteTask` returns `false` when the user cancels.
 - **Notes perf:** never call `getNoteCanonicalMarkdown()` (runs `blocksToMarkdownLossy`) inside render loops — e.g. sidebar previews/search should use `note.content`. Editor `onChange` debounces markdown export (~300ms) before hitting Zustand; flush on unmount so note switches don't lose edits.
-- **Meeting temperament:** `profiles.meeting_rules` entries use `titlePattern` as a case-insensitive RegExp (invalid patterns fall back to substring match). “Apply to all like this” from a gap stores a literal-escaped title pattern. Outlook-imported events (`source = outlook_ics`) can only edit `prep_required` / `allow_back_to_back` in the calendar composer — schedule fields stay read-only.
+- **Meeting temperament:** `profiles.meeting_rules` entries use `titlePattern` as a case-insensitive RegExp (invalid patterns fall back to substring match). “Apply to all like this” from a gap stores a literal-escaped title pattern. Outlook-imported events (`source = outlook_ics`) can only edit assistant flags in the calendar composer — schedule fields stay read-only. Rules may set `prep_required`, `allow_back_to_back`, and/or `debrief_required`.
+- **Debrief window:** post-meeting capture gaps fire for 15 minutes after `occurrence.end`; snooze stores `snoozed_until` (+24h) on `meeting_debrief_states` keyed by `(event_id, occurrence_start_at)`.
 
 ## Scripts
 

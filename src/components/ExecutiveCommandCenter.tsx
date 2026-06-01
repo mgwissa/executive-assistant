@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
+import { snoozeUntil } from '../lib/meetingDebrief';
 import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/meetingTemperament';
 import { applyMarkdownPatchToNote } from '../lib/noteContentBridge';
 import { setActionItemLineDueDate } from '../lib/format';
@@ -11,8 +12,10 @@ import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
+import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { MeetingDebriefModal } from './MeetingDebriefModal';
 import {
   ArrowRightIcon,
   BrainIcon,
@@ -30,6 +33,15 @@ type ExecutiveCommandCenterProps = {
   briefing?: BriefingReport;
   onRefresh?: () => void;
   compact?: boolean;
+  /** When set, only render these sections (dashboard split layout). */
+  sections?: Array<'now' | 'gaps' | 'next' | 'timeline'>;
+  hideBriefingBadges?: boolean;
+};
+
+type DebriefTarget = {
+  eventId: string;
+  occurrenceStartAt: string;
+  meetingTitle: string;
 };
 
 export function ExecutiveCommandCenter({
@@ -37,14 +49,47 @@ export function ExecutiveCommandCenter({
   briefing,
   onRefresh,
   compact = false,
+  sections,
+  hideBriefingBadges = false,
 }: ExecutiveCommandCenterProps) {
   const tz = directive.timezone;
+  const user = useAuthStore((s) => s.user);
+  const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
+  const createTask = useTasksStore((s) => s.createTask);
+  const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
+  const [debriefTarget, setDebriefTarget] = useState<DebriefTarget | null>(null);
+
+  const show = (section: 'now' | 'gaps' | 'next' | 'timeline') =>
+    !sections || sections.includes(section);
+
+  const saveDebrief = async (payload: { taskTitles: string[]; notes: string }) => {
+    if (!user || !debriefTarget) return;
+    for (const title of payload.taskTitles) {
+      const task = await createTask(user.id, title);
+      if (task) await setLinkedEvent(task.id, debriefTarget.eventId);
+    }
+    await upsertDebrief(user.id, {
+      eventId: debriefTarget.eventId,
+      occurrenceStartAt: debriefTarget.occurrenceStartAt,
+      status: 'done',
+      notes: payload.notes,
+    });
+    onRefresh?.();
+  };
 
   return (
     <div className="space-y-6">
-      <NowHero now={directive.now} tz={tz} onRefresh={onRefresh} compact={compact} />
+      {show('now') && (
+        <NowHero
+          now={directive.now}
+          tz={tz}
+          onRefresh={onRefresh}
+          compact={compact}
+          onOpenDebrief={(target) => setDebriefTarget(target)}
+        />
+      )}
 
-      {directive.gaps.length > 0 && (
+      {show('gaps') && directive.gaps.length > 0 && (
         <section>
           <SectionHeader
             icon={<BrainIcon className="h-4 w-4" />}
@@ -54,13 +99,17 @@ export function ExecutiveCommandCenter({
           />
           <ul className="mt-3 space-y-2">
             {directive.gaps.map((gap) => (
-              <GapCard key={gap.id} gap={gap} />
+              <GapCard
+                key={gap.id}
+                gap={gap}
+                onOpenDebrief={(target) => setDebriefTarget(target)}
+              />
             ))}
           </ul>
         </section>
       )}
 
-      {directive.next.length > 0 && (
+      {show('next') && directive.next.length > 0 && (
         <section>
           <SectionHeader
             icon={<ClockIcon className="h-4 w-4" />}
@@ -72,7 +121,7 @@ export function ExecutiveCommandCenter({
         </section>
       )}
 
-      {directive.timeline.length > 0 && (
+      {show('timeline') && directive.timeline.length > 0 && (
         <section>
           <SectionHeader
             icon={<CalendarIcon className="h-4 w-4" />}
@@ -84,7 +133,7 @@ export function ExecutiveCommandCenter({
         </section>
       )}
 
-      {briefing && !compact && (
+      {briefing && !compact && !hideBriefingBadges && (
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
           {briefing.nuts.overdueCount > 0 && (
             <Badge variant="red">{briefing.nuts.overdueCount} overdue</Badge>
@@ -97,6 +146,12 @@ export function ExecutiveCommandCenter({
           )}
         </div>
       )}
+      <MeetingDebriefModal
+        open={!!debriefTarget}
+        meetingTitle={debriefTarget?.meetingTitle ?? ''}
+        onClose={() => setDebriefTarget(null)}
+        onSave={saveDebrief}
+      />
     </div>
   );
 }
@@ -106,18 +161,23 @@ function NowHero({
   tz,
   onRefresh,
   compact,
+  onOpenDebrief,
 }: {
   now: DirectiveReport['now'];
   tz: string;
   onRefresh?: () => void;
   compact?: boolean;
+  onOpenDebrief?: (target: DebriefTarget) => void;
 }) {
   const navigate = useNavigate();
   const toggleDone = useTasksStore((s) => s.toggleDone);
+  const user = useAuthStore((s) => s.user);
+  const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
 
   const kindLabel: Record<typeof now.kind, string> = {
     in_meeting: 'In meeting',
     prep: 'Prep now',
+    debrief: 'Debrief now',
     work: 'Do this now',
     gap: 'Coming up',
     wind_down: 'Wind down',
@@ -127,6 +187,7 @@ function NowHero({
   const kindTone: Record<typeof now.kind, string> = {
     in_meeting: 'from-brand-900 to-brand-950 dark:from-brand-950 dark:to-brand-950',
     prep: 'from-amber-600 to-amber-800 dark:from-amber-900 dark:to-amber-950',
+    debrief: 'from-emerald-600 to-emerald-800 dark:from-emerald-900 dark:to-emerald-950',
     work: 'from-brand-700 to-brand-900 dark:from-brand-900 dark:to-brand-950',
     gap: 'from-surface-sunken to-surface-raised',
     wind_down: 'from-surface-sunken to-surface-raised',
@@ -186,6 +247,38 @@ function NowHero({
           )}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
+          {now.kind === 'debrief' && now.eventId && now.occurrenceStartAt && onOpenDebrief && (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenDebrief({
+                    eventId: now.eventId!,
+                    occurrenceStartAt: now.occurrenceStartAt!,
+                    meetingTitle: now.headline,
+                  })
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-colors hover:bg-white/25"
+              >
+                Capture outcomes
+                <ArrowRightIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!user) return;
+                  void upsertDebrief(user.id, {
+                    eventId: now.eventId!,
+                    occurrenceStartAt: now.occurrenceStartAt!,
+                    status: 'skipped',
+                  }).then(() => onRefresh?.());
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/20 transition-colors hover:bg-white/20"
+              >
+                Skip
+              </button>
+            </>
+          )}
           {now.ref && (
             <>
               <button
@@ -235,12 +328,19 @@ function NowHero({
   );
 }
 
-function GapCard({ gap }: { gap: DirectiveGap }) {
+function GapCard({
+  gap,
+  onOpenDebrief,
+}: {
+  gap: DirectiveGap;
+  onOpenDebrief?: (target: DebriefTarget) => void;
+}) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const updateEvent = useEventsStore((s) => s.updateEvent);
+  const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const setDueTime = useTasksStore((s) => s.setDueTime);
   const setDueDate = useTasksStore((s) => s.setDueDate);
   const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
@@ -249,6 +349,52 @@ function GapCard({ gap }: { gap: DirectiveGap }) {
   const updateNote = useNotesStore((s) => s.updateNote);
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
+
+  const dismissDebriefForEvent = async (applyToAll: boolean) => {
+    if (!gap.eventId) return;
+    setBusy(true);
+    try {
+      await updateEvent(gap.eventId, { debrief_required: false });
+      if (applyToAll && user && gap.meetingTitle) {
+        const rules = appendMeetingRule(
+          parseMeetingRules(profile?.meeting_rules),
+          buildMeetingRule(gap.meetingTitle, { debrief_required: false }),
+        );
+        await updateProfile(user.id, { meeting_rules: rules });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const snoozeDebrief = async () => {
+    if (!user || !gap.eventId || !gap.occurrenceStartAt) return;
+    setBusy(true);
+    try {
+      await upsertDebrief(user.id, {
+        eventId: gap.eventId,
+        occurrenceStartAt: gap.occurrenceStartAt,
+        status: 'snoozed',
+        snoozedUntil: snoozeUntil(new Date()),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const skipDebrief = async () => {
+    if (!user || !gap.eventId || !gap.occurrenceStartAt) return;
+    setBusy(true);
+    try {
+      await upsertDebrief(user.id, {
+        eventId: gap.eventId,
+        occurrenceStartAt: gap.occurrenceStartAt,
+        status: 'skipped',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const dismissPrepForEvent = async (applyToAll: boolean) => {
     if (!gap.eventId) return;
@@ -394,6 +540,38 @@ function GapCard({ gap }: { gap: DirectiveGap }) {
         label: 'Link to meeting',
         onClick: () => void setLinkedEvent(taskRef.taskId, gap.eventId!),
       });
+    }
+
+    if (gap.kind === 'meeting_debrief' && gap.eventId && gap.occurrenceStartAt && onOpenDebrief) {
+      btns.push({
+        label: 'Capture outcomes',
+        primary: true,
+        onClick: () =>
+          onOpenDebrief({
+            eventId: gap.eventId!,
+            occurrenceStartAt: gap.occurrenceStartAt!,
+            meetingTitle: gap.meetingTitle ?? gap.headline,
+          }),
+      });
+      btns.push({
+        label: 'Snooze 24h',
+        onClick: () => void snoozeDebrief(),
+      });
+      btns.push({
+        label: 'Skip',
+        onClick: () => void skipDebrief(),
+      });
+      btns.push({
+        label: "Don't debrief for this again",
+        onClick: () => void dismissDebriefForEvent(false),
+      });
+      if (gap.meetingTitle) {
+        btns.push({
+          label: 'Apply to all like this',
+          onClick: () => void dismissDebriefForEvent(true),
+        });
+      }
+      return btns;
     }
 
     if (gap.kind === 'orphan_followup' && gap.ref?.kind === 'task') {

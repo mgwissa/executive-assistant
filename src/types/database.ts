@@ -281,6 +281,7 @@ export type Database = {
           source: string;
           prep_required: boolean;
           allow_back_to_back: boolean;
+          debrief_required: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -299,6 +300,7 @@ export type Database = {
           source?: string;
           prep_required?: boolean;
           allow_back_to_back?: boolean;
+          debrief_required?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -317,6 +319,42 @@ export type Database = {
           source?: string;
           prep_required?: boolean;
           allow_back_to_back?: boolean;
+          debrief_required?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      meeting_debrief_states: {
+        Row: {
+          id: string;
+          user_id: string;
+          event_id: string;
+          occurrence_start_at: string;
+          status: string;
+          snoozed_until: string | null;
+          notes: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          event_id: string;
+          occurrence_start_at: string;
+          status?: string;
+          snoozed_until?: string | null;
+          notes?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          event_id?: string;
+          occurrence_start_at?: string;
+          status?: string;
+          snoozed_until?: string | null;
+          notes?: string;
           created_at?: string;
           updated_at?: string;
         };
