@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { normalizeTags } from '../lib/taskTags';
 import { supabase } from '../lib/supabase';
 import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalation';
 import { normalizeDueTime } from '../lib/taskSchedule';
@@ -14,6 +15,7 @@ export type CreateTaskOptions = {
   dueDate?: string | null;
   dueTime?: string | null;
   linkedEventId?: string | null;
+  tags?: string[];
 };
 
 type TasksState = {
@@ -34,6 +36,7 @@ type TasksState = {
   toggleDone: (id: string, done: boolean) => Promise<void>;
   setWaitingOn: (id: string, value: string | null) => Promise<void>;
   setEstimatedMinutes: (id: string, minutes: number | null) => Promise<void>;
+  setTags: (id: string, tags: string[]) => Promise<void>;
   snoozeChase: (id: string, untilIso: string) => Promise<void>;
   recordChase: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<boolean>;
@@ -150,6 +153,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       priority = 'critical';
     }
 
+    const tags = normalizeTags(options?.tags ?? []);
+
     const optimistic: Task = {
       id: `tmp-${randomUUID()}`,
       user_id: userId,
@@ -166,6 +171,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       chase_snoozed_until: null,
       last_chased_at: null,
       estimated_minutes: null,
+      tags,
       reschedule_count: 0,
       created_at: now,
       updated_at: now,
@@ -184,6 +190,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         due_time,
         waiting_on: null,
         linked_event_id: options?.linkedEventId ?? null,
+        tags,
       })
       .select()
       .single();
@@ -409,6 +416,17 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       .from('tasks')
       .update({ estimated_minutes: next })
       .eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  setTags: async (id, tags) => {
+    const next = normalizeTags(tags);
+    const now = new Date().toISOString();
+    set({
+      tasks: get().tasks.map((t) => (t.id === id ? { ...t, tags: next, updated_at: now } : t)),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase.from('tasks').update({ tags: next }).eq('id', id);
     if (error) set({ error: error.message });
   },
 

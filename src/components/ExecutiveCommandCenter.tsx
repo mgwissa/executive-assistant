@@ -5,8 +5,9 @@ import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
 import { snoozeUntil } from '../lib/meetingDebrief';
 import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/meetingTemperament';
-import { applyMarkdownPatchToNote } from '../lib/noteContentBridge';
-import { setActionItemLineDueDate } from '../lib/format';
+import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
+import { findOpenTaskForNoteActionRef, displayTitleFromNoteLine } from '../lib/taskActionMatch';
+import { extractActionItems, setActionItemLineDueDate } from '../lib/format';
 import { PRIORITY_PILL } from '../lib/priority';
 import { formatDueTimeDisplay, normalizeDueTime } from '../lib/taskSchedule';
 import { viewPath } from '../lib/routes';
@@ -131,6 +132,7 @@ export function ExecutiveCommandCenter({
               <GapCard
                 key={gap.id}
                 gap={gap}
+                onRefresh={onRefresh}
                 onOpenDebrief={(target) => setDebriefTarget(target)}
                 onScheduleFollowUp={(target) => setFollowUpTarget(target)}
               />
@@ -377,10 +379,12 @@ function NowHero({
 
 function GapCard({
   gap,
+  onRefresh,
   onOpenDebrief,
   onScheduleFollowUp,
 }: {
   gap: DirectiveGap;
+  onRefresh?: () => void;
   onOpenDebrief?: (target: DebriefTarget) => void;
   onScheduleFollowUp?: (target: FollowUpTarget) => void;
 }) {
@@ -422,26 +426,29 @@ function GapCard({
         await setDueTime(ref.taskId, normalized);
       } else {
         const note = notes.find((n) => n.id === ref.noteId);
+        const lineText = note ? getNoteCanonicalMarkdown(note).split('\n')[ref.line] ?? '' : '';
         if (note) {
           const patched = applyMarkdownPatchToNote(note, (md) =>
             setActionItemLineDueDate(md, ref.line, dueDate),
           );
           if (patched) await updateNote(ref.noteId, patched);
         }
-        if (user) {
-          const item = notes.find((n) => n.id === ref.noteId);
-          const lines = item ? (item.content ?? '').split('\n') : [];
-          const lineText = lines[ref.line] ?? 'Note action item';
-          const title = lineText
-            .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, '')
-            .replace(/\[due:[^\]]+\]/gi, '')
-            .trim();
-          await createTask(user.id, title || 'Note action item', {
+        const openTasks = useTasksStore.getState().tasks.filter((t) => !t.done);
+        const actionItems = extractActionItems(notes);
+        const existing = findOpenTaskForNoteActionRef(openTasks, actionItems, ref, lineText);
+        const actionItem = actionItems.find((i) => i.noteId === ref.noteId && i.line === ref.line);
+        const title = actionItem?.displayText ?? (displayTitleFromNoteLine(lineText) || 'Note action item');
+        if (existing) {
+          await setDueDate(existing.id, dueDate);
+          await setDueTime(existing.id, normalized);
+        } else if (user) {
+          await createTask(user.id, title, {
             dueDate,
             dueTime: normalized,
           });
         }
       }
+      onRefresh?.();
     } finally {
       setBusy(false);
     }

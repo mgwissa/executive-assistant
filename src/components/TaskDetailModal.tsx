@@ -12,6 +12,7 @@ import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Task } from '../types';
 import { CheckSquareIcon, NoteIcon, SquareIcon, TrashIcon } from './icons';
+import { TaskTagEditor } from './TaskTags';
 
 type Mode = 'write' | 'preview';
 
@@ -22,7 +23,7 @@ export function TaskDetailModal({
   task: Task;
   onClose: () => void;
 }) {
-  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, updateDescription, renameTask, toggleDone, deleteTask } =
+  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, setTags, updateDescription, renameTask, toggleDone, deleteTask } =
     useTasksStore();
   const events = useEventsStore((s) => s.events);
   const profileTz = useProfileStore((s) => s.profile?.timezone);
@@ -263,6 +264,14 @@ export function TaskDetailModal({
               <TrashIcon className="h-4 w-4" />
             </button>
           </div>
+        </div>
+
+        <div className="space-y-2 border-b border-border px-6 py-4">
+          <p className="text-sm font-medium text-text">Tags</p>
+          <TaskTagEditor
+            tags={t.tags ?? []}
+            onChange={(next) => void setTags(t.id, next)}
+          />
         </div>
 
         {/* Waiting on — someone else owes you the outcome */}

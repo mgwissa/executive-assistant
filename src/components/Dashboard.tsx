@@ -7,6 +7,7 @@ import { generateBriefing } from '../lib/assistantBriefing';
 import { generateDirective } from '../lib/executiveDirective';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
+import { filterActionItemsDeduped } from '../lib/taskActionMatch';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
@@ -277,7 +278,10 @@ export function Dashboard() {
   ]);
 
   const recent = useMemo(() => notes.slice(0, RECENT_LIMIT), [notes]);
-  const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+  const actionItems = useMemo(
+    () => filterActionItemsDeduped(tasks, extractActionItems(notes)),
+    [notes, tasks],
+  );
   const openTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
 
   const todaysSchedule = useMemo(() => {

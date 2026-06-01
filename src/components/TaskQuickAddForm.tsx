@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { parseTagsFromInput } from '../lib/taskTags';
 import type { TaskPriority } from '../lib/priority';
 import { PRIORITY_LABEL, PRIORITY_ORDER } from '../lib/priority';
 import { prioritySelectClass } from '../lib/priorityUiClasses';
@@ -9,16 +10,19 @@ export type TaskQuickAddPayload = {
   priority: TaskPriority;
   dueDate: string;
   dueTime: string;
+  tags: string[];
 };
 
 export function toCreateTaskOptions({
   priority,
   dueDate,
   dueTime,
+  tags,
 }: Omit<TaskQuickAddPayload, 'title'>): CreateTaskOptions {
   return {
     priority,
     ...(dueDate ? { dueDate, dueTime: dueTime || null } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
   };
 }
 
@@ -43,12 +47,14 @@ export function TaskQuickAddForm({
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
 
   const reset = () => {
     setTitle('');
     setPriority('normal');
     setDueDate('');
     setDueTime('');
+    setTagsInput('');
   };
 
   const controls = (
@@ -98,6 +104,19 @@ export function TaskQuickAddForm({
         onChange={(e) => setDueTime(e.target.value)}
         className="input mt-0 w-full py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:w-[7.5rem] sm:py-1.5"
       />
+      <label className="sr-only" htmlFor={`${idPrefix}-tags`}>
+        Tags
+      </label>
+      <input
+        id={`${idPrefix}-tags`}
+        type="text"
+        value={tagsInput}
+        disabled={disabled}
+        onChange={(e) => setTagsInput(e.target.value)}
+        placeholder="Tags"
+        title="Comma- or space-separated tags"
+        className="input mt-0 w-full min-w-0 py-2 text-sm sm:min-w-[8rem] sm:flex-1 sm:py-1.5"
+      />
       <button
         type="submit"
         disabled={disabled}
@@ -117,7 +136,13 @@ export function TaskQuickAddForm({
         e.preventDefault();
         const trimmed = title.trim();
         if (!trimmed || disabled) return;
-        await onSubmit({ title: trimmed, priority, dueDate, dueTime });
+        await onSubmit({
+          title: trimmed,
+          priority,
+          dueDate,
+          dueTime,
+          tags: parseTagsFromInput(tagsInput),
+        });
         reset();
       }}
       className={[

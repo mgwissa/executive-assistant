@@ -36,6 +36,9 @@ import { Badge } from './ui/Badge';
 import { TaskDetailModal } from './TaskDetailModal';
 import { NoteItemDetailModal } from './NoteItemDetailModal';
 import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
+import { TaskTagBadges, TaskTagFilter } from './TaskTags';
+import { taskMatchesTagFilter } from '../lib/taskTags';
+import { filterActionItemsDeduped } from '../lib/taskActionMatch';
 
 export function Tasks() {
   const navigate = useNavigate();
@@ -48,11 +51,12 @@ export function Tasks() {
     useTasksStore();
 
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const detailTask = detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null;
   const [detailNoteTarget, setDetailNoteTarget] = useState<{ noteId: string; line: number } | null>(null);
 
   const openDbTasks = useMemo(() => {
-    const list = tasks.filter((t) => !t.done);
+    const list = tasks.filter((t) => !t.done && taskMatchesTagFilter(t, tagFilter));
     list.sort((a, b) => {
       const pa = priorityRank((a.priority as TaskPriority) ?? 'normal');
       const pb = priorityRank((b.priority as TaskPriority) ?? 'normal');
@@ -64,9 +68,12 @@ export function Tasks() {
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
     return list;
-  }, [tasks]);
+  }, [tasks, tagFilter]);
 
-  const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+  const actionItems = useMemo(() => {
+    if (tagFilter) return [];
+    return filterActionItemsDeduped(tasks, extractActionItems(notes));
+  }, [notes, tagFilter, tasks]);
   const allActionItems = useMemo(() => extractActionItems(notes, { includeDone: true }), [notes]);
 
   const detailNoteItem = useMemo(
@@ -121,7 +128,10 @@ export function Tasks() {
     return rows;
   }, [openDbTasks, actionItems]);
 
-  const done = useMemo(() => tasks.filter((t) => t.done), [tasks]);
+  const done = useMemo(
+    () => tasks.filter((t) => t.done && taskMatchesTagFilter(t, tagFilter)),
+    [tasks, tagFilter],
+  );
 
   const openNote = (id: string) => {
     setActiveNote(id);
@@ -170,13 +180,20 @@ export function Tasks() {
         </header>
 
         <TaskQuickAddForm
-          className="mb-6"
+          className="mb-4"
           disabled={!user}
           idPrefix="tasks-new"
           onSubmit={async (payload) => {
             if (!user) return;
             await createTask(user.id, payload.title, toCreateTaskOptions(payload));
           }}
+        />
+
+        <TaskTagFilter
+          tasks={tasks}
+          selected={tagFilter}
+          onSelect={setTagFilter}
+          className="mb-6"
         />
 
         {error && (
@@ -199,7 +216,11 @@ export function Tasks() {
                 <EmptyState
                   icon={<SquareIcon className="h-5 w-5" />}
                   title="Nothing here"
-                  message="Add a todo above, or write an open checkbox line in a note."
+                  message={
+                    tagFilter
+                      ? `No open tasks tagged “${tagFilter}”.`
+                      : 'Add a todo above, or write an open checkbox line in a note.'
+                  }
                 />
               ) : (
                 <ul className="divide-y divide-border">
@@ -256,7 +277,7 @@ export function Tasks() {
             onDelete={(id) => deleteTask(id)}
             onRename={(id, raw) => void renameTask(id, raw)}
             onOpen={(id) => setDetailTaskId(id)}
-            empty="Nothing completed yet."
+            empty={tagFilter ? `No completed tasks tagged “${tagFilter}”.` : 'Nothing completed yet.'}
           />
         </div>
       </div>
@@ -552,6 +573,7 @@ export function OpenTaskRow({
                 Update due date to change priority
               </p>
             )}
+            <TaskTagBadges tags={task.tags ?? []} className="w-full" />
             {onOpen && (
               <button
                 type="button"

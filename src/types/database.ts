@@ -175,6 +175,7 @@ export type Database = {
           chase_snoozed_until: string | null;
           last_chased_at: string | null;
           estimated_minutes: number | null;
+          tags: string[];
           reschedule_count: number;
           created_at: string;
           updated_at: string;
@@ -195,6 +196,7 @@ export type Database = {
           chase_snoozed_until?: string | null;
           last_chased_at?: string | null;
           estimated_minutes?: number | null;
+          tags?: string[];
           reschedule_count?: number;
           created_at?: string;
           updated_at?: string;
@@ -215,6 +217,7 @@ export type Database = {
           chase_snoozed_until?: string | null;
           last_chased_at?: string | null;
           estimated_minutes?: number | null;
+          tags?: string[];
           reschedule_count?: number;
           created_at?: string;
           updated_at?: string;

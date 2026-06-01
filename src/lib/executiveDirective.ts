@@ -5,6 +5,7 @@
 
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import type { ActionItem } from './format';
+import { actionItemHasMatchingOpenTask } from './taskActionMatch';
 import type { TaskPriority } from './priority';
 import { priorityRank } from './priority';
 import { normalizeDueTime } from './taskSchedule';
@@ -229,6 +230,7 @@ function toUnifiedWork(tasks: Task[], actionItems: ActionItem[], todayIso: strin
     });
   }
   for (const a of actionItems) {
+    if (actionItemHasMatchingOpenTask(tasks, a)) continue;
     const relevant =
       isDueTodayOrOverdue(a.dueDate, todayIso) ||
       a.priority === 'critical' ||

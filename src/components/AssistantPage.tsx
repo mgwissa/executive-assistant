@@ -12,6 +12,7 @@ import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { generateDirective } from '../lib/executiveDirective';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { extractActionItems } from '../lib/format';
+import { filterActionItemsDeduped } from '../lib/taskActionMatch';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
@@ -95,7 +96,10 @@ export function AssistantPage() {
   const [accepting, setAccepting] = useState<string | null>(null);
 
   const timezone = resolveCalendarTimeZone(profile?.timezone);
-  const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+  const actionItems = useMemo(
+    () => filterActionItemsDeduped(tasks, extractActionItems(notes)),
+    [notes, tasks],
+  );
 
   const directive = useMemo(
     () =>
