@@ -1,5 +1,5 @@
 import { formatInTimeZone } from 'date-fns-tz';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
@@ -8,6 +8,7 @@ import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/m
 import { applyMarkdownPatchToNote } from '../lib/noteContentBridge';
 import { setActionItemLineDueDate } from '../lib/format';
 import { PRIORITY_PILL } from '../lib/priority';
+import { formatDueTimeDisplay, normalizeDueTime } from '../lib/taskSchedule';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
@@ -402,6 +403,50 @@ function GapCard({
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
 
+  const canPickTime =
+    Boolean(gap.ref && gap.suggestedDate) &&
+    (gap.kind === 'untimed_today' || gap.kind === 'prep_needed');
+  const [customTime, setCustomTime] = useState(gap.suggestedTime ?? '');
+
+  useEffect(() => {
+    setCustomTime(gap.suggestedTime ?? '');
+  }, [gap.id, gap.suggestedTime]);
+
+  const applyScheduledTime = async (ref: WorkItemRef, dueDate: string, dueTime: string) => {
+    const normalized = normalizeDueTime(dueTime);
+    if (!normalized) return;
+    setBusy(true);
+    try {
+      if (ref.kind === 'task') {
+        await setDueDate(ref.taskId, dueDate);
+        await setDueTime(ref.taskId, normalized);
+      } else {
+        const note = notes.find((n) => n.id === ref.noteId);
+        if (note) {
+          const patched = applyMarkdownPatchToNote(note, (md) =>
+            setActionItemLineDueDate(md, ref.line, dueDate),
+          );
+          if (patched) await updateNote(ref.noteId, patched);
+        }
+        if (user) {
+          const item = notes.find((n) => n.id === ref.noteId);
+          const lines = item ? (item.content ?? '').split('\n') : [];
+          const lineText = lines[ref.line] ?? 'Note action item';
+          const title = lineText
+            .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, '')
+            .replace(/\[due:[^\]]+\]/gi, '')
+            .trim();
+          await createTask(user.id, title || 'Note action item', {
+            dueDate,
+            dueTime: normalized,
+          });
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const dismissDebriefForEvent = async (applyToAll: boolean) => {
     if (!gap.eventId) return;
     setBusy(true);
@@ -494,36 +539,7 @@ function GapCard({
 
   const applySuggestedTime = async (ref: WorkItemRef) => {
     if (!gap.suggestedTime || !gap.suggestedDate) return;
-    setBusy(true);
-    try {
-      if (ref.kind === 'task') {
-        await setDueDate(ref.taskId, gap.suggestedDate);
-        await setDueTime(ref.taskId, gap.suggestedTime);
-      } else {
-        const note = notes.find((n) => n.id === ref.noteId);
-        if (note) {
-          const patched = applyMarkdownPatchToNote(note, (md) =>
-            setActionItemLineDueDate(md, ref.line, gap.suggestedDate!),
-          );
-          if (patched) await updateNote(ref.noteId, patched);
-        }
-        if (user) {
-          const item = notes.find((n) => n.id === ref.noteId);
-          const lines = item ? (item.content ?? '').split('\n') : [];
-          const lineText = lines[ref.line] ?? 'Note action item';
-          const title = lineText
-            .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, '')
-            .replace(/\[due:[^\]]+\]/gi, '')
-            .trim();
-          await createTask(user.id, title || 'Note action item', {
-            dueDate: gap.suggestedDate,
-            dueTime: gap.suggestedTime,
-          });
-        }
-      }
-    } finally {
-      setBusy(false);
-    }
+    await applyScheduledTime(ref, gap.suggestedDate, gap.suggestedTime);
   };
 
   const actions = useMemo(() => {
@@ -536,14 +552,6 @@ function GapCard({
         onClick: () => navigate(viewPath('profile')),
       });
       return btns;
-    }
-
-    if (gap.ref && gap.suggestedTime && (gap.kind === 'untimed_today' || gap.kind === 'prep_needed')) {
-      btns.push({
-        label: `Use ${gap.suggestedTime}`,
-        primary: true,
-        onClick: () => void applySuggestedTime(gap.ref!),
-      });
     }
 
     if (gap.ref) {
@@ -746,8 +754,38 @@ function GapCard({
     <li className={['rounded-xl border border-border border-l-4 bg-surface-raised px-4 py-3', severityBorder].join(' ')}>
       <p className="text-sm font-semibold text-text">{gap.headline}</p>
       <p className="mt-0.5 text-xs leading-relaxed text-text-muted">{gap.detail}</p>
+      {canPickTime && gap.ref && gap.suggestedDate && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <input
+            type="time"
+            value={customTime}
+            onChange={(e) => setCustomTime(e.target.value)}
+            className="input min-h-[2rem] w-[7.5rem] py-1 text-xs"
+            aria-label="Pick a time"
+            disabled={busy}
+          />
+          <button
+            type="button"
+            disabled={busy || !customTime}
+            onClick={() => void applyScheduledTime(gap.ref!, gap.suggestedDate!, customTime)}
+            className="btn-primary py-1.5 text-xs"
+          >
+            Set time
+          </button>
+          {gap.suggestedTime && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void applySuggestedTime(gap.ref!)}
+              className="btn-ghost py-1.5 text-xs"
+            >
+              Use {formatDueTimeDisplay(gap.suggestedTime)}
+            </button>
+          )}
+        </div>
+      )}
       {actions.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-2">
+        <div className={['flex flex-wrap gap-2', canPickTime ? 'mt-2' : 'mt-2.5'].join(' ')}>
           {actions.map((a) => (
             <button
               key={a.label}

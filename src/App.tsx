@@ -4,8 +4,6 @@ import { Auth } from './components/Auth';
 import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
-import { EmergencyBanner } from './components/EmergencyBanner';
-import { EmergencyMode } from './components/EmergencyMode';
 import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
 import { RequireOptionalFeature } from './components/RequireOptionalFeature';
@@ -19,7 +17,6 @@ import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
 import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
-import { useCriticalOverload } from './hooks/useCriticalOverload';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
 import { eventsFetchIsoRange } from './lib/eventQueries';
 import { debriefFetchRangeForDay } from './lib/meetingDebrief';
@@ -27,7 +24,6 @@ import { resolveCalendarTimeZone } from './lib/calendarWeek';
 import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
 import { viewPath } from './lib/routes';
 import { useAuthStore } from './store/useAuthStore';
-import { useEmergencyStore } from './store/useEmergencyStore';
 import { useShellLayoutStore } from './store/useShellLayoutStore';
 import { useEventsStore } from './store/useEventsStore';
 import { useMeetingDebriefStore } from './store/useMeetingDebriefStore';
@@ -94,18 +90,8 @@ function NotesView() {
 function Shell() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const emergency = useCriticalOverload();
-  const bypassEmergency = useEmergencyStore((s) => s.bypass);
-  const setBypassEmergency = useEmergencyStore((s) => s.setBypass);
-  const clearEmergency = useEmergencyStore((s) => s.clear);
   const mobileNavOpen = useShellLayoutStore((s) => s.mobileNavOpen);
   const closeMobileNav = useShellLayoutStore((s) => s.closeMobileNav);
-
-  useEffect(() => {
-    if (!emergency.active) setBypassEmergency(false);
-  }, [emergency.active, setBypassEmergency]);
-
-  useEffect(() => () => clearEmergency(), [clearEmergency]);
 
   // Mobile nav drawer UX: close on Escape, lock background scroll while open.
   useEffect(() => {
@@ -248,17 +234,6 @@ function Shell() {
     void applyEscalationFromProfile(user.id);
   }, [user, profile, applyEscalationFromProfile]);
 
-  const showEmergency = emergency.active && !bypassEmergency;
-  const showEmergencyBanner = emergency.active && bypassEmergency;
-
-  if (showEmergency) {
-    return (
-      <div className="app-shell flex h-full min-h-0 flex-col">
-        <EmergencyMode reason={emergency} onExit={() => setBypassEmergency(true)} />
-      </div>
-    );
-  }
-
   return (
     <div className="app-shell flex h-full min-h-0">
       {/* Persistent left rail on tablet/desktop. */}
@@ -297,7 +272,6 @@ function Shell() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {showEmergencyBanner ? <EmergencyBanner reason={emergency} /> : null}
         <TopBar />
         <div className="min-h-0 flex-1">
           <Outlet />

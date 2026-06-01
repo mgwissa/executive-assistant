@@ -43,7 +43,7 @@ src/
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
     ui/                Generic primitives: Card, Badge, EmptyState, SectionHeader, ...
-  hooks/               useCriticalOverload, useNotebookRealtime
+  hooks/               useNotebookRealtime
   lib/                 Pure utilities, supabase client, business logic
   store/               Zustand stores (one file each)
   styles/              CSS (notesEditor.css for BlockNote overrides)
@@ -67,7 +67,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `Dashboard` | Daily command center; with **assistant** addon: executive HUD (day score, capacity) + directive split layout on wide screens |
+| `/dashboard` | `Dashboard` | Daily command center; **assistant** on → executive HUD + directive; **assistant** off → `CriticalBlocker` card for critical work + action-items grid |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/tasks` | `Tasks` | Standalone tasks + extracted action items from notes |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -125,7 +125,6 @@ Conventions:
 | `useTimeEntriesStore`, `useTimeProjectsStore` | time tracking |
 | `useWeeklyRoutineStore` | routine item states |
 | `useSharingStore` | notebook invites + members |
-| `useEmergencyStore` | manual override of the "Critical overload" emergency mode |
 | `useShellLayoutStore` | mobile nav drawer + notes-sidebar collapsed flag |
 | `useThemeStore` | light/dark/system |
 
@@ -239,6 +238,7 @@ If you change anything related to notification auth, update *both* secret stores
 - **Linked tasks:** `tasks.linked_event_id` ties prep/follow-up tasks to calendar events; create via debrief modal, schedule follow-up modal, gap actions, or `EventLinkedTasks` in event edit.
 - **Delegation chase:** idle days use `last_chased_at` when set, else `updated_at`; gaps fire at 5+ days (warning) / 14+ (critical). Snooze writes `chase_snoozed_until` (+7d). “Chase again” only updates `last_chased_at` so staleness resets without touching task content.
 - **Task estimates:** `estimated_minutes` null → 30m default in capacity/timeline; explicit values size timed blocks and unscheduled work debt. Overcommit gap fires when planned work exceeds remaining time until 6pm by ≥30m.
+- **Overload UX:** full-screen emergency mode was removed (2026-05). **Assistant on** → directive NOW/gaps/HUD; **assistant off** → dashboard `CriticalBlocker` for critical items.
 
 ## Scripts
 

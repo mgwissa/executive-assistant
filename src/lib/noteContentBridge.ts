@@ -50,7 +50,7 @@ export function noteDocumentFromEditor(editor: BlockNoteEditor): {
 }
 
 /**
- * Used from Tasks/Dashboard/Emergency when mutating note text by line.
+ * Used from Tasks/Dashboard when mutating note text by line.
  * Keeps `content` (markdown export) and `content_blocks` in sync.
  */
 export function applyMarkdownPatchToNote(
