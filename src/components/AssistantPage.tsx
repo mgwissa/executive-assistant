@@ -8,6 +8,8 @@ import {
   getBriefingMode,
   MODE_META,
 } from '../lib/assistantBriefing';
+import { resolveCalendarTimeZone } from '../lib/calendarWeek';
+import { generateDirective } from '../lib/executiveDirective';
 import { extractActionItems } from '../lib/format';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
@@ -15,6 +17,7 @@ import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 import {
   ArrowRightIcon,
   BrainIcon,
@@ -32,12 +35,12 @@ import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
 import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
 
-type Tab = 'nuts' | 'watch' | 'nudge';
+type Tab = 'watch' | 'nudge' | 'nuts';
 
 const TAB_CONFIG: Array<{ id: Tab; label: string; emptyMsg: string }> = [
-  { id: 'nuts', label: 'Nuts & Bolts', emptyMsg: 'Nothing critical to report.' },
   { id: 'watch', label: 'Watch List', emptyMsg: "No blind spots detected — you're on top of things." },
   { id: 'nudge', label: 'The Nudge', emptyMsg: "No nudges today — all looking clean." },
+  { id: 'nuts', label: 'Stats', emptyMsg: 'Nothing critical to report.' },
 ];
 
 const SEVERITY_STYLE: Record<BriefingInsight['severity'], {
@@ -82,13 +85,28 @@ export function AssistantPage() {
   const setActive = useNotesStore((s) => s.setActive);
   const events = useEventsStore((s) => s.events);
 
-  const [activeTab, setActiveTab] = useState<Tab>('nuts');
+  const [activeTab, setActiveTab] = useState<Tab>('watch');
   const [refreshKey, setRefreshKey] = useState(0);
   const [dismissedProposals, setDismissedProposals] = useState<Set<string>>(new Set());
   const [acceptedProposals, setAcceptedProposals] = useState<Set<string>>(new Set());
   const [accepting, setAccepting] = useState<string | null>(null);
 
+  const timezone = resolveCalendarTimeZone(profile?.timezone);
   const actionItems = useMemo(() => extractActionItems(notes), [notes]);
+
+  const directive = useMemo(
+    () =>
+      generateDirective({
+        tasks,
+        actionItems,
+        events,
+        timezone,
+        now: new Date(),
+        hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, refreshKey],
+  );
 
   const report: BriefingReport = useMemo(
     () =>
@@ -136,6 +154,7 @@ export function AssistantPage() {
         ...(proposal.suggestedDueDate ? { dueDate: proposal.suggestedDueDate } : {}),
       });
       setAcceptedProposals((prev) => new Set(prev).add(proposal.id));
+      setRefreshKey((k) => k + 1);
     } finally {
       setAccepting(null);
     }
@@ -147,81 +166,101 @@ export function AssistantPage() {
 
   const mode = getBriefingMode();
   const modeMeta = MODE_META[mode];
-
   const name = profile?.first_name?.trim() || user?.email?.split('@')[0] || 'there';
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
       <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-
-        {/* Header */}
-        <header className="mb-8">
+        <header className="mb-6">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-3">
               <IconBadge tone="brand" size="lg" className="shrink-0">
                 <BrainIcon className="h-6 w-6" />
               </IconBadge>
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="purple" className="uppercase tracking-wider text-[10px]">
-                    {modeMeta.label}
-                  </Badge>
-                  <span className="text-xs text-text-muted">
-                    {report.generatedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                  </span>
-                </div>
+                <Badge variant="purple" className="uppercase tracking-wider text-[10px]">
+                  {modeMeta.label}
+                </Badge>
                 <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-text">
-                  {mode === 'morning' ? `Good morning, ${name}.` :
-                   mode === 'midday'  ? `Midday check-in, ${name}.` :
-                   mode === 'afternoon' ? `Afternoon, ${name}.` :
-                   `Evening, ${name}.`}
+                  Executive Assistant
                 </h1>
-                <p className="mt-1 text-sm text-text-muted">{modeMeta.description}</p>
+                <p className="mt-1 text-sm text-text-muted">
+                  {name}, here is what to do now and what I still need from you.
+                </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setRefreshKey((k) => k + 1)}
               className="btn-ghost shrink-0 p-2"
-              title="Refresh briefing"
-              aria-label="Refresh briefing"
+              title="Refresh"
+              aria-label="Refresh"
             >
               <RefreshIcon className="h-4 w-4" />
             </button>
           </div>
         </header>
 
-        {/* Nuts at a glance — stat strip */}
-        <NutsStrip report={report} onNavigate={navigate} />
+        <ExecutiveCommandCenter
+          directive={directive}
+          briefing={report}
+          onRefresh={() => setRefreshKey((k) => k + 1)}
+        />
 
-        <section className="mt-6">
-          <SectionHeader
-            icon={<CheckSquareIcon className="h-4 w-4" />}
-            title="Quick add"
-            accent="amber"
+        <Card padded="none" className="mt-6 overflow-hidden">
+          <TaskQuickAddForm
+            variant="embedded"
+            disabled={!user}
+            idPrefix="assistant-directive-add"
+            titlePlaceholder="Capture a task…"
+            onSubmit={async (payload) => {
+              if (!user) return;
+              await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+              setRefreshKey((k) => k + 1);
+            }}
           />
-          <Card padded="none" className="mt-3 overflow-hidden">
-            <TaskQuickAddForm
-              variant="embedded"
-              disabled={!user}
-              idPrefix="assistant-quick-add"
-              titlePlaceholder="Capture a task…"
-              onSubmit={async (payload) => {
-                if (!user) return;
-                await createTask(user.id, payload.title, toCreateTaskOptions(payload));
-              }}
-            />
-          </Card>
-        </section>
+        </Card>
 
-        {/* Main insight tabs */}
+        {(visibleProposals.length > 0 || report.proposals.length > 0) && (
+          <section className="mt-8">
+            <SectionHeader
+              icon={<NoteIcon className="h-4 w-4" />}
+              title="From your notes"
+              count={visibleProposals.length}
+              accent="green"
+            />
+            <p className="mt-1 mb-3 text-xs text-text-muted">
+              Signals in your notes — turn into tasks or dismiss.
+            </p>
+            {visibleProposals.length === 0 ? (
+              <Card padded="sm">
+                <p className="text-sm text-text-muted">All proposals actioned.</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {visibleProposals.map((proposal) => (
+                  <ProposalCard
+                    key={proposal.id}
+                    proposal={proposal}
+                    isAccepting={accepting === proposal.id}
+                    onAccept={() => void acceptProposal(proposal)}
+                    onDismiss={() => dismissProposal(proposal.id)}
+                    onOpenNote={() => openNote(proposal.noteId)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="mt-8">
           <SectionHeader
             icon={<BrainIcon className="h-4 w-4" />}
-            title="Your briefing"
+            title="Briefing depth"
             count={report.insights.length}
             accent="brand"
           />
+          <NutsStrip report={report} onNavigate={navigate} />
 
           <div className="mt-3 flex gap-1 rounded-lg bg-surface-sunken p-1">
             {TAB_CONFIG.map(({ id, label }) => {
@@ -240,12 +279,12 @@ export function AssistantPage() {
                 >
                   {label}
                   {count > 0 && (
-                    <span className={[
-                      'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold',
-                      activeTab === id
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-surface-raised text-text-muted',
-                    ].join(' ')}>
+                    <span
+                      className={[
+                        'inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                        activeTab === id ? 'bg-brand-600 text-white' : 'bg-surface-raised text-text-muted',
+                      ].join(' ')}
+                    >
                       {count}
                     </span>
                   )}
@@ -275,56 +314,10 @@ export function AssistantPage() {
             )}
           </div>
         </section>
-
-        {/* Note proposals */}
-        {(visibleProposals.length > 0 || report.proposals.length > 0) && (
-          <section className="mt-8">
-            <SectionHeader
-              icon={<NoteIcon className="h-4 w-4" />}
-              title="From your notes"
-              count={visibleProposals.length}
-              accent="green"
-            />
-            <p className="mt-1 mb-3 text-xs text-text-muted">
-              I found these signals in your notes — want me to turn them into tasks?
-            </p>
-            {visibleProposals.length === 0 ? (
-              <Card padded="sm">
-                <p className="text-sm text-text-muted">All proposals actioned. ✓</p>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {visibleProposals.map((proposal) => (
-                  <ProposalCard
-                    key={proposal.id}
-                    proposal={proposal}
-                    isAccepting={accepting === proposal.id}
-                    onAccept={() => void acceptProposal(proposal)}
-                    onDismiss={() => dismissProposal(proposal.id)}
-                    onOpenNote={() => openNote(proposal.noteId)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* No insights at all */}
-        {report.insights.length === 0 && report.proposals.length === 0 && (
-          <Card padded="sm" className="mt-6">
-            <EmptyState
-              icon={<BrainIcon className="h-5 w-5" />}
-              title="All clear."
-              message="No issues detected. Come back after a few tasks and calendar events are in."
-            />
-          </Card>
-        )}
       </div>
     </div>
   );
 }
-
-// ─── Stat strip ──────────────────────────────────────────────────────────────
 
 function NutsStrip({ report, onNavigate }: { report: BriefingReport; onNavigate: ReturnType<typeof useNavigate> }) {
   const { nuts } = report;
@@ -361,7 +354,7 @@ function NutsStrip({ report, onNavigate }: { report: BriefingReport; onNavigate:
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
       {stats.map((s) => (
         <button
           key={s.label}
@@ -378,8 +371,6 @@ function NutsStrip({ report, onNavigate }: { report: BriefingReport; onNavigate:
   );
 }
 
-// ─── Insight card ─────────────────────────────────────────────────────────────
-
 function InsightCard({
   insight,
   onOpenTask,
@@ -390,24 +381,19 @@ function InsightCard({
   onOpenNote: (id: string) => void;
 }) {
   const style = SEVERITY_STYLE[insight.severity];
-  const severityLabel = insight.severity === 'nudge' ? 'Nudge' :
+  const severityLabel =
+    insight.severity === 'nudge' ? 'Nudge' :
     insight.severity === 'critical' ? 'Critical' :
     insight.severity === 'warning' ? 'Watch' : 'Info';
 
   return (
-    <div className={[
-      'rounded-xl border border-border border-l-4 p-4',
-      style.border,
-      style.bg,
-    ].join(' ')}>
+    <div className={['rounded-xl border border-border border-l-4 p-4', style.border, style.bg].join(' ')}>
       <div className="flex items-start gap-3">
         <div className={['mt-1.5 h-2 w-2 shrink-0 rounded-full', style.dot].join(' ')} />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={['rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', style.badge].join(' ')}>
-              {severityLabel}
-            </span>
-          </div>
+          <span className={['rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', style.badge].join(' ')}>
+            {severityLabel}
+          </span>
           <p className="mt-1.5 text-sm font-semibold text-text">{insight.headline}</p>
           <p className="mt-1 text-xs leading-relaxed text-text-muted">{insight.detail}</p>
           {insight.actionTarget && (
@@ -428,8 +414,6 @@ function InsightCard({
   );
 }
 
-// ─── Proposal card ────────────────────────────────────────────────────────────
-
 function ProposalCard({
   proposal,
   isAccepting,
@@ -443,50 +427,33 @@ function ProposalCard({
   onDismiss: () => void;
   onOpenNote: () => void;
 }) {
-  const typeLabel = proposal.type === 'follow-up' ? '📬 Follow-up' :
-    proposal.type === 'review' ? '🔄 Review' : '⏰ Reminder';
+  const typeLabel =
+    proposal.type === 'follow-up' ? 'Follow-up' :
+    proposal.type === 'review' ? 'Review' : 'Reminder';
 
   return (
     <div className="rounded-xl border border-border bg-surface-raised p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="text-xs font-semibold text-text-muted">{typeLabel}</span>
-            <span className="text-[10px] text-text-subtle">from</span>
-            <button
-              type="button"
-              onClick={onOpenNote}
-              className="text-xs font-medium text-brand-700 hover:text-brand-600 hover:underline"
-            >
-              {proposal.noteTitle}
-            </button>
-          </div>
-          <p className="text-sm font-semibold text-text">{proposal.suggestedTaskTitle}</p>
-          {proposal.text !== proposal.suggestedTaskTitle && (
-            <p className="mt-0.5 text-xs text-text-muted line-clamp-1">"{proposal.text}"</p>
-          )}
-          {proposal.suggestedDueDate && (
-            <div className="mt-1.5 flex items-center gap-1 text-xs text-text-muted">
-              <CalendarIcon className="h-3 w-3" />
-              Suggested due: {proposal.suggestedDueDate}
-            </div>
-          )}
+      <div className="min-w-0 flex-1">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-text-muted">{typeLabel}</span>
+          <span className="text-[10px] text-text-subtle">from</span>
+          <button type="button" onClick={onOpenNote} className="text-xs font-medium text-brand-700 hover:underline">
+            {proposal.noteTitle}
+          </button>
         </div>
+        <p className="text-sm font-semibold text-text">{proposal.suggestedTaskTitle}</p>
+        {proposal.suggestedDueDate && (
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-text-muted">
+            <CalendarIcon className="h-3 w-3" />
+            Suggested due: {proposal.suggestedDueDate}
+          </div>
+        )}
       </div>
       <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-        <button
-          type="button"
-          onClick={onAccept}
-          disabled={isAccepting}
-          className="btn-primary py-1.5 text-xs"
-        >
+        <button type="button" onClick={onAccept} disabled={isAccepting} className="btn-primary py-1.5 text-xs">
           {isAccepting ? 'Creating…' : '+ Create task'}
         </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="btn-ghost py-1.5 text-xs text-text-muted"
-        >
+        <button type="button" onClick={onDismiss} className="btn-ghost py-1.5 text-xs text-text-muted">
           Dismiss
         </button>
       </div>

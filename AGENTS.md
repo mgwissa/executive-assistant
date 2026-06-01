@@ -32,6 +32,7 @@ src/
   main.tsx             Vite entry
   components/          UI components (one file per concern)
     TaskQuickAddForm.tsx  Shared task create form (Tasks, Dashboard, Assistant)
+    ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
     ui/                Generic primitives: Card, Badge, EmptyState, SectionHeader, ...
   hooks/               useCriticalOverload, useNotebookRealtime
@@ -65,7 +66,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | `/calendar` | `Calendar` | Today/Week view; sources: manual events + Outlook ICS |
 | `/links` | `UsefulLinksPage` | User-curated bookmarks |
 | `/profile` | `Profile` | Settings: name, timezone, addons, notifications, calendar URL |
-| `/assistant` | `AssistantPage` | **Optional addon** — full daily briefing |
+| `/assistant` | `AssistantPage` | **Optional addon** — executive command center (NOW / gaps / timeline) + briefing depth |
 | `/time` | `TimeTrackingPage` | **Optional addon** — timers, projects, day grouping |
 | `/routine` | `WeeklyRoutinePage` | **Optional addon** — weekly product-leader rhythm |
 
@@ -142,6 +143,8 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 
 **Quick add:** `TaskQuickAddForm` — title + priority + optional date/time. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
 
+**Executive directive** (`lib/executiveDirective.ts`, `ExecutiveCommandCenter.tsx`): When `assistant` addon is on, `generateDirective()` produces `now`, `next`, `gaps`, and `timeline` from tasks + note action items + events. Untimed due-today items get **suggested slots** in free gaps; gaps call out missing calendar, prep, overlaps, stale waiting, etc. Gap actions: accept suggested time (`setDueTime` / promote note item to task), link meeting, mark done. Uses profile timezone via `resolveCalendarTimeZone`.
+
 ## Notes editor
 
 Two representations live in `notes`:
@@ -169,7 +172,7 @@ If you change anything related to notification auth, update *both* secret stores
 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (weekly product-leader rhythm; `lib/weeklyRoutine.ts` defines the static plan)
-- `assistant` — AssistantPage (full briefing) and the dashboard card
+- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS directive engine in `lib/executiveDirective.ts` merges calendar occurrences, timed tasks, and note action items into NOW / NEXT / GAPS / timeline. Dashboard defers to directive (action-items grid hidden); reference schedule/notes in collapsible panel.
 
 ## Conventions
 

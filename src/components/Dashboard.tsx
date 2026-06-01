@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
 import { viewPath } from '../lib/routes';
 import { generateBriefing } from '../lib/assistantBriefing';
+import { generateDirective } from '../lib/executiveDirective';
+import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
@@ -39,7 +41,6 @@ import {
 import {
   ArrowRightIcon,
   BookIcon,
-  BrainIcon,
   CalendarIcon,
   CheckSquareIcon,
   ClockIcon,
@@ -52,6 +53,7 @@ import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { SectionHeader } from './ui/SectionHeader';
 import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
+import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 import { UsefulLinksSection } from './UsefulLinksSection';
 
 const RECENT_LIMIT = 5;
@@ -209,7 +211,7 @@ export function Dashboard() {
   const dateLabel = formatLongDate(today);
   const name = resolveName(profile?.first_name, user?.email);
   const routineEnabled = isOptionalFeatureEnabled(profile, 'routine');
-  const timezone = profile?.timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const timezone = resolveCalendarTimeZone(profile?.timezone);
   const routineTodayDate = formatInTimeZone(today, timezone, 'yyyy-MM-dd');
   const routineTodayWeekday = routineWeekdayFromLabel(formatInTimeZone(today, timezone, 'EEEE'));
   const routineWeekDates = routineWeekDatesFor(routineTodayDate);
@@ -293,6 +295,28 @@ export function Dashboard() {
     if (patched) void updateNote(noteId, patched);
   };
 
+  const assistantEnabled = isOptionalFeatureEnabled(profile, 'assistant');
+  const [directiveRefresh, setDirectiveRefresh] = useState(0);
+
+  const directive = useMemo(() => {
+    if (!assistantEnabled) return null;
+    return generateDirective({
+      tasks,
+      actionItems,
+      events,
+      timezone,
+      now: new Date(),
+      hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, directiveRefresh]);
+
+  const briefing = useMemo(() => {
+    if (!assistantEnabled) return null;
+    return generateBriefing({ tasks, actionItems, notes, events, now: new Date() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assistantEnabled, tasks, actionItems, notes, events, directiveRefresh]);
+
   return (
     <div className="h-full overflow-y-auto bg-surface">
       <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
@@ -304,8 +328,8 @@ export function Dashboard() {
             {greeting}, {name}.
           </h1>
           <p className="mt-2 text-sm text-text-muted">
-            {isOptionalFeatureEnabled(profile, 'assistant')
-              ? 'Your assistant has the watch.'
+            {assistantEnabled
+              ? 'Your executive assistant is directing the day.'
               : 'Here\'s your workspace at a glance.'}
             {!profile?.first_name?.trim() && (
               <>
@@ -322,15 +346,44 @@ export function Dashboard() {
           </p>
         </header>
 
-        {isOptionalFeatureEnabled(profile, 'assistant') && (
-          <AssistantDashboardCard
-            tasks={tasks}
-            actionItems={actionItems}
-            notes={notes}
-            events={events}
-          />
-        )}
-
+        {assistantEnabled && directive ? (
+          <>
+            <ExecutiveCommandCenter
+              directive={directive}
+              briefing={briefing ?? undefined}
+              onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+            />
+            <Card padded="none" className="mb-8 mt-6 overflow-hidden">
+              <TaskQuickAddForm
+                variant="embedded"
+                disabled={!user}
+                idPrefix="dashboard-directive-add"
+                titlePlaceholder="Capture something quickly…"
+                onSubmit={async (payload) => {
+                  if (!user) return;
+                  await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+                  setDirectiveRefresh((k) => k + 1);
+                }}
+              />
+            </Card>
+            <details className="mb-8 rounded-xl border border-border bg-surface-raised">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text-muted hover:text-text">
+                Reference — schedule & notes
+              </summary>
+              <div className="border-t border-border px-4 py-4">
+                <DashboardReferencePanels
+                  todaysSchedule={todaysSchedule}
+                  recent={recent}
+                  loading={loading}
+                  onOpenNote={openNote}
+                  onOpenCalendar={() => navigate(viewPath('calendar'))}
+                  onOpenNotes={() => navigate(viewPath('notes'))}
+                />
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
         <CriticalBlocker rows={workRows} />
 
         {routineEnabled ? (
@@ -634,7 +687,81 @@ export function Dashboard() {
             </section>
           </div>
         </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+function DashboardReferencePanels({
+  todaysSchedule,
+  recent,
+  loading,
+  onOpenNote,
+  onOpenCalendar,
+  onOpenNotes,
+}: {
+  todaysSchedule: Array<{ eventId: string; title: string; start: Date; end: Date; source: string }>;
+  recent: Note[];
+  loading: boolean;
+  onOpenNote: (id: string) => void;
+  onOpenCalendar: () => void;
+  onOpenNotes: () => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section>
+        <SectionHeader
+          icon={<ClockIcon className="h-4 w-4" />}
+          title="Today's schedule"
+          accent="blue"
+          action={
+            <button type="button" onClick={onOpenCalendar} className="text-xs font-medium text-brand-700 hover:text-brand-600">
+              Calendar
+            </button>
+          }
+        />
+        <Card padded="sm" className="mt-2">
+          {todaysSchedule.length === 0 ? (
+            <p className="text-sm text-text-muted">No events today.</p>
+          ) : (
+            <ul className="space-y-2">
+              {todaysSchedule.slice(0, 6).map((o) => (
+                <li key={`${o.eventId}:${o.start.toISOString()}`} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate font-medium text-text">{o.title}</span>
+                  <span className="shrink-0 text-xs text-text-muted">
+                    {o.start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </section>
+      <section>
+        <SectionHeader
+          icon={<NoteIcon className="h-4 w-4" />}
+          title="Recent notes"
+          accent="brand"
+          action={
+            <button type="button" onClick={onOpenNotes} className="text-xs font-medium text-brand-700 hover:text-brand-600">
+              View all
+            </button>
+          }
+        />
+        <Card padded="none" className="mt-2 divide-y divide-border">
+          {loading && recent.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-text-muted">Loading…</p>
+          ) : recent.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-text-muted">No notes yet.</p>
+          ) : (
+            recent.map((note) => (
+              <RecentNoteRow key={note.id} note={note} onOpen={() => onOpenNote(note.id)} />
+            ))
+          )}
+        </Card>
+      </section>
     </div>
   );
 }
@@ -791,213 +918,6 @@ function RecentNoteRow({ note, onOpen }: { note: Note; onOpen: () => void }) {
 function statusFromDb(status: string): RoutineStatus {
   if (status === 'done' || status === 'skipped') return status;
   return 'pending';
-}
-
-function AssistantDashboardCard({
-  tasks,
-  actionItems,
-  notes,
-  events,
-}: {
-  tasks: import('../types').Task[];
-  actionItems: ActionItem[];
-  notes: import('../types').Note[];
-  events: import('../types').Event[];
-}) {
-  const navigate = useNavigate();
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const report = useMemo(
-    () => generateBriefing({ tasks, actionItems, notes, events, now: new Date() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, notes, events, refreshKey],
-  );
-
-  const { nuts, insights, mode, modeLabel } = report;
-
-  // Top priority: first critical task, else first overdue, else first urgent
-  const openTasks = tasks.filter((t) => !t.done);
-  const topPriorityTask =
-    openTasks.find((t) => t.priority === 'critical') ??
-    openTasks.find((t) => { const d = t.due_date; if (!d) return false; const diff = Math.round((new Date(d).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86_400_000); return diff <= 0; }) ??
-    openTasks.find((t) => t.priority === 'urgent') ??
-    openTasks[0] ?? null;
-
-  // Top watch insight and top nudge
-  const topWatch = insights.find((i) => i.section === 'watch');
-  const topNudge = insights.find((i) => i.section === 'nudge');
-  const totalInsights = insights.length;
-
-  const modeIcon = mode === 'morning' ? '🌅' : mode === 'midday' ? '☀️' : mode === 'afternoon' ? '🌤' : '🌙';
-
-  const statChips: Array<{ label: string; value: number; urgent?: boolean }> = [
-    { label: 'overdue', value: nuts.overdueCount, urgent: nuts.overdueCount > 0 },
-    { label: 'due today', value: nuts.dueTodayCount, urgent: nuts.dueTodayCount > 0 },
-    { label: 'meetings', value: nuts.todayEventCount },
-    { label: 'owed to me', value: nuts.owedToMeCount, urgent: nuts.owedStaleDays14 > 0 },
-  ];
-
-  return (
-    <div className="mb-6 lg:mb-8">
-      {/* Header row */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BrainIcon className="h-4 w-4 text-brand-600" />
-          <span className="text-xs font-bold uppercase tracking-wider text-brand-700">
-            {modeIcon} {modeLabel}
-          </span>
-          <span className="text-xs text-text-subtle">·</span>
-          <span className="text-xs text-text-muted">
-            {report.generatedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setRefreshKey((k) => k + 1)}
-            className="text-xs text-text-muted hover:text-text"
-            title="Refresh"
-          >
-            ↻
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(viewPath('assistant'))}
-            className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-          >
-            Full briefing <ArrowRightIcon className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-
-      {/* Main card */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface-raised shadow-sm ring-1 ring-border/60">
-
-        {/* Stat strip */}
-        <div className="flex items-center gap-0 divide-x divide-border border-b border-border">
-          {statChips.map((chip) => (
-            <div
-              key={chip.label}
-              className="flex flex-1 flex-col items-center gap-0.5 px-3 py-3"
-            >
-              <span className={[
-                'text-xl font-bold tabular-nums leading-none',
-                chip.urgent && chip.value > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-text',
-              ].join(' ')}>
-                {chip.value}
-              </span>
-              <span className="text-[10px] font-medium uppercase tracking-wide text-text-muted">{chip.label}</span>
-            </div>
-          ))}
-          {/* Open tasks chip — larger emphasis */}
-          <div className="flex flex-1 flex-col items-center gap-0.5 px-3 py-3">
-            <span className={[
-              'text-xl font-bold tabular-nums leading-none',
-              nuts.criticalTasks > 0 ? 'text-red-600 dark:text-red-400' : 'text-text',
-            ].join(' ')}>
-              {nuts.totalOpenTasks}
-            </span>
-            <span className="text-[10px] font-medium uppercase tracking-wide text-text-muted">open tasks</span>
-          </div>
-        </div>
-
-        {/* Focus + insights body */}
-        <div className="grid grid-cols-1 divide-y divide-border lg:grid-cols-[1fr_1.6fr] lg:divide-x lg:divide-y-0">
-
-          {/* Left: Top priority focus */}
-          <div className="p-4">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-muted">Focus now</p>
-            {topPriorityTask ? (
-              <div>
-                <p className="text-sm font-semibold leading-snug text-text">{topPriorityTask.title}</p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <span className={[
-                    'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                    topPriorityTask.priority === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
-                    topPriorityTask.priority === 'urgent'   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
-                    'bg-surface text-text-muted ring-1 ring-border',
-                  ].join(' ')}>
-                    {topPriorityTask.priority}
-                  </span>
-                  {topPriorityTask.due_date && (
-                    <span className="text-[11px] text-text-muted">
-                      Due {topPriorityTask.due_date}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate(viewPath('tasks'))}
-                  className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-                >
-                  Open tasks <ArrowRightIcon className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm text-text-muted">No open tasks. 🎉</p>
-            )}
-          </div>
-
-          {/* Right: Watch + Nudge */}
-          <div className="divide-y divide-border">
-            {topWatch ? (
-              <div className="flex items-start gap-3 p-4">
-                <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-0.5">Watch</p>
-                  <p className="text-xs font-semibold text-text leading-snug">{topWatch.headline}</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted line-clamp-2">{topWatch.detail}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 p-4 text-xs text-text-muted">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                No blind spots detected.
-              </div>
-            )}
-            {topNudge ? (
-              <div className="flex items-start gap-3 p-4">
-                <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-brand-600 mb-0.5">Nudge</p>
-                  <p className="text-xs font-semibold text-text leading-snug">{topNudge.headline}</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted line-clamp-2">{topNudge.detail}</p>
-                  {topNudge.actionTarget && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(viewPath('tasks'))}
-                      className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:text-brand-600"
-                    >
-                      Open tasks <ArrowRightIcon className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 p-4 text-xs text-text-muted">
-                <span className="h-2 w-2 rounded-full bg-brand-400" />
-                No nudges today.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        {totalInsights > 2 && (
-          <div className="flex items-center justify-end border-t border-border bg-surface/60 px-4 py-2.5">
-            <button
-              type="button"
-              onClick={() => navigate(viewPath('assistant'))}
-              className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-            >
-              +{totalInsights - 2} more insights in full briefing
-              <ArrowRightIcon className="h-3 w-3" />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function DueDateChip({ dueDate }: { dueDate: string }) {

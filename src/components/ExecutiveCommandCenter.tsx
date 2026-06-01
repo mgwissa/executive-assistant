@@ -1,0 +1,420 @@
+import { formatInTimeZone } from 'date-fns-tz';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { BriefingReport } from '../lib/assistantBriefing';
+import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
+import { applyMarkdownPatchToNote } from '../lib/noteContentBridge';
+import { setActionItemLineDueDate } from '../lib/format';
+import { PRIORITY_PILL } from '../lib/priority';
+import { viewPath } from '../lib/routes';
+import { useAuthStore } from '../store/useAuthStore';
+import { useNotesStore } from '../store/useNotesStore';
+import { useTasksStore } from '../store/useTasksStore';
+import {
+  ArrowRightIcon,
+  BrainIcon,
+  CalendarIcon,
+  CheckSquareIcon,
+  ClockIcon,
+  RefreshIcon,
+} from './icons';
+import { Badge } from './ui/Badge';
+import { Card } from './ui/Card';
+import { SectionHeader } from './ui/SectionHeader';
+
+type ExecutiveCommandCenterProps = {
+  directive: DirectiveReport;
+  briefing?: BriefingReport;
+  onRefresh?: () => void;
+  compact?: boolean;
+};
+
+export function ExecutiveCommandCenter({
+  directive,
+  briefing,
+  onRefresh,
+  compact = false,
+}: ExecutiveCommandCenterProps) {
+  const tz = directive.timezone;
+
+  return (
+    <div className="space-y-6">
+      <NowHero now={directive.now} tz={tz} onRefresh={onRefresh} compact={compact} />
+
+      {directive.gaps.length > 0 && (
+        <section>
+          <SectionHeader
+            icon={<BrainIcon className="h-4 w-4" />}
+            title="I need from you"
+            count={directive.gaps.length}
+            accent="amber"
+          />
+          <ul className="mt-3 space-y-2">
+            {directive.gaps.map((gap) => (
+              <GapCard key={gap.id} gap={gap} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {directive.next.length > 0 && (
+        <section>
+          <SectionHeader
+            icon={<ClockIcon className="h-4 w-4" />}
+            title="Next up"
+            count={directive.next.length}
+            accent="blue"
+          />
+          <TimelineList entries={directive.next} tz={tz} limit={6} />
+        </section>
+      )}
+
+      {directive.timeline.length > 0 && (
+        <section>
+          <SectionHeader
+            icon={<CalendarIcon className="h-4 w-4" />}
+            title="Rest of today"
+            count={directive.timeline.length}
+            accent="brand"
+          />
+          <TimelineList entries={directive.timeline} tz={tz} />
+        </section>
+      )}
+
+      {briefing && !compact && (
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          {briefing.nuts.overdueCount > 0 && (
+            <Badge variant="red">{briefing.nuts.overdueCount} overdue</Badge>
+          )}
+          {briefing.nuts.criticalTasks > 0 && (
+            <Badge variant="red">{briefing.nuts.criticalTasks} critical</Badge>
+          )}
+          {briefing.nuts.todayEventCount > 0 && (
+            <Badge variant="blue">{briefing.nuts.todayEventCount} meetings</Badge>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NowHero({
+  now,
+  tz,
+  onRefresh,
+  compact,
+}: {
+  now: DirectiveReport['now'];
+  tz: string;
+  onRefresh?: () => void;
+  compact?: boolean;
+}) {
+  const navigate = useNavigate();
+  const toggleDone = useTasksStore((s) => s.toggleDone);
+
+  const kindLabel: Record<typeof now.kind, string> = {
+    in_meeting: 'In meeting',
+    prep: 'Prep now',
+    work: 'Do this now',
+    gap: 'Coming up',
+    wind_down: 'Wind down',
+    free: 'Focus now',
+  };
+
+  const kindTone: Record<typeof now.kind, string> = {
+    in_meeting: 'from-brand-900 to-brand-950 dark:from-brand-950 dark:to-brand-950',
+    prep: 'from-amber-600 to-amber-800 dark:from-amber-900 dark:to-amber-950',
+    work: 'from-brand-700 to-brand-900 dark:from-brand-900 dark:to-brand-950',
+    gap: 'from-surface-sunken to-surface-raised',
+    wind_down: 'from-surface-sunken to-surface-raised',
+    free: 'from-brand-600 to-brand-800 dark:from-brand-900 dark:to-brand-950',
+  };
+
+  const muted = now.kind === 'gap' || now.kind === 'wind_down';
+
+  const onPrimary = () => {
+    if (!now.ref) {
+      navigate(viewPath('tasks'));
+      return;
+    }
+    if (now.ref.kind === 'task') navigate(viewPath('tasks'));
+    else {
+      useNotesStore.getState().setActive(now.ref.noteId);
+      navigate(viewPath('notes'));
+    }
+  };
+
+  return (
+    <Card
+      padded="none"
+      className={[
+        'overflow-hidden border-2 border-brand-500/30 shadow-lg',
+        compact ? '' : 'lg:shadow-xl',
+      ].join(' ')}
+    >
+      <div className={['bg-gradient-to-br px-5 py-6 sm:px-8 sm:py-8', kindTone[now.kind], muted ? 'text-text' : 'text-white'].join(' ')}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className={['text-[11px] font-bold uppercase tracking-[0.2em]', muted ? 'text-text-muted' : 'text-white/80'].join(' ')}>
+              {kindLabel[now.kind]}
+            </p>
+            <h2 className={['mt-2 text-2xl font-semibold leading-tight tracking-tight sm:text-3xl', muted ? 'text-text' : 'text-white'].join(' ')}>
+              {now.headline}
+            </h2>
+            <p className={['mt-2 max-w-xl text-sm leading-relaxed', muted ? 'text-text-muted' : 'text-white/85'].join(' ')}>
+              {now.detail}
+            </p>
+            {now.until && (
+              <p className={['mt-3 text-xs font-medium', muted ? 'text-text-subtle' : 'text-white/70'].join(' ')}>
+                Until {formatInTimeZone(now.until, tz, 'h:mm a')}
+              </p>
+            )}
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className={['btn-ghost shrink-0 p-2', muted ? '' : 'text-white/80 hover:bg-white/10 hover:text-white'].join(' ')}
+              title="Refresh"
+              aria-label="Refresh directive"
+            >
+              <RefreshIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {now.ref && (
+            <>
+              <button
+                type="button"
+                onClick={onPrimary}
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
+                  muted ? 'bg-brand-600 text-white hover:bg-brand-500' : 'bg-white/15 text-white ring-1 ring-white/25 hover:bg-white/25',
+                ].join(' ')}
+              >
+                Open
+                <ArrowRightIcon className="h-3.5 w-3.5" />
+              </button>
+              {now.ref?.kind === 'task' && now.kind !== 'in_meeting' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (now.ref?.kind === 'task') void toggleDone(now.ref.taskId, true);
+                  }}
+                  className={[
+                    'inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+                    muted ? 'border border-border bg-surface hover:bg-surface-raised' : 'bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20',
+                  ].join(' ')}
+                >
+                  <CheckSquareIcon className="h-4 w-4" />
+                  Mark done
+                </button>
+              )}
+            </>
+          )}
+          {now.eventId && (
+            <button
+              type="button"
+              onClick={() => navigate(viewPath('calendar'))}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+                muted ? 'border border-border bg-surface hover:bg-surface-raised' : 'bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20',
+              ].join(' ')}
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Calendar
+            </button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function GapCard({ gap }: { gap: DirectiveGap }) {
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const setDueTime = useTasksStore((s) => s.setDueTime);
+  const setDueDate = useTasksStore((s) => s.setDueDate);
+  const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
+  const createTask = useTasksStore((s) => s.createTask);
+  const toggleDone = useTasksStore((s) => s.toggleDone);
+  const updateNote = useNotesStore((s) => s.updateNote);
+  const notes = useNotesStore((s) => s.notes);
+  const [busy, setBusy] = useState(false);
+
+  const severityBorder =
+    gap.severity === 'critical'
+      ? 'border-l-red-500'
+      : gap.severity === 'warning'
+        ? 'border-l-amber-500'
+        : 'border-l-brand-500';
+
+  const applySuggestedTime = async (ref: WorkItemRef) => {
+    if (!gap.suggestedTime || !gap.suggestedDate) return;
+    setBusy(true);
+    try {
+      if (ref.kind === 'task') {
+        await setDueDate(ref.taskId, gap.suggestedDate);
+        await setDueTime(ref.taskId, gap.suggestedTime);
+      } else {
+        const note = notes.find((n) => n.id === ref.noteId);
+        if (note) {
+          const patched = applyMarkdownPatchToNote(note, (md) =>
+            setActionItemLineDueDate(md, ref.line, gap.suggestedDate!),
+          );
+          if (patched) await updateNote(ref.noteId, patched);
+        }
+        if (user) {
+          const item = notes.find((n) => n.id === ref.noteId);
+          const lines = item ? (item.content ?? '').split('\n') : [];
+          const lineText = lines[ref.line] ?? 'Note action item';
+          const title = lineText
+            .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/, '')
+            .replace(/\[due:[^\]]+\]/gi, '')
+            .trim();
+          await createTask(user.id, title || 'Note action item', {
+            dueDate: gap.suggestedDate,
+            dueTime: gap.suggestedTime,
+          });
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const actions = useMemo(() => {
+    const btns: Array<{ label: string; onClick: () => void; primary?: boolean }> = [];
+
+    if (gap.kind === 'no_calendar') {
+      btns.push({
+        label: 'Connect calendar',
+        primary: true,
+        onClick: () => navigate(viewPath('profile')),
+      });
+      return btns;
+    }
+
+    if (gap.ref && gap.suggestedTime && (gap.kind === 'untimed_today' || gap.kind === 'prep_needed')) {
+      btns.push({
+        label: `Use ${gap.suggestedTime}`,
+        primary: true,
+        onClick: () => void applySuggestedTime(gap.ref!),
+      });
+    }
+
+    if (gap.ref) {
+      btns.push({
+        label: gap.ref.kind === 'task' ? 'Open task' : 'Open note',
+        onClick: () => {
+          if (gap.ref!.kind === 'task') navigate(viewPath('tasks'));
+          else {
+            useNotesStore.getState().setActive(gap.ref!.noteId);
+            navigate(viewPath('notes'));
+          }
+        },
+      });
+    }
+
+    if (gap.kind === 'prep_needed' && gap.eventId && gap.ref?.kind === 'task') {
+      const taskRef = gap.ref;
+      btns.push({
+        label: 'Link to meeting',
+        onClick: () => void setLinkedEvent(taskRef.taskId, gap.eventId!),
+      });
+    }
+
+    if (gap.kind === 'orphan_followup' && gap.ref?.kind === 'task') {
+      const taskRef = gap.ref;
+      btns.push({
+        label: 'Mark done',
+        onClick: () => void toggleDone(taskRef.taskId, true),
+      });
+    }
+
+    return btns;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gap, navigate, user, notes]);
+
+  return (
+    <li className={['rounded-xl border border-border border-l-4 bg-surface-raised px-4 py-3', severityBorder].join(' ')}>
+      <p className="text-sm font-semibold text-text">{gap.headline}</p>
+      <p className="mt-0.5 text-xs leading-relaxed text-text-muted">{gap.detail}</p>
+      {actions.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              disabled={busy}
+              onClick={a.onClick}
+              className={a.primary ? 'btn-primary py-1.5 text-xs' : 'btn-ghost py-1.5 text-xs'}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function TimelineList({
+  entries,
+  tz,
+  limit,
+}: {
+  entries: TimelineEntry[];
+  tz: string;
+  limit?: number;
+}) {
+  const shown = limit ? entries.slice(0, limit) : entries;
+  const navigate = useNavigate();
+
+  const kindIcon = (kind: TimelineEntry['kind']) => {
+    if (kind === 'meeting') return <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-brand-600" />;
+    if (kind === 'gap') return <ClockIcon className="h-3.5 w-3.5 shrink-0 text-text-subtle" />;
+    return <CheckSquareIcon className="h-3.5 w-3.5 shrink-0 text-amber-600" />;
+  };
+
+  return (
+    <Card padded="none" className="mt-3 divide-y divide-border">
+      {shown.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          onClick={() => {
+            if (e.ref?.kind === 'task') navigate(viewPath('tasks'));
+            else if (e.ref?.kind === 'action') {
+              useNotesStore.getState().setActive(e.ref.noteId);
+              navigate(viewPath('notes'));
+            } else if (e.kind === 'meeting') navigate(viewPath('calendar'));
+          }}
+          className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-sunken"
+        >
+          <span className="mt-0.5 w-[4.5rem] shrink-0 text-xs font-medium tabular-nums text-text-muted">
+            {formatInTimeZone(e.start, tz, 'h:mm a')}
+          </span>
+          {kindIcon(e.kind)}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-text">{e.title}</p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              {e.suggested && (
+                <Badge variant="subtle" className="text-[10px]">
+                  Suggested
+                </Badge>
+              )}
+              {e.priority && (
+                <span className="text-[10px] font-medium text-text-muted">{PRIORITY_PILL[e.priority]}</span>
+              )}
+              {e.kind === 'gap' && <span className="text-[10px] text-text-subtle">Open</span>}
+            </div>
+          </div>
+          <span className="shrink-0 text-xs text-text-subtle">{formatInTimeZone(e.end, tz, 'h:mm a')}</span>
+        </button>
+      ))}
+    </Card>
+  );
+}
