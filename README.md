@@ -2,6 +2,8 @@
 
 A tiny, fast, personal notes app built as the foundation of your daily workspace. Markdown + search + dark mode + cloud sync via Supabase. Designed to grow: start with notes, then layer in PM tools, templates, and AI as needed.
 
+> **Working in this repo (humans + AI agents):** Read [`AGENTS.md`](./AGENTS.md) before you start. Update it in the same commit before you push whenever you add routes, tables, conventions, or learn a gotcha — it is the living source of truth for how this app is built.
+
 ## Stack
 
 - **React 19 + TypeScript + Vite** – fast dev loop

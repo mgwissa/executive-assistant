@@ -5,15 +5,27 @@ alwaysApply: true
 
 # Project context — read + keep updated
 
-This repo is a personal Supabase-backed workspace (notes + tasks + calendar + assistant). `AGENTS.md` at the repo root is the single source of truth for stack, routes, data model, conventions, and known gotchas.
+This repo is a personal Supabase-backed workspace (notes + tasks + calendar + assistant). **`AGENTS.md` at the repo root is mandatory reading** — stack, routes, data model, conventions, and known gotchas all live there.
 
-## At the start of every task
+## Before you do anything
 
-1. **Read `AGENTS.md`** before writing or changing code.
+1. **Read `AGENTS.md` first** — before exploring the codebase, writing code, running migrations, or proposing architecture. No exceptions.
 2. If the task touches the data model, also skim `supabase/migrations/` chronologically.
 3. Follow existing patterns documented in the file — don't introduce a new state lib, routing system, or CSS approach.
 
-## Keep AGENTS.md alive
+## Before you commit anything
+
+**Update `AGENTS.md` in the same commit** whenever the change would leave the doc stale. Review the doc one last time before staging — if you learned or changed something worth a future agent's time, append it now.
+
+Triggers (same as in `AGENTS.md`):
+
+- New/changed route, page, Zustand store, optional addon, external service, Edge Function, cron, or DB trigger
+- New/changed DB table or column (also update migration + `src/types/database.ts`)
+- New gotcha, convention change, or non-obvious lesson from the session
+
+Small change → one or two lines in the relevant section. Append; don't rewrite the whole doc.
+
+## Keep AGENTS.md alive (during work, not only at commit time)
 
 The doc is intentionally imperfect. Treat it as a living document and **update it in the same change** whenever any of these happens:
 

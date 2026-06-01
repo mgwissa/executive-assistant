@@ -1,8 +1,16 @@
 # Agent Context — Executive Assistant / Notes App
 
-> **Read this first when starting work in this repo.** It is the single source of truth for what the project is, how it's organized, what conventions to follow, and the gotchas that have already bitten us.
+> **Read this first — before doing anything in this repo.** Agents and humans alike: do not write code, run migrations, or commit until you have read this file. It is the single source of truth for what the project is, how it's organized, what conventions to follow, and the gotchas that have already bitten us.
 >
-> **This is a living document.** It does not need to be perfect — it needs to be *current*. Every time you (agent or human) land a change that introduces a new route, table, store, external service, convention, or gotcha, append a line or two to the relevant section in the same commit. Small, additive updates are better than waiting for the "right time" to rewrite. Future-you will thank you.
+> **This is a living document.** It does not need to be perfect — it needs to be *current*. **Before every commit**, review whether your change left this doc stale; if so, update it in the *same commit*. Every time you land a change that introduces a new route, table, store, external service, convention, or gotcha, append a line or two to the relevant section. Small, additive updates are better than waiting for the "right time" to rewrite. Future-you will thank you.
+
+## Workflow (every task)
+
+| When | What |
+|------|------|
+| **Before starting** | Read this file. If the task touches the data model, skim `supabase/migrations/` chronologically. |
+| **While working** | Match patterns here; don't introduce new state libs, routing, or styling systems. |
+| **Before committing** | Re-read this file. If anything you added/changed/learned isn't documented yet, append it now — **same commit**, not a follow-up. |
 
 ## What this app is
 
@@ -200,6 +208,7 @@ If you change anything related to notification auth, update *both* secret stores
 ### Git
 - Branch `main`, push directly (single-developer). PRs only when asked.
 - Commit subject style observed in history: `feat: …`, `fix: …`, `fix(scope): …`, lowercase, imperative.
+- **Before every commit:** confirm `AGENTS.md` is current; include doc updates in the same commit when the change warrants it (see **Workflow** and **When you finish a task** above).
 
 ### Editor / IDE
 - Owner is on **Windows + PowerShell**. Bash-isms (`&&` chaining, heredocs, `$(cat <<EOF…)`) break the shell. Use `;` for chaining or split commands. For multi-line strings prefer `Write` tool over inline heredocs.
@@ -239,15 +248,16 @@ If you change anything related to notification auth, update *both* secret stores
 
 ## When you (the agent) start working
 
-1. **Read this file.** If your task touches the data model, also skim `supabase/migrations/` chronologically.
-2. Match existing patterns — don't introduce new state libraries, styling systems, or routing patterns.
-3. If you add or change a column, update `src/types/database.ts` in the same change.
-4. After non-trivial edits, run `npm run lint` and check for type errors via `npm run build` if you touched cross-cutting types.
-5. Don't commit unless explicitly asked. When asked, follow the conventional commit style in history.
+1. **Read this file first** — before any code, exploration, or commits.
+2. If your task touches the data model, also skim `supabase/migrations/` chronologically.
+3. Match existing patterns — don't introduce new state libraries, styling systems, or routing patterns.
+4. If you add or change a column, update `src/types/database.ts` in the same change.
+5. After non-trivial edits, run `npm run lint` and check for type errors via `npm run build` if you touched cross-cutting types.
+6. Don't commit unless explicitly asked. When asked, follow the conventional commit style in history.
 
-## When you finish a task — update this doc
+## When you finish a task — update this doc (required before commit)
 
-Before handing the work back, ask yourself: *did anything I just did introduce something a future agent should know?* If yes, add it now while it's fresh. Triggers:
+**Before staging or committing**, ask: *did anything I just did introduce something a future agent should know?* If yes, update `AGENTS.md` in the **same commit**. Do not push doc updates as a separate follow-up unless the user explicitly wants that split.
 
 - **Added** a route, page, Zustand store, optional addon, Edge Function, cron job, DB trigger, or external service → document it in the relevant section.
 - **Changed** a DB table or column → update both the migration list (implicit, by filename) and the `Data model` table here if a column matters for context.
