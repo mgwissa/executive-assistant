@@ -86,7 +86,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_address` (recipient override) |
+| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `weekly_routine jsonb` (custom template; null = built-in guide), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_address` (recipient override) |
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc) |
@@ -95,7 +95,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `meeting_debrief_states` | Per-occurrence post-meeting debrief progress | `event_id`, `occurrence_start_at`, `status` ('done' \| 'skipped' \| 'snoozed'), `snoozed_until`, `notes` |
 | `useful_links` | Bookmarks | `title`, `url`, `category` |
 | `time_entries`, `time_projects` | Time tracking | day-grouped, project-tagged |
-| `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status` |
+| `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status`, `template_version` (isolates progress when user saves a custom routine) |
 | `notebook_members`, `notebook_invites` | Notebook sharing | shared notebooks expose notes to other auth users via RLS |
 
 ### Notebook sharing (briefly)
@@ -182,7 +182,7 @@ If you change anything related to notification auth, update *both* secret stores
 `profiles.enabled_addons text[]` gates these. Defaults to empty. UI lives in Profile; routes redirect when not enabled.
 
 - `time` — TimeTrackingPage
-- `routine` — WeeklyRoutinePage (weekly product-leader rhythm; `lib/weeklyRoutine.ts` defines the static plan)
+- `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
 - `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard defers to directive (action-items grid hidden); reference schedule/notes in collapsible panel.
 
 ## Conventions

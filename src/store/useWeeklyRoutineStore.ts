@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { WEEKLY_ROUTINE_TEMPLATE_VERSION } from '../lib/weeklyRoutineGuide';
 import type { RoutineStatus } from '../lib/weeklyRoutine';
 import type { RoutineItemState } from '../types';
 
@@ -9,12 +8,18 @@ type WeeklyRoutineState = {
   loading: boolean;
   error: string | null;
 
-  fetchRange: (userId: string, fromDate: string, toDate: string) => Promise<void>;
+  fetchRange: (
+    userId: string,
+    fromDate: string,
+    toDate: string,
+    templateVersion: string,
+  ) => Promise<void>;
   setItemStatus: (
     userId: string,
     routineDate: string,
     itemId: string,
     status: RoutineStatus,
+    templateVersion: string,
   ) => Promise<void>;
   clear: () => void;
 };
@@ -24,22 +29,25 @@ function sameRoutineState(
   userId: string,
   routineDate: string,
   itemId: string,
+  templateVersion: string,
 ): boolean {
   return (
     row.user_id === userId &&
     row.routine_date === routineDate &&
     row.item_id === itemId &&
-    row.template_version === WEEKLY_ROUTINE_TEMPLATE_VERSION
+    row.template_version === templateVersion
   );
 }
 
 function mergeState(list: RoutineItemState[], next: RoutineItemState): RoutineItemState[] {
   const exists = list.some((row) =>
-    sameRoutineState(row, next.user_id, next.routine_date, next.item_id),
+    sameRoutineState(row, next.user_id, next.routine_date, next.item_id, next.template_version),
   );
   if (!exists) return [...list, next];
   return list.map((row) =>
-    sameRoutineState(row, next.user_id, next.routine_date, next.item_id) ? next : row,
+    sameRoutineState(row, next.user_id, next.routine_date, next.item_id, next.template_version)
+      ? next
+      : row,
   );
 }
 
@@ -48,13 +56,13 @@ export const useWeeklyRoutineStore = create<WeeklyRoutineState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchRange: async (userId, fromDate, toDate) => {
+  fetchRange: async (userId, fromDate, toDate, templateVersion) => {
     set({ loading: true, error: null });
     const { data, error } = await supabase
       .from('routine_item_states')
       .select('*')
       .eq('user_id', userId)
-      .eq('template_version', WEEKLY_ROUTINE_TEMPLATE_VERSION)
+      .eq('template_version', templateVersion)
       .gte('routine_date', fromDate)
       .lte('routine_date', toDate)
       .order('routine_date', { ascending: true })
@@ -68,13 +76,15 @@ export const useWeeklyRoutineStore = create<WeeklyRoutineState>((set, get) => ({
     set({ states: data ?? [], loading: false, error: null });
   },
 
-  setItemStatus: async (userId, routineDate, itemId, status) => {
+  setItemStatus: async (userId, routineDate, itemId, status, templateVersion) => {
     const prev = get().states;
     set({ error: null });
 
     if (status === 'pending') {
       set({
-        states: prev.filter((row) => !sameRoutineState(row, userId, routineDate, itemId)),
+        states: prev.filter(
+          (row) => !sameRoutineState(row, userId, routineDate, itemId, templateVersion),
+        ),
       });
       const { error } = await supabase
         .from('routine_item_states')
@@ -82,7 +92,7 @@ export const useWeeklyRoutineStore = create<WeeklyRoutineState>((set, get) => ({
         .eq('user_id', userId)
         .eq('routine_date', routineDate)
         .eq('item_id', itemId)
-        .eq('template_version', WEEKLY_ROUTINE_TEMPLATE_VERSION);
+        .eq('template_version', templateVersion);
 
       if (error) set({ states: prev, error: error.message });
       return;
@@ -92,7 +102,7 @@ export const useWeeklyRoutineStore = create<WeeklyRoutineState>((set, get) => ({
     const optimistic: RoutineItemState = {
       id: `tmp-${userId}-${routineDate}-${itemId}`,
       user_id: userId,
-      template_version: WEEKLY_ROUTINE_TEMPLATE_VERSION,
+      template_version: templateVersion,
       routine_date: routineDate,
       item_id: itemId,
       status,
@@ -112,7 +122,7 @@ export const useWeeklyRoutineStore = create<WeeklyRoutineState>((set, get) => ({
       .upsert(
         {
           user_id: userId,
-          template_version: WEEKLY_ROUTINE_TEMPLATE_VERSION,
+          template_version: templateVersion,
           routine_date: routineDate,
           item_id: itemId,
           status,

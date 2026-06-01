@@ -41,6 +41,10 @@ import {
   type RoutineStatus,
 } from '../lib/weeklyRoutine';
 import {
+  resolveWeeklyRoutineTemplate,
+  routineTemplateVersion,
+} from '../lib/weeklyRoutineTemplate';
+import {
   ArrowRightIcon,
   BookIcon,
   CalendarIcon,
@@ -219,14 +223,19 @@ export function Dashboard() {
   const routineTodayDate = formatInTimeZone(today, timezone, 'yyyy-MM-dd');
   const routineTodayWeekday = routineWeekdayFromLabel(formatInTimeZone(today, timezone, 'EEEE'));
   const routineWeekDates = routineWeekDatesFor(routineTodayDate);
-  const routineDay = getRoutineDay(routineTodayWeekday);
+  const routineTemplate = useMemo(
+    () => resolveWeeklyRoutineTemplate(profile?.weekly_routine),
+    [profile?.weekly_routine],
+  );
+  const routineTemplateVersionKey = routineTemplateVersion(routineTemplate);
+  const routineDay = getRoutineDay(routineTodayWeekday, routineTemplate);
   const routineBlocks = useMemo(
-    () => getRoutineBlocksForWeekday(routineTodayWeekday),
-    [routineTodayWeekday],
+    () => getRoutineBlocksForWeekday(routineTodayWeekday, routineTemplate),
+    [routineTodayWeekday, routineTemplate],
   );
   const routineRituals = useMemo(
-    () => getRoutineRitualsForWeekday(routineTodayWeekday),
-    [routineTodayWeekday],
+    () => getRoutineRitualsForWeekday(routineTodayWeekday, routineTemplate),
+    [routineTodayWeekday, routineTemplate],
   );
   const routineItems = useMemo<RoutineChecklistItem[]>(
     () => [...routineBlocks, ...routineRituals],
@@ -252,12 +261,18 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!user || !routineEnabled) return;
-    void fetchRoutineRange(user.id, routineWeekDates.monday, routineWeekDates.friday);
+    void fetchRoutineRange(
+      user.id,
+      routineWeekDates.monday,
+      routineWeekDates.friday,
+      routineTemplateVersionKey,
+    );
   }, [
     user,
     routineEnabled,
     routineWeekDates.monday,
     routineWeekDates.friday,
+    routineTemplateVersionKey,
     fetchRoutineRange,
   ]);
 
@@ -460,7 +475,13 @@ export function Dashboard() {
             onOpen={() => navigate(viewPath('routine'))}
             onStatus={(itemId, status) => {
               if (!user) return;
-              void setRoutineItemStatus(user.id, routineTodayDate, itemId, status);
+              void setRoutineItemStatus(
+                user.id,
+                routineTodayDate,
+                itemId,
+                status,
+                routineTemplateVersionKey,
+              );
             }}
           />
         ) : null}

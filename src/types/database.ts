@@ -114,6 +114,8 @@ export type Database = {
           /** Override recipient — when null, the user's auth email is used. */
           notify_email_address: string | null;
           meeting_rules: Json;
+          /** Custom weekly routine template; null uses the built-in guide. */
+          weekly_routine: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -132,6 +134,7 @@ export type Database = {
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
           meeting_rules?: Json;
+          weekly_routine?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -150,6 +153,7 @@ export type Database = {
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
           meeting_rules?: Json;
+          weekly_routine?: Json | null;
           created_at?: string;
           updated_at?: string;
         };

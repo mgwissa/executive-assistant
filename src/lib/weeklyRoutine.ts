@@ -1,16 +1,14 @@
+import type { RoutineRitual, RoutineTimeBlock, RoutineWeekday } from './weeklyRoutineGuide';
 import {
-  ROUTINE_DAYS,
-  ROUTINE_RITUALS,
-  ROUTINE_TIME_BLOCKS,
-  ROUTINE_WEEKDAYS,
-  type RoutineRitual,
-  type RoutineTimeBlock,
-  type RoutineWeekday,
-} from './weeklyRoutineGuide';
+  defaultWeeklyRoutineTemplate,
+  type WeeklyRoutineTemplate,
+} from './weeklyRoutineTemplate';
 
 export type RoutineStatus = 'pending' | 'done' | 'skipped';
 
 export type RoutineChecklistItem = RoutineTimeBlock | RoutineRitual;
+
+const DEFAULT_TEMPLATE = defaultWeeklyRoutineTemplate();
 
 export function routineWeekdayFromDate(date: Date): RoutineWeekday {
   const day = date.getDay();
@@ -44,22 +42,34 @@ export function routineWeekDatesFor(todayIso: string): Record<RoutineWeekday, st
   };
 }
 
-export function routineDayLabel(weekday: RoutineWeekday): string {
-  return ROUTINE_DAYS.find((d) => d.weekday === weekday)?.label ?? weekday;
+export function routineDayLabel(
+  weekday: RoutineWeekday,
+  template: WeeklyRoutineTemplate = DEFAULT_TEMPLATE,
+): string {
+  return template.days.find((d) => d.weekday === weekday)?.label ?? weekday;
 }
 
-export function getRoutineDay(weekday: RoutineWeekday) {
-  return ROUTINE_DAYS.find((d) => d.weekday === weekday) ?? ROUTINE_DAYS[0];
+export function getRoutineDay(
+  weekday: RoutineWeekday,
+  template: WeeklyRoutineTemplate = DEFAULT_TEMPLATE,
+) {
+  return template.days.find((d) => d.weekday === weekday) ?? template.days[0];
 }
 
-export function getRoutineBlocksForWeekday(weekday: RoutineWeekday): RoutineTimeBlock[] {
-  return ROUTINE_TIME_BLOCKS
+export function getRoutineBlocksForWeekday(
+  weekday: RoutineWeekday,
+  template: WeeklyRoutineTemplate = DEFAULT_TEMPLATE,
+): RoutineTimeBlock[] {
+  return template.timeBlocks
     .filter((item) => item.weekday === weekday)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-export function getRoutineRitualsForWeekday(weekday: RoutineWeekday): RoutineRitual[] {
-  return ROUTINE_RITUALS
+export function getRoutineRitualsForWeekday(
+  weekday: RoutineWeekday,
+  template: WeeklyRoutineTemplate = DEFAULT_TEMPLATE,
+): RoutineRitual[] {
+  return template.rituals
     .filter((item) => item.days.includes(weekday))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
@@ -74,13 +84,15 @@ export function routineProgress(
 }
 
 export function nextRoutineWeekday(weekday: RoutineWeekday): RoutineWeekday {
-  const idx = ROUTINE_WEEKDAYS.indexOf(weekday);
-  return ROUTINE_WEEKDAYS[(idx + 1) % ROUTINE_WEEKDAYS.length];
+  const order: RoutineWeekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  const idx = order.indexOf(weekday);
+  return order[(idx + 1) % order.length]!;
 }
 
 export function previousRoutineWeekday(weekday: RoutineWeekday): RoutineWeekday {
-  const idx = ROUTINE_WEEKDAYS.indexOf(weekday);
-  return ROUTINE_WEEKDAYS[(idx - 1 + ROUTINE_WEEKDAYS.length) % ROUTINE_WEEKDAYS.length];
+  const order: RoutineWeekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  const idx = order.indexOf(weekday);
+  return order[(idx - 1 + order.length) % order.length]!;
 }
 
 function addDays(date: Date, days: number): Date {
