@@ -10,6 +10,7 @@ import {
   type DayHudMetrics,
 } from '../lib/dayHudMetrics';
 import type { DirectiveReport } from '../lib/executiveDirective';
+import { formatDayEndLabel } from '../lib/executiveDirective';
 import { viewPath } from '../lib/routes';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Task } from '../types';
@@ -67,7 +68,7 @@ function DayScoreCard({ metrics }: { metrics: DayHudMetrics }) {
       <p className="mt-2 text-xs leading-relaxed text-text-muted">
         {metrics.overcommitMinutes > 0
           ? `~${formatHudHours(metrics.overcommitMinutes)} over remaining capacity`
-          : `${formatHudHours(metrics.remainingMinutes)} left until 6pm`}
+          : `${formatHudHours(metrics.remainingMinutes)} left until ${formatDayEndLabel()}`}
       </p>
     </Card>
   );
@@ -367,11 +368,11 @@ export function ExecutiveHudSidebar({
   return (
     <div className="space-y-3">
       <DelegationChaseCard tasks={tasks} onRefresh={onRefresh} />
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-subtle">Coming soon</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-subtle">Later phases</p>
       <ReservedSlot
         icon={<CheckSquareIcon className="h-4 w-4" />}
         title="Decision queue"
-        subtitle="Commit, delegate, or drop ambiguous items"
+        subtitle="Commit, delegate, or drop — expands on Focus stack"
       />
       <ReservedSlot
         icon={<CalendarIcon className="h-4 w-4" />}

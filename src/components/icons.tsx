@@ -274,3 +274,22 @@ export function BrainIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function TargetIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
+export function PinIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 17v5" />
+      <path d="M9 3h6l1 7h4l-7 8v-5H8L4 10h4z" />
+    </svg>
+  );
+}

@@ -116,6 +116,7 @@ export type Database = {
           meeting_rules: Json;
           /** Custom weekly routine template; null uses the built-in guide. */
           weekly_routine: Json | null;
+          focus_queue: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -135,6 +136,7 @@ export type Database = {
           notify_email_address?: string | null;
           meeting_rules?: Json;
           weekly_routine?: Json | null;
+          focus_queue?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -154,6 +156,7 @@ export type Database = {
           notify_email_address?: string | null;
           meeting_rules?: Json;
           weekly_routine?: Json | null;
+          focus_queue?: Json | null;
           created_at?: string;
           updated_at?: string;
         };

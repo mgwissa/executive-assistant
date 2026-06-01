@@ -40,7 +40,18 @@ import type { Event, MeetingDebriefState, Task } from '../types';
 
 const PREP_WINDOW_MS = 30 * 60 * 1000;
 const MIN_GAP_MS = 20 * 60 * 1000;
-const DAY_END_HOUR = 18;
+const DAY_END_HOUR = 17;
+
+/** End of the executive workday (local hour) for capacity, wind-down, and HUD copy. */
+export function executiveDayEndHour(): number {
+  return DAY_END_HOUR;
+}
+
+export function formatDayEndLabel(hour = DAY_END_HOUR): string {
+  const h = hour % 12 || 12;
+  const suffix = hour >= 12 ? 'pm' : 'am';
+  return `${h}${suffix}`;
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -161,6 +172,17 @@ type UnifiedWork = {
   updatedAt: string;
   estimatedMinutes?: number | null;
 };
+
+/** Open work item ranked for today's executive assistant (critical / urgent / due today). */
+export type FocusWorkItem = UnifiedWork;
+
+export function buildPrioritizedWork(
+  tasks: Task[],
+  actionItems: ActionItem[],
+  todayIso: string,
+): FocusWorkItem[] {
+  return toUnifiedWork(tasks, actionItems, todayIso);
+}
 
 type MeetingBlock = {
   id: string;
@@ -662,7 +684,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       kind: 'capacity_overcommit',
       severity: capacity.capacityRatio > 1.15 ? 'critical' : 'warning',
       headline: `Overcommitted by ~${formatEstimateMinutes(capacity.overcommitMinutes)}`,
-      detail: `${formatEstimateMinutes(capacity.bookedMinutes)} planned with ${formatEstimateMinutes(capacity.remainingMinutes)} left until 6pm — defer, shorten estimates, or protect focus time.`,
+      detail: `${formatEstimateMinutes(capacity.bookedMinutes)} planned with ${formatEstimateMinutes(capacity.remainingMinutes)} left until ${formatDayEndLabel()} — defer, shorten estimates, or protect focus time.`,
     });
   }
 

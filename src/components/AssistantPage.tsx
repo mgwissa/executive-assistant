@@ -38,11 +38,15 @@ import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
 import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
 
-type Tab = 'watch' | 'nudge' | 'nuts';
+type Tab = 'watch' | 'decisions' | 'nuts';
 
 const TAB_CONFIG: Array<{ id: Tab; label: string; emptyMsg: string }> = [
-  { id: 'watch', label: 'Watch List', emptyMsg: "No blind spots detected — you're on top of things." },
-  { id: 'nudge', label: 'The Nudge', emptyMsg: "No nudges today — all looking clean." },
+  { id: 'watch', label: 'Watch list', emptyMsg: "No blind spots detected — you're on top of things." },
+  {
+    id: 'decisions',
+    label: 'Decisions needed',
+    emptyMsg: 'Nothing waiting on a call from you.',
+  },
   { id: 'nuts', label: 'Stats', emptyMsg: 'Nothing critical to report.' },
 ];
 
@@ -64,7 +68,7 @@ const SEVERITY_STYLE: Record<BriefingInsight['severity'], {
     badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
     dot: 'bg-amber-500',
   },
-  nudge: {
+  decision: {
     border: 'border-l-brand-500',
     bg: 'bg-brand-50 dark:bg-brand-950/20',
     badge: 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
@@ -392,7 +396,7 @@ function InsightCard({
 }) {
   const style = SEVERITY_STYLE[insight.severity];
   const severityLabel =
-    insight.severity === 'nudge' ? 'Nudge' :
+    insight.severity === 'decision' ? 'Decision' :
     insight.severity === 'critical' ? 'Critical' :
     insight.severity === 'warning' ? 'Watch' : 'Info';
 

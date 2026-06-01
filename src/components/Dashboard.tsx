@@ -8,6 +8,7 @@ import { generateDirective } from '../lib/executiveDirective';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
+import { parseFocusQueue, type FocusQueuePrefs } from '../lib/focusQueue';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
@@ -61,6 +62,7 @@ import { EmptyState } from './ui/EmptyState';
 import { SectionHeader } from './ui/SectionHeader';
 import { TaskQuickAddForm, toCreateTaskOptions, type TaskQuickAddPayload } from './TaskQuickAddForm';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
+import { ExecutiveFocusStack } from './ExecutiveFocusStack';
 import { ExecutiveDayHud, ExecutiveHudSidebar } from './ExecutiveDayHud';
 import { UsefulLinksSection } from './UsefulLinksSection';
 
@@ -361,6 +363,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
+  const updateProfile = useProfileStore((s) => s.updateProfile);
   const notes = useNotesStore((s) => s.notes);
   const loading = useNotesStore((s) => s.loading);
   const events = useEventsStore((s) => s.events);
@@ -502,6 +505,23 @@ export function Dashboard() {
 
   const openTasksView = useCallback(() => navigate(viewPath('tasks')), [navigate]);
   const workItemCount = openTasks.length + actionItems.length;
+  const focusQueuePrefs = useMemo(
+    () => parseFocusQueue(profile?.focus_queue),
+    [profile?.focus_queue],
+  );
+
+  const handleFocusQueueUpdate = useCallback(
+    (next: FocusQueuePrefs) => {
+      if (!user) return;
+      const current = useProfileStore.getState().profile;
+      if (current) {
+        useProfileStore.setState({ profile: { ...current, focus_queue: next } });
+      }
+      void updateProfile(user.id, { focus_queue: next });
+      setDirectiveRefresh((k) => k + 1);
+    },
+    [user, updateProfile],
+  );
 
   const directive = useMemo(() => {
     if (!assistantEnabled) return null;
@@ -578,6 +598,16 @@ export function Dashboard() {
                   sections={['now', 'gaps']}
                   hideBriefingBadges
                 />
+                <ExecutiveFocusStack
+                  directive={directive}
+                  tasks={tasks}
+                  actionItems={actionItems}
+                  prefs={focusQueuePrefs}
+                  disabled={!user}
+                  onUpdatePrefs={handleFocusQueueUpdate}
+                  onToggleTask={handleToggleTaskDone}
+                  onToggleAction={toggleAction}
+                />
               </div>
               <aside className="xl:col-span-4 space-y-4 xl:sticky xl:top-4">
                 <ExecutiveCommandCenter
@@ -600,6 +630,16 @@ export function Dashboard() {
                 directive={directive}
                 onRefresh={() => setDirectiveRefresh((k) => k + 1)}
                 hideBriefingBadges
+              />
+              <ExecutiveFocusStack
+                directive={directive}
+                tasks={tasks}
+                actionItems={actionItems}
+                prefs={focusQueuePrefs}
+                disabled={!user}
+                onUpdatePrefs={handleFocusQueueUpdate}
+                onToggleTask={handleToggleTaskDone}
+                onToggleAction={toggleAction}
               />
             </div>
 

@@ -11,7 +11,7 @@ export type { CapacitySnapshot } from './taskCapacity';
 export type DayHudMetrics = {
   dayScore: number;
   dayScoreLabel: 'On track' | 'Busy' | 'Tight' | 'Overloaded';
-  /** Minutes from now until profile day-end (18:00). */
+  /** Minutes from now until day-end (17:00 in profile timezone). */
   remainingMinutes: number;
   meetingMinutes: number;
   workMinutes: number;

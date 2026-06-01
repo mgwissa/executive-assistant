@@ -6,7 +6,7 @@
  * a structured briefing with three registers:
  *   1. Nuts & Bolts  — hard data, counts, deadlines
  *   2. Watch List    — cross-references and things that could slip
- *   3. Nudges        — honest pushback (reschedule counters, stale items, etc.)
+ *   3. Decisions needed — items that need your call (commit, date, delegate, or drop)
  *
  * Time-of-day mode shapes which insights are surfaced and how urgent the tone is.
  */
@@ -28,12 +28,12 @@ import {
 
 export type BriefingMode = 'morning' | 'midday' | 'afternoon' | 'evening';
 
-export type InsightSeverity = 'info' | 'warning' | 'critical' | 'nudge';
+export type InsightSeverity = 'info' | 'warning' | 'critical' | 'decision';
 
 export interface BriefingInsight {
   id: string;
   severity: InsightSeverity;
-  section: 'nuts' | 'watch' | 'nudge';
+  section: 'nuts' | 'watch' | 'decisions';
   headline: string;
   detail: string;
   /** Optional: a task or note ID the user can act on */
@@ -551,7 +551,7 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
     });
   }
 
-  // --- NUDGE SECTION ---
+  // --- DECISIONS NEEDED ---
 
   // Reschedule offenders (>= 3 reschedules)
   const RESCHEDULE_THRESHOLD = 3;
@@ -563,8 +563,8 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
     const count = t.reschedule_count ?? 0;
     insights.push({
       id: nextId(),
-      severity: 'nudge',
-      section: 'nudge',
+      severity: 'decision',
+      section: 'decisions',
       headline: `"${t.title}" has been rescheduled ${count} time${count > 1 ? 's' : ''}`,
       detail: count >= 5
         ? `At this point, be honest: does this actually need to happen? If yes, put real calendar time on it and stop deferring. If no, cut it.`
@@ -581,8 +581,8 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
   if (staleActionItems.length > 0) {
     insights.push({
       id: nextId(),
-      severity: 'nudge',
-      section: 'nudge',
+      severity: 'decision',
+      section: 'decisions',
       headline: `${staleActionItems.length} note action item${staleActionItems.length > 1 ? 's' : ''} haven't been touched in 14+ days`,
       detail: staleActionItems.slice(0, 3).map((a) => `"${a.displayText}" in ${a.noteTitle}`).join('; ') +
         ' — either convert these to tasks with due dates, or check them off.',
@@ -596,8 +596,8 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
   if (highNoDueDate.length > 0) {
     insights.push({
       id: nextId(),
-      severity: 'nudge',
-      section: 'nudge',
+      severity: 'decision',
+      section: 'decisions',
       headline: `${highNoDueDate.length} high-priority task${highNoDueDate.length > 1 ? 's have' : ' has'} no due date`,
       detail: highNoDueDate.slice(0, 3).map((t) => `"${t.title}"`).join(', ') +
         " — if it's actually important, give it a date. Otherwise, lower the priority.",
@@ -614,7 +614,7 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
         insights.push({
           id: nextId(),
           severity: 'info',
-          section: 'nudge',
+          section: 'decisions',
           headline: `You have open time today — "${topTask.title}" is the top priority`,
           detail: `${todayEvents.length} meetings scheduled. Consider blocking time for your highest-priority work before the day fills up.`,
           actionTarget: { kind: 'task', id: topTask.id },
@@ -668,12 +668,12 @@ export function briefingSummaryLines(report: BriefingReport): string[] {
     lines.push(`📥 ${nuts.owedToMeCount} item${nuts.owedToMeCount > 1 ? 's' : ''} owed to you${stale}`);
   }
 
-  // Top watch/nudge insight
+  // Top watch / decisions insight
   const topWatch = insights.find((i) => i.section === 'watch');
   if (topWatch) lines.push(`👁 ${topWatch.headline}`);
 
-  const topNudge = insights.find((i) => i.section === 'nudge');
-  if (topNudge) lines.push(`👋 ${topNudge.headline}`);
+  const topDecisions = insights.find((i) => i.section === 'decisions');
+  if (topDecisions) lines.push(topDecisions.headline);
 
   return lines;
 }
@@ -707,7 +707,7 @@ export function briefingToEmailHtml(report: BriefingReport, firstName: string): 
   ].filter(Boolean).join('');
 
   const watchSection = sectionInsights('watch');
-  const nudgeSection = sectionInsights('nudge');
+  const decisionsSection = sectionInsights('decisions');
 
   return `<!DOCTYPE html>
 <html>
@@ -737,11 +737,11 @@ export function briefingToEmailHtml(report: BriefingReport, firstName: string): 
           ${watchSection.map(insightRow).join('')}
         </table>` : ''}
 
-        <!-- Nudges -->
-        ${nudgeSection.length > 0 ? `
+        <!-- Decisions needed -->
+        ${decisionsSection.length > 0 ? `
         <table width="100%" style="border-collapse:collapse;border-top:1px solid #f3f4f6;margin-top:8px;">
-          <tr><td style="padding:16px 16px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;">WHILE WE'RE AT IT</td></tr>
-          ${nudgeSection.map(insightRow).join('')}
+          <tr><td style="padding:16px 16px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;">DECISIONS NEEDED</td></tr>
+          ${decisionsSection.map(insightRow).join('')}
         </table>` : ''}
 
         <!-- Proposals -->

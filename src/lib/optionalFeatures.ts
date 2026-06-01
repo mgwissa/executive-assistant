@@ -67,7 +67,7 @@ export const OPTIONAL_FEATURE_NAV: Record<
   assistant: {
     label: 'Executive Assistant',
     description:
-      'Proactive daily briefings, blind-spot detection, schedule gap analysis, and nudges when tasks keep getting rescheduled.',
+      'Proactive daily briefings, blind-spot detection, schedule gap analysis, and decision prompts when work keeps slipping.',
     Icon: BrainIcon,
     accent: 'brand',
   },

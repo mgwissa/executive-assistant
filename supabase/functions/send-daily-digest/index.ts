@@ -125,23 +125,23 @@ function daysBetween(a: string, b: Date): number {
 }
 
 type Insight = {
-  kind: 'warning' | 'nudge' | 'info';
+  kind: 'warning' | 'decision' | 'info';
   text: string;
 };
 
 function buildInsights(tasks: Task[], events: Event[], now: Date, todayLocalDate: string, userTz: string): {
   watchList: Insight[];
-  nudges: Insight[];
+  decisionsNeeded: Insight[];
 } {
   const watchList: Insight[] = [];
-  const nudges: Insight[] = [];
+  const decisionsNeeded: Insight[] = [];
 
-  // ── Reschedule nudges (≥3 times) ─────────────────────────────────────────
+  // ── Reschedule decisions (≥3 times) ──────────────────────────────────────
   for (const t of tasks) {
     const count = t.reschedule_count ?? 0;
     if (count >= 3) {
-      nudges.push({
-        kind: 'nudge',
+      decisionsNeeded.push({
+        kind: 'decision',
         text: `"${t.title}" has been rescheduled ${count} time${count === 1 ? '' : 's'}. Is this actually getting done?`,
       });
     }
@@ -154,8 +154,8 @@ function buildInsights(tasks: Task[], events: Event[], now: Date, todayLocalDate
     const ref = t.priority_set_at ?? t.updated_at;
     const age = daysBetween(ref, now);
     if (age > sla) {
-      nudges.push({
-        kind: 'nudge',
+      decisionsNeeded.push({
+        kind: 'decision',
         text: `"${t.title}" is marked ${PRIORITY_LABEL[t.priority] ?? t.priority} but hasn't moved in ${age} days.`,
       });
     }
@@ -224,7 +224,7 @@ function buildInsights(tasks: Task[], events: Event[], now: Date, todayLocalDate
     }
   }
 
-  return { watchList, nudges };
+  return { watchList, decisionsNeeded };
 }
 
 // ─── HTML rendering ──────────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ function renderEventRow(e: Event, userTz: string): string {
 function renderInsightRow(insight: Insight): string {
   const colors = {
     warning: { bg: '#fffbeb', border: '#f59e0b', icon: '⚠️' },
-    nudge:   { bg: '#faf5ff', border: '#a855f7', icon: '💡' },
+    decision: { bg: '#faf5ff', border: '#a855f7', icon: '◆' },
     info:    { bg: '#eff6ff', border: '#3b82f6', icon: '👁' },
   };
   const c = colors[insight.kind];
@@ -326,7 +326,7 @@ function renderDigestHtml(args: {
   waitingOnTasks: Task[];
   eventsToday: Event[];
   watchList: Insight[];
-  nudges: Insight[];
+  decisionsNeeded: Insight[];
   todayLocalDate: string;
   userTz: string;
   totalOpenTasks: number;
@@ -372,15 +372,14 @@ function renderDigestHtml(args: {
     watchHtml,
   );
 
-  // The Nudge
-  const nudgeHtml = args.nudges.length === 0
-    ? '<p style="color:#6b7280;font-size:13px;margin:0">No nudges today — looking clean.</p>'
-    : `<ul style="padding:0;margin:0">${args.nudges.map(renderInsightRow).join('')}</ul>`;
+  const decisionsHtml = args.decisionsNeeded.length === 0
+    ? '<p style="color:#6b7280;font-size:13px;margin:0">Nothing waiting on a call from you.</p>'
+    : `<ul style="padding:0;margin:0">${args.decisionsNeeded.map(renderInsightRow).join('')}</ul>`;
 
-  const nudgeSection = renderSection(
-    'The Nudge',
-    "Honest check-ins you might not want to hear, but need to.",
-    nudgeHtml,
+  const decisionsSection = renderSection(
+    'Decisions needed',
+    'Commit, date, delegate, or drop — your call.',
+    decisionsHtml,
   );
 
   // Waiting on section (always shown if non-empty)
@@ -414,7 +413,7 @@ function renderDigestHtml(args: {
 
       ${nutsSection}
       ${watchSection}
-      ${nudgeSection}
+      ${decisionsSection}
       ${waitingSection}
 
       <!-- Footer -->
@@ -532,7 +531,7 @@ async function processProfile(
   const mode = getBriefingMode(localHour);
 
   // Build intelligence insights
-  const { watchList, nudges } = buildInsights(tasks, allEvents, now, todayLocalDate, userTz);
+  const { watchList, decisionsNeeded } = buildInsights(tasks, allEvents, now, todayLocalDate, userTz);
 
   const name = profile.first_name?.trim() || 'there';
   const dateLabel = friendlyDateLabel(now, userTz);
@@ -547,7 +546,7 @@ async function processProfile(
     waitingOnTasks,
     eventsToday,
     watchList,
-    nudges,
+    decisionsNeeded,
     todayLocalDate,
     userTz,
     totalOpenTasks: tasks.length,
