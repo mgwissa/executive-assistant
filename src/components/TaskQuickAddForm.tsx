@@ -113,8 +113,8 @@ export function TaskQuickAddForm({
         value={tagsInput}
         disabled={disabled}
         onChange={(e) => setTagsInput(e.target.value)}
-        placeholder="Tags"
-        title="Comma- or space-separated tags"
+        placeholder="Tags (comma-separated)"
+        title="Comma-separated tags — spaces OK within a tag"
         className="input mt-0 w-full min-w-0 py-2 text-sm sm:min-w-[8rem] sm:flex-1 sm:py-1.5"
       />
       <button

@@ -136,7 +136,7 @@ export function TaskTagEditor({
                 addDraft();
               }
             }}
-            placeholder={atLimit ? 'Tag limit reached' : 'Add tag — Enter or comma'}
+            placeholder={atLimit ? 'Tag limit reached' : 'Add tag, or several comma-separated'}
             className="input mt-0 min-h-[2rem] min-w-[12rem] flex-1 py-1 text-sm"
           />
           <button
@@ -151,7 +151,8 @@ export function TaskTagEditor({
       ) : null}
       {!disabled ? (
         <p className="text-xs text-text-subtle">
-          Lowercase labels — separate with commas or spaces. Up to {MAX_TASK_TAGS} per task.
+          Lowercase labels — separate tags with commas (spaces allowed inside a tag). Up to{' '}
+          {MAX_TASK_TAGS} per task.
         </p>
       ) : null}
     </div>

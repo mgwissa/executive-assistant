@@ -24,10 +24,9 @@ export function normalizeTags(tags: readonly string[]): string[] {
   return out;
 }
 
-/** Parse comma/semicolon/whitespace-separated tag input. */
+/** Parse comma-separated tag input (spaces allowed within each tag). */
 export function parseTagsFromInput(input: string): string[] {
-  const parts = input.split(/[,;\n]+/).flatMap((chunk) => chunk.split(/\s+/));
-  return normalizeTags(parts);
+  return normalizeTags(input.split(','));
 }
 
 export function collectTaskTags(tasks: readonly Pick<Task, 'tags'>[]): string[] {
