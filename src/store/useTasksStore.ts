@@ -13,6 +13,7 @@ export type CreateTaskOptions = {
   /** When omitted, due date is derived from priority. Pass `null` for no due date. */
   dueDate?: string | null;
   dueTime?: string | null;
+  linkedEventId?: string | null;
 };
 
 type TasksState = {
@@ -156,7 +157,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       due_date,
       due_time,
       reminder_sent_at: null,
-      linked_event_id: null,
+      linked_event_id: options?.linkedEventId ?? null,
       description: '',
       waiting_on: null,
       reschedule_count: 0,
@@ -176,6 +177,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         due_date,
         due_time,
         waiting_on: null,
+        linked_event_id: options?.linkedEventId ?? null,
       })
       .select()
       .single();

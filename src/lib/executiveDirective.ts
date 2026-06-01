@@ -20,6 +20,7 @@ import {
   isDebriefSuppressed,
   isInDebriefWindow,
 } from './meetingDebrief';
+import { PREP_BLOCK_MINUTES, hasOpenLinkedTask, prepBlockStart, prepTaskTitle } from './meetingLifecycle';
 import type { Event, MeetingDebriefState, Task } from '../types';
 
 const TASK_BLOCK_MINUTES = 30;
@@ -422,27 +423,44 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     });
   }
 
+  // Suggested prep blocks (15 min before meetings that need prep)
+  for (const m of meetings) {
+    if (!m.prepRequired || m.start <= now) continue;
+    if (hasOpenLinkedTask(m.eventId, input.tasks)) continue;
+    const blockStart = prepBlockStart(m.start);
+    const effectiveStart = blockStart < now ? now : blockStart;
+    if (effectiveStart >= m.start) continue;
+    timeline.push({
+      id: `prep-suggested:${m.eventId}:${m.start.getTime()}`,
+      kind: 'suggested',
+      title: prepTaskTitle(m.title),
+      start: effectiveStart,
+      end: m.start,
+      eventId: m.eventId,
+      suggested: true,
+    });
+  }
+
   // Prep gaps (skip routine meetings marked no-prep)
   for (const m of meetings) {
     if (!m.prepRequired) continue;
     if (m.start <= now) continue;
     const msUntil = m.start.getTime() - now.getTime();
     if (msUntil > PREP_WINDOW_MS) continue;
-    const linked = work.find((w) => w.linkedEventId === m.eventId);
-    const hasPrep = linked && !input.tasks.find((t) => t.id === linked.taskId)?.done;
-    if (!hasPrep) {
-      gaps.push({
-        id: nextGapId(),
-        kind: 'prep_needed',
-        severity: msUntil < 15 * 60_000 ? 'critical' : 'warning',
-        headline: `Prep for "${m.title}"`,
-        detail: `Meeting in ${Math.max(1, Math.round(msUntil / 60_000))} min — link or create a prep task.`,
-        eventId: m.eventId,
-        meetingTitle: m.title,
-        suggestedTime: formatTime24(now, tz),
-        suggestedDate: todayIso,
-      });
-    }
+    if (hasOpenLinkedTask(m.eventId, input.tasks)) continue;
+    const blockStart = prepBlockStart(m.start);
+    const slotStart = blockStart < now ? now : blockStart;
+    gaps.push({
+      id: nextGapId(),
+      kind: 'prep_needed',
+      severity: msUntil < PREP_BLOCK_MINUTES * 60_000 ? 'critical' : 'warning',
+      headline: `Prep for "${m.title}"`,
+      detail: `${PREP_BLOCK_MINUTES}-min prep block suggested before meeting — create a linked prep task or accept the slot.`,
+      eventId: m.eventId,
+      meetingTitle: m.title,
+      suggestedTime: formatTime24(slotStart, tz),
+      suggestedDate: todayIso,
+    });
   }
 
   // Back-to-back warnings between consecutive meetings
@@ -502,9 +520,10 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       kind: 'orphan_followup',
       severity: 'warning',
       headline: `Follow up after "${meeting.title}"?`,
-      detail: `"${w.title}" was linked to a meeting that already ended.`,
+      detail: `"${w.title}" was linked to a meeting that already ended — schedule a follow-up or mark done.`,
       ref: { kind: 'task', taskId: w.taskId! },
       eventId: w.linkedEventId,
+      meetingTitle: meeting.title,
     });
   }
 

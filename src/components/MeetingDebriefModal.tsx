@@ -6,6 +6,7 @@ type MeetingDebriefModalProps = {
   meetingTitle: string;
   onClose: () => void;
   onSave: (payload: { taskTitles: string[]; notes: string }) => Promise<void>;
+  onScheduleFollowUp?: () => void;
 };
 
 export function MeetingDebriefModal({
@@ -13,6 +14,7 @@ export function MeetingDebriefModal({
   meetingTitle,
   onClose,
   onSave,
+  onScheduleFollowUp,
 }: MeetingDebriefModalProps) {
   const [taskLines, setTaskLines] = useState<string[]>(['']);
   const [notes, setNotes] = useState('');
@@ -95,6 +97,19 @@ export function MeetingDebriefModal({
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
+              {onScheduleFollowUp && (
+                <button
+                  type="button"
+                  className="btn-ghost mr-auto"
+                  onClick={() => {
+                    onScheduleFollowUp();
+                    reset();
+                  }}
+                  disabled={busy}
+                >
+                  Schedule follow-up instead
+                </button>
+              )}
               <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
                 Cancel
               </button>

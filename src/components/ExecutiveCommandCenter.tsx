@@ -16,6 +16,12 @@ import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { MeetingDebriefModal } from './MeetingDebriefModal';
+import { ScheduleFollowUpModal } from './ScheduleFollowUpModal';
+import {
+  defaultFollowUpDate,
+  followUpTaskTitle,
+  prepTaskTitle,
+} from '../lib/meetingLifecycle';
 import {
   ArrowRightIcon,
   BrainIcon,
@@ -44,6 +50,12 @@ type DebriefTarget = {
   meetingTitle: string;
 };
 
+type FollowUpTarget = {
+  eventId: string;
+  meetingTitle: string;
+  defaultTitle?: string;
+};
+
 export function ExecutiveCommandCenter({
   directive,
   briefing,
@@ -56,17 +68,30 @@ export function ExecutiveCommandCenter({
   const user = useAuthStore((s) => s.user);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const createTask = useTasksStore((s) => s.createTask);
-  const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
   const [debriefTarget, setDebriefTarget] = useState<DebriefTarget | null>(null);
+  const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
 
   const show = (section: 'now' | 'gaps' | 'next' | 'timeline') =>
     !sections || sections.includes(section);
 
+  const saveFollowUp = async (payload: {
+    title: string;
+    dueDate: string;
+    dueTime: string | null;
+  }) => {
+    if (!user || !followUpTarget) return;
+    await createTask(user.id, payload.title, {
+      linkedEventId: followUpTarget.eventId,
+      dueDate: payload.dueDate,
+      dueTime: payload.dueTime,
+    });
+    onRefresh?.();
+  };
+
   const saveDebrief = async (payload: { taskTitles: string[]; notes: string }) => {
     if (!user || !debriefTarget) return;
     for (const title of payload.taskTitles) {
-      const task = await createTask(user.id, title);
-      if (task) await setLinkedEvent(task.id, debriefTarget.eventId);
+      await createTask(user.id, title, { linkedEventId: debriefTarget.eventId });
     }
     await upsertDebrief(user.id, {
       eventId: debriefTarget.eventId,
@@ -103,6 +128,7 @@ export function ExecutiveCommandCenter({
                 key={gap.id}
                 gap={gap}
                 onOpenDebrief={(target) => setDebriefTarget(target)}
+                onScheduleFollowUp={(target) => setFollowUpTarget(target)}
               />
             ))}
           </ul>
@@ -151,6 +177,23 @@ export function ExecutiveCommandCenter({
         meetingTitle={debriefTarget?.meetingTitle ?? ''}
         onClose={() => setDebriefTarget(null)}
         onSave={saveDebrief}
+        onScheduleFollowUp={() => {
+          if (!debriefTarget) return;
+          setFollowUpTarget({
+            eventId: debriefTarget.eventId,
+            meetingTitle: debriefTarget.meetingTitle,
+            defaultTitle: followUpTaskTitle(debriefTarget.meetingTitle),
+          });
+          setDebriefTarget(null);
+        }}
+      />
+      <ScheduleFollowUpModal
+        open={!!followUpTarget}
+        meetingTitle={followUpTarget?.meetingTitle ?? ''}
+        defaultTitle={followUpTarget?.defaultTitle}
+        defaultDueDate={defaultFollowUpDate()}
+        onClose={() => setFollowUpTarget(null)}
+        onSave={saveFollowUp}
       />
     </div>
   );
@@ -331,9 +374,11 @@ function NowHero({
 function GapCard({
   gap,
   onOpenDebrief,
+  onScheduleFollowUp,
 }: {
   gap: DirectiveGap;
   onOpenDebrief?: (target: DebriefTarget) => void;
+  onScheduleFollowUp?: (target: FollowUpTarget) => void;
 }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -507,7 +552,19 @@ function GapCard({
       });
     }
 
-    if (gap.kind === 'prep_needed' && gap.eventId) {
+    if (gap.kind === 'prep_needed' && gap.eventId && gap.meetingTitle) {
+      btns.push({
+        label: 'Create prep task',
+        primary: true,
+        onClick: () => {
+          if (!user) return;
+          void createTask(user.id, prepTaskTitle(gap.meetingTitle!), {
+            linkedEventId: gap.eventId,
+            dueDate: gap.suggestedDate,
+            dueTime: gap.suggestedTime ?? null,
+          });
+        },
+      });
       btns.push({
         label: "Don't prep for this again",
         onClick: () => void dismissPrepForEvent(false),
@@ -558,6 +615,15 @@ function GapCard({
         onClick: () => void snoozeDebrief(),
       });
       btns.push({
+        label: 'Schedule follow-up',
+        onClick: () =>
+          onScheduleFollowUp?.({
+            eventId: gap.eventId!,
+            meetingTitle: gap.meetingTitle ?? gap.headline,
+            defaultTitle: followUpTaskTitle(gap.meetingTitle ?? 'meeting'),
+          }),
+      });
+      btns.push({
         label: 'Skip',
         onClick: () => void skipDebrief(),
       });
@@ -572,6 +638,19 @@ function GapCard({
         });
       }
       return btns;
+    }
+
+    if (gap.kind === 'orphan_followup' && gap.eventId && onScheduleFollowUp) {
+      btns.push({
+        label: 'Schedule follow-up',
+        primary: true,
+        onClick: () =>
+          onScheduleFollowUp({
+            eventId: gap.eventId!,
+            meetingTitle: gap.meetingTitle ?? 'meeting',
+            defaultTitle: followUpTaskTitle(gap.meetingTitle ?? 'meeting'),
+          }),
+      });
     }
 
     if (gap.kind === 'orphan_followup' && gap.ref?.kind === 'task') {

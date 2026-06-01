@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Event } from '../types';
 import { generateOccurrences } from '../lib/recurrence';
 import { DEFAULT_ALLOW_BACK_TO_BACK, DEFAULT_DEBRIEF_REQUIRED, DEFAULT_PREP_REQUIRED } from '../lib/meetingTemperament';
+import { EventLinkedTasks } from './EventLinkedTasks';
 import { Card } from './ui/Card';
 
 export type ComposerValue = {
@@ -391,6 +392,10 @@ export function EventComposer({
                 </ul>
               </Card>
             </>
+          )}
+
+          {initialEvent && (
+            <EventLinkedTasks eventId={initialEvent.id} eventTitle={initialEvent.title} />
           )}
 
           <Card tone="sunken" padded="sm" className="space-y-3">
