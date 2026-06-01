@@ -23,6 +23,7 @@ import {
   prepTaskTitle,
 } from '../lib/meetingLifecycle';
 import { bumpPriorityOneLevel, snoozeChaseUntil } from '../lib/delegationChase';
+import { ESTIMATE_PRESETS } from '../lib/taskCapacity';
 import type { TaskPriority } from '../lib/priority';
 import {
   ArrowRightIcon,
@@ -396,6 +397,7 @@ function GapCard({
   const setTaskPriority = useTasksStore((s) => s.setTaskPriority);
   const snoozeChase = useTasksStore((s) => s.snoozeChase);
   const recordChase = useTasksStore((s) => s.recordChase);
+  const setEstimatedMinutes = useTasksStore((s) => s.setEstimatedMinutes);
   const updateNote = useNotesStore((s) => s.updateNote);
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
@@ -697,6 +699,40 @@ function GapCard({
       });
       btns.push({
         label: 'Open task',
+        onClick: () => navigate(viewPath('tasks')),
+      });
+      return btns;
+    }
+
+    if (gap.kind === 'missing_estimate' && gap.ref?.kind === 'task') {
+      const taskRef = gap.ref;
+      const defaultMins = gap.suggestedMinutes ?? 30;
+      btns.push({
+        label: `Set ${defaultMins}m`,
+        primary: true,
+        onClick: () => void setEstimatedMinutes(taskRef.taskId, defaultMins),
+      });
+      for (const m of ESTIMATE_PRESETS.filter((p) => p !== defaultMins).slice(0, 3)) {
+        btns.push({
+          label: `${m}m`,
+          onClick: () => void setEstimatedMinutes(taskRef.taskId, m),
+        });
+      }
+      btns.push({
+        label: 'Open task',
+        onClick: () => navigate(viewPath('tasks')),
+      });
+      return btns;
+    }
+
+    if (gap.kind === 'capacity_overcommit') {
+      btns.push({
+        label: 'Open calendar',
+        primary: true,
+        onClick: () => navigate(viewPath('calendar')),
+      });
+      btns.push({
+        label: 'Review tasks',
         onClick: () => navigate(viewPath('tasks')),
       });
       return btns;

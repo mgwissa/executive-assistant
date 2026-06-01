@@ -1,14 +1,12 @@
 /**
  * Day HUD metrics — capacity + day score for the executive dashboard.
- * Pure TS; uses directive timeline + briefing counts (no task duration estimates yet).
+ * Capacity numbers come from directive.capacity (Phase D estimates).
  */
 
-import { fromZonedTime } from 'date-fns-tz';
 import type { BriefingReport } from './assistantBriefing';
-import type { DirectiveGap, DirectiveReport, TimelineEntry } from './executiveDirective';
+import type { DirectiveGap, DirectiveReport } from './executiveDirective';
 
-const TASK_BLOCK_MINUTES = 30;
-const DAY_END_HOUR = 18;
+export type { CapacitySnapshot } from './taskCapacity';
 
 export type DayHudMetrics = {
   dayScore: number;
@@ -17,12 +15,13 @@ export type DayHudMetrics = {
   remainingMinutes: number;
   meetingMinutes: number;
   workMinutes: number;
-  /** Untimed-today gaps × 30 min — unscheduled work debt. */
+  /** Untimed-today work debt (sum of task estimates). */
   unscheduledMinutes: number;
   bookedMinutes: number;
   capacityRatio: number;
   /** Positive when overcommitted (minutes). */
   overcommitMinutes: number;
+  explicitEstimateCount: number;
   gapCount: number;
   criticalGapCount: number;
   warningGapCount: number;
@@ -39,44 +38,11 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-function entryMinutes(e: TimelineEntry, from: Date, to: Date): number {
-  const start = e.start < from ? from : e.start;
-  const end = e.end > to ? to : e.end;
-  return Math.max(0, (end.getTime() - start.getTime()) / 60_000);
-}
-
-function dayEndFromDirective(directive: DirectiveReport): Date {
-  return fromZonedTime(
-    `${directive.todayIso}T${String(DAY_END_HOUR).padStart(2, '0')}:00:00`,
-    directive.timezone,
-  );
-}
-
 export function computeDayHudMetrics(
   directive: DirectiveReport,
   briefing: BriefingReport | null | undefined,
-  now: Date = new Date(),
 ): DayHudMetrics {
-  const dayEnd = dayEndFromDirective(directive);
-  const remainingMinutes = Math.max(0, (dayEnd.getTime() - now.getTime()) / 60_000);
-
-  const scheduleEntries = [...directive.timeline];
-  let meetingMinutes = 0;
-  let workMinutes = 0;
-
-  for (const e of scheduleEntries) {
-    if (e.end <= now) continue;
-    const mins = entryMinutes(e, now, dayEnd);
-    if (e.kind === 'meeting') meetingMinutes += mins;
-    else if (e.kind === 'task' || e.kind === 'action' || e.kind === 'suggested') workMinutes += mins;
-  }
-
-  const untimedGaps = directive.gaps.filter((g) => g.kind === 'untimed_today');
-  const unscheduledMinutes = untimedGaps.length * TASK_BLOCK_MINUTES;
-  const bookedMinutes = meetingMinutes + workMinutes + unscheduledMinutes;
-  const capacityRatio = remainingMinutes > 0 ? bookedMinutes / remainingMinutes : bookedMinutes > 0 ? 2 : 0;
-  const overcommitMinutes = Math.max(0, bookedMinutes - remainingMinutes);
-
+  const cap = directive.capacity;
   const gaps = directive.gaps;
   const criticalGapCount = gaps.filter((g) => g.severity === 'critical').length;
   const warningGapCount = gaps.filter((g) => g.severity === 'warning').length;
@@ -95,8 +61,9 @@ export function computeDayHudMetrics(
   dayScore -= Math.min(25, warningGapCount * 5);
   dayScore -= Math.min(15, overdueCount * 5);
   dayScore -= Math.min(20, criticalTasks * 4);
-  if (capacityRatio > 1) dayScore -= Math.min(30, Math.round((capacityRatio - 1) * 35));
+  if (cap.capacityRatio > 1) dayScore -= Math.min(30, Math.round((cap.capacityRatio - 1) * 35));
   if (gaps.some((g) => g.kind === 'pick_focus')) dayScore -= 12;
+  if (gaps.some((g) => g.kind === 'capacity_overcommit')) dayScore -= 8;
   dayScore = clamp(Math.round(dayScore), 0, 100);
 
   let dayScoreLabel: DayHudMetrics['dayScoreLabel'] = 'On track';
@@ -107,13 +74,14 @@ export function computeDayHudMetrics(
   return {
     dayScore,
     dayScoreLabel,
-    remainingMinutes,
-    meetingMinutes,
-    workMinutes,
-    unscheduledMinutes,
-    bookedMinutes,
-    capacityRatio,
-    overcommitMinutes,
+    remainingMinutes: cap.remainingMinutes,
+    meetingMinutes: cap.meetingMinutes,
+    workMinutes: cap.scheduledWorkMinutes,
+    unscheduledMinutes: cap.unscheduledWorkMinutes,
+    bookedMinutes: cap.bookedMinutes,
+    capacityRatio: cap.capacityRatio,
+    overcommitMinutes: cap.overcommitMinutes,
+    explicitEstimateCount: cap.explicitEstimateCount,
     gapCount: gaps.length,
     criticalGapCount,
     warningGapCount,
@@ -144,6 +112,8 @@ export function gapKindLabel(kind: DirectiveGap['kind']): string {
     pick_focus: 'Focus',
     orphan_followup: 'Follow-up',
     delegation_chase: 'Chase',
+    missing_estimate: 'Estimate',
+    capacity_overcommit: 'Capacity',
   };
   return map[kind] ?? kind;
 }

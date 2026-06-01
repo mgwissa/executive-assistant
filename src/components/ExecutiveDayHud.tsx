@@ -103,7 +103,10 @@ function CapacityCard({ metrics }: { metrics: DayHudMetrics }) {
         <li>{formatHudHours(metrics.meetingMinutes)} meetings</li>
         <li>{formatHudHours(metrics.workMinutes)} timed work</li>
         {metrics.unscheduledMinutes > 0 && (
-          <li>{formatHudHours(metrics.unscheduledMinutes)} unscheduled (est.)</li>
+          <li>{formatHudHours(metrics.unscheduledMinutes)} unscheduled work</li>
+        )}
+        {metrics.explicitEstimateCount > 0 && (
+          <li className="text-text-subtle">{metrics.explicitEstimateCount} with your estimates</li>
         )}
       </ul>
     </Card>

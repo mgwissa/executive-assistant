@@ -33,6 +33,7 @@ type TasksState = {
   renameTask: (id: string, rawTitle: string) => Promise<void>;
   toggleDone: (id: string, done: boolean) => Promise<void>;
   setWaitingOn: (id: string, value: string | null) => Promise<void>;
+  setEstimatedMinutes: (id: string, minutes: number | null) => Promise<void>;
   snoozeChase: (id: string, untilIso: string) => Promise<void>;
   recordChase: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<boolean>;
@@ -164,6 +165,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       waiting_on: null,
       chase_snoozed_until: null,
       last_chased_at: null,
+      estimated_minutes: null,
       reschedule_count: 0,
       created_at: now,
       updated_at: now,
@@ -391,6 +393,22 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     });
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('tasks').update({ waiting_on: next }).eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  setEstimatedMinutes: async (id, minutes) => {
+    const next =
+      minutes != null && minutes > 0 ? Math.min(480, Math.round(minutes)) : null;
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, estimated_minutes: next } : t,
+      ),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase
+      .from('tasks')
+      .update({ estimated_minutes: next })
+      .eq('id', id);
     if (error) set({ error: error.message });
   },
 

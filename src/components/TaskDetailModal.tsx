@@ -3,6 +3,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import type { TaskPriority } from '../lib/priority';
 import { PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked } from '../lib/priority';
 import { normalizeDueTime } from '../lib/taskSchedule';
+import { ESTIMATE_PRESETS, formatEstimateMinutes, resolveTaskMinutes } from '../lib/taskCapacity';
 import { PriorityBadge } from './ui/PriorityBadge';
 import { prioritySelectClass } from '../lib/priorityUiClasses';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -21,7 +22,7 @@ export function TaskDetailModal({
   task: Task;
   onClose: () => void;
 }) {
-  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, updateDescription, renameTask, toggleDone, deleteTask } =
+  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, updateDescription, renameTask, toggleDone, deleteTask } =
     useTasksStore();
   const events = useEventsStore((s) => s.events);
   const profileTz = useProfileStore((s) => s.profile?.timezone);
@@ -204,6 +205,29 @@ export function TaskDetailModal({
               ) : null}
             </div>
           ) : null}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-text-muted" htmlFor={`modal-est-${t.id}`}>
+              Estimate
+            </label>
+            <select
+              id={`modal-est-${t.id}`}
+              value={t.estimated_minutes ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                void setEstimatedMinutes(t.id, v ? Number(v) : null);
+              }}
+              className="input mt-0 min-h-[2rem] py-1 text-sm"
+            >
+              <option value="">
+                Default ({formatEstimateMinutes(resolveTaskMinutes(null))})
+              </option>
+              {ESTIMATE_PRESETS.map((m) => (
+                <option key={m} value={m}>
+                  {formatEstimateMinutes(m)}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-xs">
             <label className="shrink-0 text-xs font-medium text-text-muted" htmlFor={`modal-event-${t.id}`}>
               Meeting

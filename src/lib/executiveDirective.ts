@@ -22,6 +22,13 @@ import {
 } from './meetingDebrief';
 import { PREP_BLOCK_MINUTES, hasOpenLinkedTask, prepBlockStart, prepTaskTitle } from './meetingLifecycle';
 import {
+  computeCapacitySnapshot,
+  formatEstimateMinutes,
+  hasExplicitEstimate,
+  workMinutesForItem,
+  type CapacitySnapshot,
+} from './taskCapacity';
+import {
   CHASE_THRESHOLD_DAYS,
   chaseSeverity,
   daysIdle,
@@ -29,7 +36,6 @@ import {
 } from './delegationChase';
 import type { Event, MeetingDebriefState, Task } from '../types';
 
-const TASK_BLOCK_MINUTES = 30;
 const PREP_WINDOW_MS = 30 * 60 * 1000;
 const MIN_GAP_MS = 20 * 60 * 1000;
 const DAY_END_HOUR = 18;
@@ -79,7 +85,9 @@ export type GapKind =
   | 'no_calendar'
   | 'pick_focus'
   | 'orphan_followup'
-  | 'delegation_chase';
+  | 'delegation_chase'
+  | 'missing_estimate'
+  | 'capacity_overcommit';
 
 export type DirectiveGap = {
   id: string;
@@ -100,6 +108,8 @@ export type DirectiveGap = {
   suggestedDate?: string;
   /** Counterparty for delegation chase gaps. */
   waitingOn?: string;
+  /** Suggested estimate (minutes) for missing_estimate gaps. */
+  suggestedMinutes?: number;
 };
 
 export type DirectiveReport = {
@@ -112,6 +122,8 @@ export type DirectiveReport = {
   /** Full remainder of today. */
   timeline: TimelineEntry[];
   gaps: DirectiveGap[];
+  /** Capacity math for HUD (meetings + estimated work vs time until day-end). */
+  capacity: CapacitySnapshot;
 };
 
 export interface DirectiveInput {
@@ -145,6 +157,7 @@ type UnifiedWork = {
   waitingOn?: string | null;
   linkedEventId?: string | null;
   updatedAt: string;
+  estimatedMinutes?: number | null;
 };
 
 type MeetingBlock = {
@@ -212,6 +225,7 @@ function toUnifiedWork(tasks: Task[], actionItems: ActionItem[], todayIso: strin
       waitingOn: t.waiting_on,
       linkedEventId: t.linked_event_id,
       updatedAt: t.updated_at,
+      estimatedMinutes: t.estimated_minutes,
     });
   }
   for (const a of actionItems) {
@@ -340,7 +354,8 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     if (w.kind !== 'task' || !w.dueDate || !w.dueTime) continue;
     if (w.dueDate !== todayIso && !isOverdue(w.dueDate, todayIso)) continue;
     const start = zonedInstant(w.dueDate, w.dueTime, tz);
-    const end = addMinutes(start, TASK_BLOCK_MINUTES);
+    const blockMins = workMinutesForItem('task', w.taskId, input.tasks);
+    const end = addMinutes(start, blockMins);
     timedBlocks.push({ start, end, work: w });
     timeline.push({
       id: w.id,
@@ -393,26 +408,57 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     });
 
     if (gapCursor < freeGaps.length) {
-      const slot = freeGaps[gapCursor];
-      gapCursor++;
-      const suggestedTime = formatTime24(slot.start, tz);
-      const g = gaps[gaps.length - 1];
-      g.suggestedTime = suggestedTime;
+      const needed = workMinutesForItem(w.kind, w.taskId, input.tasks);
+      let slotIndex = gapCursor;
+      while (slotIndex < freeGaps.length) {
+        const slot = freeGaps[slotIndex]!;
+        const slotMins = (slot.end.getTime() - slot.start.getTime()) / 60_000;
+        if (slotMins >= needed) {
+          gapCursor = slotIndex + 1;
+          const suggestedTime = formatTime24(slot.start, tz);
+          const g = gaps[gaps.length - 1]!;
+          g.suggestedTime = suggestedTime;
 
-      timeline.push({
-        id: `suggested:${w.id}`,
-        kind: w.kind === 'task' ? 'task' : 'action',
-        title: w.title,
-        start: slot.start,
-        end: addMinutes(slot.start, TASK_BLOCK_MINUTES),
-        priority: w.priority,
-        ref:
-          w.kind === 'task'
-            ? { kind: 'task', taskId: w.taskId! }
-            : { kind: 'action', noteId: w.noteId!, line: w.line! },
-        suggested: true,
-      });
+          timeline.push({
+            id: `suggested:${w.id}`,
+            kind: w.kind === 'task' ? 'task' : 'action',
+            title: w.title,
+            start: slot.start,
+            end: addMinutes(slot.start, needed),
+            priority: w.priority,
+            ref:
+              w.kind === 'task'
+                ? { kind: 'task', taskId: w.taskId! }
+                : { kind: 'action', noteId: w.noteId!, line: w.line! },
+            suggested: true,
+          });
+          break;
+        }
+        slotIndex++;
+      }
+      if (slotIndex >= freeGaps.length) {
+        gapCursor = freeGaps.length;
+      }
     }
+  }
+
+  // Missing time estimates for due-today / overdue tasks
+  for (const w of work) {
+    if (w.kind !== 'task' || !w.taskId) continue;
+    if (!isDueTodayOrOverdue(w.dueDate, todayIso) && w.priority !== 'critical' && w.priority !== 'urgent') {
+      continue;
+    }
+    const task = input.tasks.find((t) => t.id === w.taskId);
+    if (!task || hasExplicitEstimate(task.estimated_minutes)) continue;
+    gaps.push({
+      id: nextGapId(),
+      kind: 'missing_estimate',
+      severity: w.priority === 'critical' || (w.dueDate && isOverdue(w.dueDate, todayIso)) ? 'warning' : 'info',
+      headline: `How long is "${w.title}"?`,
+      detail: 'Add a time estimate so capacity math reflects reality.',
+      ref: { kind: 'task', taskId: w.taskId },
+      suggestedMinutes: 30,
+    });
   }
 
   // Critical without due date
@@ -597,6 +643,25 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   // NEXT: entries starting within ~3 hours after now
   const horizon = addMinutes(now, 180);
   const next = timeline.filter((e) => e.end > now && e.start < horizon);
+  const futureTimeline = timeline.filter((e) => e.end > now);
+
+  const capacity = computeCapacitySnapshot({
+    now,
+    dayEnd,
+    timeline: futureTimeline,
+    gaps,
+    tasks: input.tasks,
+  });
+
+  if (capacity.overcommitMinutes >= 30) {
+    gaps.unshift({
+      id: nextGapId(),
+      kind: 'capacity_overcommit',
+      severity: capacity.capacityRatio > 1.15 ? 'critical' : 'warning',
+      headline: `Overcommitted by ~${formatEstimateMinutes(capacity.overcommitMinutes)}`,
+      detail: `${formatEstimateMinutes(capacity.bookedMinutes)} planned with ${formatEstimateMinutes(capacity.remainingMinutes)} left until 6pm — defer, shorten estimates, or protect focus time.`,
+    });
+  }
 
   return {
     generatedAt: now,
@@ -604,8 +669,9 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     todayIso,
     now: nowDirective,
     next,
-    timeline: timeline.filter((e) => e.end > now),
+    timeline: futureTimeline,
     gaps,
+    capacity,
   };
 }
 
