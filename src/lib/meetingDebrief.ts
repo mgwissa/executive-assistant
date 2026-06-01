@@ -4,17 +4,23 @@ import type { MeetingDebriefState } from '../types';
 export const DEBRIEF_WINDOW_MS = 15 * 60 * 1000;
 export const DEBRIEF_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
-export function occurrenceStartKey(start: Date): string {
-  return start.toISOString();
+export function occurrenceStartKey(start: Date | string): string {
+  const ms = new Date(start).getTime();
+  if (Number.isNaN(ms)) {
+    return typeof start === 'string' ? start : start.toISOString();
+  }
+  return new Date(ms).toISOString();
 }
 
 export function findDebriefState(
   states: MeetingDebriefState[],
   eventId: string,
-  occurrenceStart: Date,
+  occurrenceStart: Date | string,
 ): MeetingDebriefState | undefined {
   const key = occurrenceStartKey(occurrenceStart);
-  return states.find((s) => s.event_id === eventId && s.occurrence_start_at === key);
+  return states.find(
+    (s) => s.event_id === eventId && occurrenceStartKey(s.occurrence_start_at) === key,
+  );
 }
 
 /** True when debrief gap should be suppressed for this occurrence. */

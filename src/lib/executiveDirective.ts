@@ -20,6 +20,7 @@ import {
   findDebriefState,
   isDebriefSuppressed,
   isInDebriefWindow,
+  occurrenceStartKey,
 } from './meetingDebrief';
 import { PREP_BLOCK_MINUTES, hasOpenLinkedTask, prepBlockStart, prepTaskTitle } from './meetingLifecycle';
 import {
@@ -555,7 +556,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       detail: `Meeting ended ${minsAgo} min ago — note follow-ups while it's fresh.`,
       eventId: m.eventId,
       meetingTitle: m.title,
-      occurrenceStartAt: m.start.toISOString(),
+      occurrenceStartAt: occurrenceStartKey(m.start),
     });
   }
 
@@ -568,7 +569,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       (g) =>
         g.kind === 'meeting_debrief' &&
         g.eventId === meeting.eventId &&
-        g.occurrenceStartAt === meeting.start.toISOString(),
+        g.occurrenceStartAt === occurrenceStartKey(meeting.start),
     );
     if (debriefActive) continue;
     gaps.push({
@@ -711,7 +712,7 @@ function buildNowDirective(
       detail: `Meeting ended ${minsAgo} min ago — capture outcomes and follow-ups.`,
       until: new Date(debriefMeeting.end.getTime() + DEBRIEF_WINDOW_MS),
       eventId: debriefMeeting.eventId,
-      occurrenceStartAt: debriefMeeting.start.toISOString(),
+      occurrenceStartAt: occurrenceStartKey(debriefMeeting.start),
     };
   }
 

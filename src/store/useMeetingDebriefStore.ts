@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { occurrenceStartKey } from '../lib/meetingDebrief';
 import { supabase } from '../lib/supabase';
 import { randomUUID } from '../lib/uuid';
 import type { MeetingDebriefState } from '../types';
@@ -43,22 +44,29 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
       set({ loading: false, error: error.message });
       return;
     }
-    set({ states: data ?? [], loading: false });
+    set({
+      states: (data ?? []).map((s) => ({
+        ...s,
+        occurrence_start_at: occurrenceStartKey(s.occurrence_start_at),
+      })),
+      loading: false,
+    });
   },
 
   upsertState: async (userId, payload) => {
     const now = new Date().toISOString();
+    const occurrenceKey = occurrenceStartKey(payload.occurrenceStartAt);
     const existing = get().states.find(
       (s) =>
         s.event_id === payload.eventId &&
-        s.occurrence_start_at === payload.occurrenceStartAt,
+        occurrenceStartKey(s.occurrence_start_at) === occurrenceKey,
     );
 
     const optimistic: MeetingDebriefState = {
       id: existing?.id ?? `tmp-${randomUUID()}`,
       user_id: userId,
       event_id: payload.eventId,
-      occurrence_start_at: payload.occurrenceStartAt,
+      occurrence_start_at: occurrenceKey,
       status: payload.status,
       snoozed_until: payload.snoozedUntil ?? null,
       notes: payload.notes ?? '',
@@ -78,7 +86,7 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
         {
           user_id: userId,
           event_id: payload.eventId,
-          occurrence_start_at: payload.occurrenceStartAt,
+          occurrence_start_at: occurrenceKey,
           status: payload.status,
           snoozed_until: payload.snoozedUntil ?? null,
           notes: payload.notes ?? '',
@@ -100,10 +108,11 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
 
     set({
       states: get().states.map((s) =>
-        s.event_id === payload.eventId && s.occurrence_start_at === payload.occurrenceStartAt
-          ? data
+        s.event_id === payload.eventId &&
+        occurrenceStartKey(s.occurrence_start_at) === occurrenceKey
+          ? { ...data, occurrence_start_at: occurrenceStartKey(data.occurrence_start_at) }
           : s.id === optimistic.id
-            ? data
+            ? { ...data, occurrence_start_at: occurrenceStartKey(data.occurrence_start_at) }
             : s,
       ),
     });

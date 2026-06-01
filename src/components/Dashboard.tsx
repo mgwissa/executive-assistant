@@ -59,7 +59,7 @@ import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { SectionHeader } from './ui/SectionHeader';
-import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
+import { TaskQuickAddForm, toCreateTaskOptions, type TaskQuickAddPayload } from './TaskQuickAddForm';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 import { ExecutiveDayHud, ExecutiveHudSidebar } from './ExecutiveDayHud';
 import { UsefulLinksSection } from './UsefulLinksSection';
@@ -176,6 +176,167 @@ function CriticalBlocker({ rows }: { rows: DashboardWorkRow[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+function DashboardActionItemsSection({
+  user,
+  workRows,
+  visibleWork,
+  itemCount,
+  idPrefix,
+  titlePlaceholder = 'Quick add a todo…',
+  className = '',
+  onQuickAdd,
+  onToggleTask,
+  onToggleAction,
+  onOpenTasks,
+}: {
+  user: ReturnType<typeof useAuthStore.getState>['user'];
+  workRows: DashboardWorkRow[];
+  visibleWork: DashboardWorkRow[];
+  itemCount: number;
+  idPrefix: string;
+  titlePlaceholder?: string;
+  className?: string;
+  onQuickAdd: (payload: TaskQuickAddPayload) => Promise<void>;
+  onToggleTask: (id: string, done: boolean) => void;
+  onToggleAction: (noteId: string, line: number) => void;
+  onOpenTasks: () => void;
+}) {
+  return (
+    <section className={['flex min-h-0 min-w-0 flex-col', className].filter(Boolean).join(' ')}>
+      <SectionHeader
+        icon={<CheckSquareIcon className="h-4 w-4" />}
+        title="Action items"
+        count={itemCount}
+        accent="amber"
+        action={
+          <button
+            type="button"
+            onClick={onOpenTasks}
+            className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
+          >
+            Manage
+            <ArrowRightIcon className="h-3 w-3" />
+          </button>
+        }
+      />
+      <Card
+        padded="none"
+        className="card-pop card-pop-amber flex max-h-[min(50vh,30rem)] min-h-0 flex-1 flex-col"
+      >
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card">
+          <TaskQuickAddForm
+            variant="embedded"
+            disabled={!user}
+            idPrefix={idPrefix}
+            titlePlaceholder={titlePlaceholder}
+            onSubmit={onQuickAdd}
+          />
+          <div className="shrink-0 space-y-2 border-b border-border bg-surface-raised/35 px-4 py-2.5">
+            <p className="text-[11px] leading-relaxed text-text-muted">
+              Sorted top to bottom. The left edge and label use the same color; change levels on{' '}
+              <button
+                type="button"
+                onClick={onOpenTasks}
+                className="font-medium text-brand-700 hover:text-brand-600"
+              >
+                Tasks
+              </button>
+              . In notes:{' '}
+              <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P0]</code>
+              –
+              <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P4]</code>
+              .
+            </p>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              {PRIORITY_ORDER.map((p, i) => (
+                <span key={p} className="inline-flex items-center gap-1.5">
+                  {i > 0 ? (
+                    <span className="text-text-muted/50" aria-hidden>
+                      ·
+                    </span>
+                  ) : null}
+                  <span className={priorityInlineLabelClass(p)}>{PRIORITY_PILL[p]}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {workRows.length === 0 ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <EmptyState
+                icon={<CheckSquareIcon className="h-5 w-5" />}
+                title="No open tasks"
+                message="Add a todo above, or write `- [ ] …` in any note with an optional priority tag."
+              />
+            </div>
+          ) : (
+            <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain">
+              {visibleWork.map((row) => (
+                <li
+                  key={row.id}
+                  className={priorityRowClass(row.priority)}
+                  aria-label={`${PRIORITY_PILL[row.priority]}: ${row.title}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      row.kind === 'task'
+                        ? void onToggleTask(row.task.id, true)
+                        : void onToggleAction(row.item.noteId, row.item.line)
+                    }
+                    className="mt-0.5 shrink-0 text-text-subtle hover:text-brand-700"
+                    aria-label="Mark done"
+                    title="Mark done"
+                  >
+                    <SquareIcon className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className={priorityInlineLabelClass(row.priority)}>{PRIORITY_PILL[row.priority]}</p>
+                    <p
+                      className={[
+                        'mt-0.5 break-words text-left leading-snug',
+                        priorityTitleClass(row.priority),
+                      ].join(' ')}
+                    >
+                      {row.title}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      <button
+                        type="button"
+                        onClick={row.onSubtitleClick}
+                        className="block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
+                        title={row.kind === 'task' ? 'Open tasks' : 'Open note'}
+                      >
+                        {row.subtitle}
+                      </button>
+                      {row.kind === 'task' && row.task.due_date && (
+                        <DueDateChip dueDate={row.task.due_date} />
+                      )}
+                      {row.kind === 'task' && row.task.waiting_on?.trim() ? (
+                        <span className="truncate rounded-md bg-surface-raised px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-border">
+                          Waiting on {row.task.waiting_on.trim()}
+                        </span>
+                      ) : null}
+                      {row.kind === 'action' && row.item.dueDate && (
+                        <DueDateChip dueDate={row.item.dueDate} />
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {workRows.length > ACTION_ITEM_LIMIT && (
+                <li className="px-4 py-2 text-center text-xs text-text-muted">
+                  +{workRows.length - ACTION_ITEM_LIMIT} more (sorted by priority)
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -311,15 +472,36 @@ export function Dashboard() {
   );
   const visibleWork = workRows.slice(0, ACTION_ITEM_LIMIT);
 
+  const assistantEnabled = isOptionalFeatureEnabled(profile, 'assistant');
+  const [directiveRefresh, setDirectiveRefresh] = useState(0);
+
   const toggleAction = (noteId: string, line: number) => {
     const note = notes.find((n) => n.id === noteId);
     if (!note) return;
     const patched = applyMarkdownPatchToNote(note, (md) => toggleActionItemLine(md, line));
     if (patched) void updateNote(noteId, patched);
+    if (assistantEnabled) setDirectiveRefresh((k) => k + 1);
   };
 
-  const assistantEnabled = isOptionalFeatureEnabled(profile, 'assistant');
-  const [directiveRefresh, setDirectiveRefresh] = useState(0);
+  const handleDashboardQuickAdd = useCallback(
+    async (payload: TaskQuickAddPayload) => {
+      if (!user) return;
+      await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+      if (assistantEnabled) setDirectiveRefresh((k) => k + 1);
+    },
+    [user, createTask, assistantEnabled],
+  );
+
+  const handleToggleTaskDone = useCallback(
+    (id: string, done: boolean) => {
+      void toggleTaskDone(id, done);
+      if (assistantEnabled) setDirectiveRefresh((k) => k + 1);
+    },
+    [toggleTaskDone, assistantEnabled],
+  );
+
+  const openTasksView = useCallback(() => navigate(viewPath('tasks')), [navigate]);
+  const workItemCount = openTasks.length + actionItems.length;
 
   const directive = useMemo(() => {
     if (!assistantEnabled) return null;
@@ -396,19 +578,6 @@ export function Dashboard() {
                   sections={['now', 'gaps']}
                   hideBriefingBadges
                 />
-                <Card padded="none" className="overflow-hidden">
-                  <TaskQuickAddForm
-                    variant="embedded"
-                    disabled={!user}
-                    idPrefix="dashboard-directive-add"
-                    titlePlaceholder="Capture something quickly…"
-                    onSubmit={async (payload) => {
-                      if (!user) return;
-                      await createTask(user.id, payload.title, toCreateTaskOptions(payload));
-                      setDirectiveRefresh((k) => k + 1);
-                    }}
-                  />
-                </Card>
               </div>
               <aside className="xl:col-span-4 space-y-4 xl:sticky xl:top-4">
                 <ExecutiveCommandCenter
@@ -432,20 +601,21 @@ export function Dashboard() {
                 onRefresh={() => setDirectiveRefresh((k) => k + 1)}
                 hideBriefingBadges
               />
-              <Card padded="none" className="overflow-hidden">
-                <TaskQuickAddForm
-                  variant="embedded"
-                  disabled={!user}
-                  idPrefix="dashboard-directive-add-mobile"
-                  titlePlaceholder="Capture something quickly…"
-                  onSubmit={async (payload) => {
-                    if (!user) return;
-                    await createTask(user.id, payload.title, toCreateTaskOptions(payload));
-                    setDirectiveRefresh((k) => k + 1);
-                  }}
-                />
-              </Card>
             </div>
+
+            <DashboardActionItemsSection
+              user={user}
+              workRows={workRows}
+              visibleWork={visibleWork}
+              itemCount={workItemCount}
+              idPrefix="dashboard-assistant-action"
+              titlePlaceholder="Capture something quickly…"
+              className="mt-6"
+              onQuickAdd={handleDashboardQuickAdd}
+              onToggleTask={handleToggleTaskDone}
+              onToggleAction={toggleAction}
+              onOpenTasks={openTasksView}
+            />
 
             <details className="mb-8 mt-6 rounded-xl border border-border bg-surface-raised">
               <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text-muted hover:text-text">
@@ -491,141 +661,17 @@ export function Dashboard() {
         ) : null}
 
         <div className="mb-6 grid grid-cols-1 gap-6 lg:mb-8 lg:grid-cols-2 lg:gap-8 lg:items-stretch">
-          <section className="flex min-h-0 min-w-0 flex-col">
-            <SectionHeader
-              icon={<CheckSquareIcon className="h-4 w-4" />}
-              title="Action items"
-              count={openTasks.length + actionItems.length}
-              accent="amber"
-              action={
-                <button
-                  onClick={() => navigate(viewPath('tasks'))}
-                  className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
-                >
-                  Manage
-                  <ArrowRightIcon className="h-3 w-3" />
-                </button>
-              }
-            />
-            <Card
-              padded="none"
-              className="card-pop card-pop-amber flex max-h-[min(50vh,30rem)] min-h-0 flex-1 flex-col"
-            >
-            {/* Inner clips scroll; outer stays overflow-visible so card-pop ::after glow isn’t clipped */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card">
-              <TaskQuickAddForm
-                variant="embedded"
-                disabled={!user}
-                idPrefix="dashboard-quick-add"
-                titlePlaceholder="Quick add a todo…"
-                onSubmit={async (payload) => {
-                  if (!user) return;
-                  await createTask(user.id, payload.title, toCreateTaskOptions(payload));
-                }}
-              />
-              <div className="shrink-0 space-y-2 border-b border-border bg-surface-raised/35 px-4 py-2.5">
-                <p className="text-[11px] leading-relaxed text-text-muted">
-                  Sorted top to bottom. The left edge and label use the same color; change levels on{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigate(viewPath('tasks'))}
-                    className="font-medium text-brand-700 hover:text-brand-600"
-                  >
-                    Tasks
-                  </button>
-                  . In notes:{' '}
-                  <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P0]</code>
-                  –
-                  <code className="rounded bg-surface px-1 py-0.5 font-mono ring-1 ring-border">[P4]</code>
-                  .
-                </p>
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                  {PRIORITY_ORDER.map((p, i) => (
-                    <span key={p} className="inline-flex items-center gap-1.5">
-                      {i > 0 ? (
-                        <span className="text-text-muted/50" aria-hidden>
-                          ·
-                        </span>
-                      ) : null}
-                      <span className={priorityInlineLabelClass(p)}>{PRIORITY_PILL[p]}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {workRows.length === 0 ? (
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <EmptyState
-                    icon={<CheckSquareIcon className="h-5 w-5" />}
-                    title="No open tasks"
-                    message="Add a todo above, or write `- [ ] …` in any note with an optional priority tag."
-                  />
-                </div>
-              ) : (
-                <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto overscroll-contain">
-                  {visibleWork.map((row) => (
-                    <li
-                      key={row.id}
-                      className={priorityRowClass(row.priority)}
-                      aria-label={`${PRIORITY_PILL[row.priority]}: ${row.title}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          row.kind === 'task'
-                            ? void toggleTaskDone(row.task.id, true)
-                            : void toggleAction(row.item.noteId, row.item.line)
-                        }
-                        className="mt-0.5 shrink-0 text-text-subtle hover:text-brand-700"
-                        aria-label="Mark done"
-                        title="Mark done"
-                      >
-                        <SquareIcon className="h-4 w-4" />
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <p className={priorityInlineLabelClass(row.priority)}>{PRIORITY_PILL[row.priority]}</p>
-                        <p
-                          className={[
-                            'mt-0.5 break-words text-left leading-snug',
-                            priorityTitleClass(row.priority),
-                          ].join(' ')}
-                        >
-                          {row.title}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                          <button
-                            type="button"
-                            onClick={row.onSubtitleClick}
-                            className="block max-w-full truncate text-left text-xs text-text-muted hover:text-brand-700"
-                            title={row.kind === 'task' ? 'Open tasks' : 'Open note'}
-                          >
-                            {row.subtitle}
-                          </button>
-                          {row.kind === 'task' && row.task.due_date && (
-                            <DueDateChip dueDate={row.task.due_date} />
-                          )}
-                          {row.kind === 'task' && row.task.waiting_on?.trim() ? (
-                            <span className="truncate rounded-md bg-surface-raised px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-border">
-                              Waiting on {row.task.waiting_on.trim()}
-                            </span>
-                          ) : null}
-                          {row.kind === 'action' && row.item.dueDate && (
-                            <DueDateChip dueDate={row.item.dueDate} />
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                  {workRows.length > ACTION_ITEM_LIMIT && (
-                    <li className="px-4 py-2 text-center text-xs text-text-muted">
-                      +{workRows.length - ACTION_ITEM_LIMIT} more (sorted by priority)
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-          </Card>
-          </section>
+          <DashboardActionItemsSection
+            user={user}
+            workRows={workRows}
+            visibleWork={visibleWork}
+            itemCount={workItemCount}
+            idPrefix="dashboard-quick-add"
+            onQuickAdd={handleDashboardQuickAdd}
+            onToggleTask={handleToggleTaskDone}
+            onToggleAction={toggleAction}
+            onOpenTasks={openTasksView}
+          />
 
           <UsefulLinksSection className="flex min-h-0 min-w-0 flex-col" />
         </div>

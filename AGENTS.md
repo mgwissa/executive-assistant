@@ -67,7 +67,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `Dashboard` | Daily command center; **assistant** on → executive HUD + directive; **assistant** off → `CriticalBlocker` card for critical work + action-items grid |
+| `/dashboard` | `Dashboard` | Daily command center; **assistant** on → executive HUD + directive + action-items list (checkbox complete); **assistant** off → `CriticalBlocker` + action-items grid |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/tasks` | `Tasks` | Standalone tasks + extracted action items from notes |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -185,7 +185,7 @@ If you change anything related to notification auth, update *both* secret stores
 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
-- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard defers to directive (action-items grid hidden); reference schedule/notes in collapsible panel.
+- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard shows directive above the shared **Action items** card (`DashboardActionItemsSection` — quick-add + checkbox complete); reference schedule/notes in collapsible panel.
 
 ## Conventions
 
@@ -237,7 +237,7 @@ If you change anything related to notification auth, update *both* secret stores
 - **`deleteTask` confirmation lives in the store** — don't add per-page `window.confirm` calls; `deleteTask` returns `false` when the user cancels.
 - **Notes perf:** never call `getNoteCanonicalMarkdown()` (runs `blocksToMarkdownLossy`) inside render loops — e.g. sidebar previews/search should use `note.content`. Editor `onChange` debounces markdown export (~300ms) before hitting Zustand; flush on unmount so note switches don't lose edits.
 - **Meeting temperament:** `profiles.meeting_rules` entries use `titlePattern` as a case-insensitive RegExp (invalid patterns fall back to substring match). “Apply to all like this” from a gap stores a literal-escaped title pattern. Outlook-imported events (`source = outlook_ics`) can only edit assistant flags in the calendar composer — schedule fields stay read-only. Rules may set `prep_required`, `allow_back_to_back`, and/or `debrief_required`.
-- **Debrief window:** post-meeting capture gaps fire for 15 minutes after `occurrence.end`; snooze stores `snoozed_until` (+24h) on `meeting_debrief_states` keyed by `(event_id, occurrence_start_at)`.
+- **Debrief window:** post-meeting capture gaps fire for 15 minutes after `occurrence.end`; snooze stores `snoozed_until` (+24h) on `meeting_debrief_states` keyed by `(event_id, occurrence_start_at)`. Always compare occurrence keys via `occurrenceStartKey()` — Postgres/`timestamptz` may return `+00:00` while JS uses `Z`, so raw string equality breaks skip/snooze lookups.
 - **Prep blocks:** meetings with `prep_required` get a 15-min suggested block on the timeline (`meetingLifecycle.PREP_BLOCK_MINUTES`) unless an open linked task exists; prep gaps suggest slot time at block start.
 - **Linked tasks:** `tasks.linked_event_id` ties prep/follow-up tasks to calendar events; create via debrief modal, schedule follow-up modal, gap actions, or `EventLinkedTasks` in event edit.
 - **Delegation chase:** idle days use `last_chased_at` when set, else `updated_at`; gaps fire at 5+ days (warning) / 14+ (critical). Snooze writes `chase_snoozed_until` (+7d). “Chase again” only updates `last_chased_at` so staleness resets without touching task content.
