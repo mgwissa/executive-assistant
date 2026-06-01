@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import type { Json } from '../types/database';
-import type { Profile } from '../types';
+import type { Profile, ProfileUpdate } from '../types';
 
 type ProfileState = {
   profile: Profile | null;
@@ -12,21 +11,7 @@ type ProfileState = {
   error: string | null;
 
   fetchProfile: (userId: string) => Promise<void>;
-  updateProfile: (
-    userId: string,
-    patch: {
-      first_name?: string | null;
-      timezone?: string | null;
-      outlook_ics_url?: string | null;
-      priority_escalation?: Json | null;
-      enabled_addons?: string[];
-      notify_email_enabled?: boolean;
-      notify_email_digest_enabled?: boolean;
-      notify_email_digest_local_time?: string;
-      notify_email_escalation_enabled?: boolean;
-      notify_email_address?: string | null;
-    },
-  ) => Promise<void>;
+  updateProfile: (userId: string, patch: ProfileUpdate) => Promise<void>;
   clear: () => void;
 };
 

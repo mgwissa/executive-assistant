@@ -3,12 +3,15 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
+import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/meetingTemperament';
 import { applyMarkdownPatchToNote } from '../lib/noteContentBridge';
 import { setActionItemLineDueDate } from '../lib/format';
 import { PRIORITY_PILL } from '../lib/priority';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
+import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
+import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import {
   ArrowRightIcon,
@@ -235,6 +238,9 @@ function NowHero({
 function GapCard({ gap }: { gap: DirectiveGap }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
+  const updateProfile = useProfileStore((s) => s.updateProfile);
+  const updateEvent = useEventsStore((s) => s.updateEvent);
   const setDueTime = useTasksStore((s) => s.setDueTime);
   const setDueDate = useTasksStore((s) => s.setDueDate);
   const setLinkedEvent = useTasksStore((s) => s.setLinkedEvent);
@@ -243,6 +249,43 @@ function GapCard({ gap }: { gap: DirectiveGap }) {
   const updateNote = useNotesStore((s) => s.updateNote);
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
+
+  const dismissPrepForEvent = async (applyToAll: boolean) => {
+    if (!gap.eventId) return;
+    setBusy(true);
+    try {
+      await updateEvent(gap.eventId, { prep_required: false });
+      if (applyToAll && user && gap.meetingTitle) {
+        const rules = appendMeetingRule(
+          parseMeetingRules(profile?.meeting_rules),
+          buildMeetingRule(gap.meetingTitle, { prep_required: false }),
+        );
+        await updateProfile(user.id, { meeting_rules: rules });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dismissBackToBack = async (applyToAll: boolean) => {
+    if (!gap.eventId) return;
+    setBusy(true);
+    try {
+      await updateEvent(gap.eventId, { allow_back_to_back: true });
+      if (gap.relatedEventId) {
+        await updateEvent(gap.relatedEventId, { allow_back_to_back: true });
+      }
+      if (applyToAll && user && gap.meetingTitle) {
+        const rules = appendMeetingRule(
+          parseMeetingRules(profile?.meeting_rules),
+          buildMeetingRule(gap.meetingTitle, { allow_back_to_back: true }),
+        );
+        await updateProfile(user.id, { meeting_rules: rules });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const severityBorder =
     gap.severity === 'critical'
@@ -316,6 +359,33 @@ function GapCard({ gap }: { gap: DirectiveGap }) {
           }
         },
       });
+    }
+
+    if (gap.kind === 'prep_needed' && gap.eventId) {
+      btns.push({
+        label: "Don't prep for this again",
+        onClick: () => void dismissPrepForEvent(false),
+      });
+      if (gap.meetingTitle) {
+        btns.push({
+          label: 'Apply to all like this',
+          onClick: () => void dismissPrepForEvent(true),
+        });
+      }
+    }
+
+    if (gap.kind === 'back_to_back' && gap.eventId) {
+      btns.push({
+        label: 'Back-to-back is fine',
+        primary: true,
+        onClick: () => void dismissBackToBack(false),
+      });
+      if (gap.meetingTitle) {
+        btns.push({
+          label: 'Apply to all like this',
+          onClick: () => void dismissBackToBack(true),
+        });
+      }
     }
 
     if (gap.kind === 'prep_needed' && gap.eventId && gap.ref?.kind === 'task') {

@@ -5,6 +5,7 @@ import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
 import { viewPath } from '../lib/routes';
 import { generateBriefing } from '../lib/assistantBriefing';
 import { generateDirective } from '../lib/executiveDirective';
+import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
@@ -307,15 +308,23 @@ export function Dashboard() {
       timezone,
       now: new Date(),
       hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
+      meetingRules: parseMeetingRules(profile?.meeting_rules),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, directiveRefresh]);
+  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, directiveRefresh]);
 
   const briefing = useMemo(() => {
     if (!assistantEnabled) return null;
-    return generateBriefing({ tasks, actionItems, notes, events, now: new Date() });
+    return generateBriefing({
+      tasks,
+      actionItems,
+      notes,
+      events,
+      now: new Date(),
+      meetingRules: parseMeetingRules(profile?.meeting_rules),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantEnabled, tasks, actionItems, notes, events, directiveRefresh]);
+  }, [assistantEnabled, tasks, actionItems, notes, events, profile?.meeting_rules, directiveRefresh]);
 
   return (
     <div className="h-full overflow-y-auto bg-surface">

@@ -10,6 +10,7 @@ import {
 } from '../lib/assistantBriefing';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { generateDirective } from '../lib/executiveDirective';
+import { parseMeetingRules } from '../lib/meetingTemperament';
 import { extractActionItems } from '../lib/format';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
@@ -103,9 +104,10 @@ export function AssistantPage() {
         timezone,
         now: new Date(),
         hasCalendarSource: !!(profile?.outlook_ics_url?.trim()) || events.length > 0,
+        meetingRules: parseMeetingRules(profile?.meeting_rules),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, refreshKey],
+    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, refreshKey],
   );
 
   const report: BriefingReport = useMemo(
@@ -116,9 +118,10 @@ export function AssistantPage() {
         notes,
         events,
         now: new Date(),
+        meetingRules: parseMeetingRules(profile?.meeting_rules),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, notes, events, refreshKey],
+    [tasks, actionItems, notes, events, profile?.meeting_rules, refreshKey],
   );
 
   const openNote = useCallback(

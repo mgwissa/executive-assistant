@@ -16,6 +16,11 @@ import type { ActionItem } from './format';
 import type { Note } from '../types';
 import type { Event } from '../types';
 import { generateOccurrences } from './recurrence';
+import {
+  type MeetingRule,
+  isBackToBackPair,
+  resolveMeetingTemperament,
+} from './meetingTemperament';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -265,13 +270,16 @@ export function extractNoteProposals(notes: Note[]): NoteProposal[] {
 // Calendar helpers
 // ---------------------------------------------------------------------------
 
-function getTodayOccurrences(events: Event[], now: Date): Array<{ title: string; start: Date; end: Date }> {
+function getTodayOccurrences(
+  events: Event[],
+  now: Date,
+): Array<{ eventId: string; title: string; start: Date; end: Date }> {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   const all = events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 }));
   all.sort((a, b) => a.start.getTime() - b.start.getTime());
-  return all.map((o) => ({ title: o.title, start: o.start, end: o.end }));
+  return all.map((o) => ({ eventId: o.eventId, title: o.title, start: o.start, end: o.end }));
 }
 
 function getTomorrowOccurrences(events: Event[], now: Date): Array<{ title: string; start: Date; end: Date }> {
@@ -283,12 +291,36 @@ function getTomorrowOccurrences(events: Event[], now: Date): Array<{ title: stri
   return all.map((o) => ({ title: o.title, start: o.start, end: o.end }));
 }
 
-/** Count back-to-back meeting pairs (gap < 10 min) */
-function countBackToBack(occurrences: Array<{ start: Date; end: Date }>): number {
+/** Count back-to-back meeting pairs (gap < 10 min), respecting temperament flags. */
+function countBackToBack(
+  occurrences: Array<{ eventId: string; title: string; start: Date; end: Date }>,
+  events: Event[],
+  meetingRules: MeetingRule[],
+): number {
+  const eventById = new Map(events.map((e) => [e.id, e]));
   let count = 0;
   for (let i = 0; i < occurrences.length - 1; i++) {
-    const gap = occurrences[i + 1].start.getTime() - occurrences[i].end.getTime();
-    if (gap < 10 * 60 * 1000) count++;
+    const a = occurrences[i];
+    const b = occurrences[i + 1];
+    const aTemp = resolveMeetingTemperament(
+      eventById.get(a.eventId) ?? {
+        title: a.title,
+        prep_required: true,
+        allow_back_to_back: false,
+      },
+      meetingRules,
+    );
+    const bTemp = resolveMeetingTemperament(
+      eventById.get(b.eventId) ?? {
+        title: b.title,
+        prep_required: true,
+        allow_back_to_back: false,
+      },
+      meetingRules,
+    );
+    if (isBackToBackPair(a.end, b.start, aTemp.allowBackToBack, bTemp.allowBackToBack)) {
+      count++;
+    }
   }
   return count;
 }
@@ -303,6 +335,7 @@ export interface BriefingInput {
   notes: Note[];
   events: Event[];
   now?: Date;
+  meetingRules?: MeetingRule[];
 }
 
 export function generateBriefing(input: BriefingInput): BriefingReport {
@@ -319,7 +352,8 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
   // ---- Calendar ----
   const todayEvents = getTodayOccurrences(events, now);
   const tomorrowEvents = getTomorrowOccurrences(events, now);
-  const backToBackCount = countBackToBack(todayEvents);
+  const meetingRules = input.meetingRules ?? [];
+  const backToBackCount = countBackToBack(todayEvents, events, meetingRules);
 
   // ---- Nuts & Bolts counts ----
   const criticalTasks = openTasks.filter((t) => t.priority === 'critical');

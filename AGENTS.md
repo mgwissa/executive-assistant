@@ -78,12 +78,12 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_address` (recipient override) |
+| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_address` (recipient override) |
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc) |
 | `tasks` | Standalone tasks | `priority` (critical/urgent/high/normal/low), `due_date`, `due_time` (optional; requires `due_date`), `reminder_sent_at` (email dedupe; future cron), `linked_event_id` (FK → `events`), `waiting_on`, `description`, `priority_set_at`, `reschedule_count`, `done` |
-| `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields |
+| `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required` (default true), `allow_back_to_back` (default false) — assistant temperament; Outlook rows can edit flags only |
 | `useful_links` | Bookmarks | `title`, `url`, `category` |
 | `time_entries`, `time_projects` | Time tracking | day-grouped, project-tagged |
 | `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status` |
@@ -143,7 +143,7 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 
 **Quick add:** `TaskQuickAddForm` — title + priority + optional date/time. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
 
-**Executive directive** (`lib/executiveDirective.ts`, `ExecutiveCommandCenter.tsx`): When `assistant` addon is on, `generateDirective()` produces `now`, `next`, `gaps`, and `timeline` from tasks + note action items + events. Untimed due-today items get **suggested slots** in free gaps; gaps call out missing calendar, prep, overlaps, stale waiting, etc. Gap actions: accept suggested time (`setDueTime` / promote note item to task), link meeting, mark done. Uses profile timezone via `resolveCalendarTimeZone`.
+**Executive directive** (`lib/executiveDirective.ts`, `ExecutiveCommandCenter.tsx`, `lib/meetingTemperament.ts`): When `assistant` addon is on, `generateDirective()` produces `now`, `next`, `gaps`, and `timeline` from tasks + note action items + events. Untimed due-today items get **suggested slots** in free gaps; gaps call out missing calendar, prep, back-to-back, overlaps, stale waiting, etc. **Meeting temperament:** per-event `prep_required` / `allow_back_to_back` plus profile `meeting_rules` (title regex) suppress false-positive prep and back-to-back gaps. Gap dismiss actions persist flags on the event and optionally append a profile rule (“Apply to all like this”). Calendar `EventComposer` exposes the same toggles; Outlook imports are flags-only on edit. Uses profile timezone via `resolveCalendarTimeZone`.
 
 ## Notes editor
 
@@ -172,7 +172,7 @@ If you change anything related to notification auth, update *both* secret stores
 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (weekly product-leader rhythm; `lib/weeklyRoutine.ts` defines the static plan)
-- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS directive engine in `lib/executiveDirective.ts` merges calendar occurrences, timed tasks, and note action items into NOW / NEXT / GAPS / timeline. Dashboard defers to directive (action-items grid hidden); reference schedule/notes in collapsible panel.
+- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard defers to directive (action-items grid hidden); reference schedule/notes in collapsible panel.
 
 ## Conventions
 
@@ -220,6 +220,7 @@ If you change anything related to notification auth, update *both* secret stores
 - **BlockNote empty-block placeholders are a `::after`** on the `.bn-block-content` flex row. Since we set `flex: 1` on the first child (so the editable column fills), the placeholder gets pushed to the right edge of the row by default. Fix in `src/styles/notesEditor.css`: `position: absolute` the `::after` and pin it with `inset-inline-start`. List items need an offset (`28px`) to clear the bullet/checkbox; non-list blocks use `0`.
 - **`deleteTask` confirmation lives in the store** — don't add per-page `window.confirm` calls; `deleteTask` returns `false` when the user cancels.
 - **Notes perf:** never call `getNoteCanonicalMarkdown()` (runs `blocksToMarkdownLossy`) inside render loops — e.g. sidebar previews/search should use `note.content`. Editor `onChange` debounces markdown export (~300ms) before hitting Zustand; flush on unmount so note switches don't lose edits.
+- **Meeting temperament:** `profiles.meeting_rules` entries use `titlePattern` as a case-insensitive RegExp (invalid patterns fall back to substring match). “Apply to all like this” from a gap stores a literal-escaped title pattern. Outlook-imported events (`source = outlook_ics`) can only edit `prep_required` / `allow_back_to_back` in the calendar composer — schedule fields stay read-only.
 
 ## Scripts
 

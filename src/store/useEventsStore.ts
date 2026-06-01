@@ -114,6 +114,8 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       until_at: payload.until_at ?? null,
       count: payload.count ?? null,
       source: payload.source ?? 'manual',
+      prep_required: payload.prep_required ?? true,
+      allow_back_to_back: payload.allow_back_to_back ?? false,
       created_at: now,
       updated_at: now,
     };
@@ -133,6 +135,8 @@ export const useEventsStore = create<EventsState>((set, get) => ({
         until_at: payload.until_at ?? null,
         count: payload.count ?? null,
         source: payload.source ?? 'manual',
+        prep_required: payload.prep_required ?? true,
+        allow_back_to_back: payload.allow_back_to_back ?? false,
       })
       .select()
       .single();

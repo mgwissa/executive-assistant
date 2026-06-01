@@ -7,6 +7,7 @@ import { useProfileStore } from '../store/useProfileStore';
 import { generateOccurrences } from '../lib/recurrence';
 import { getCurrentWeekScope, resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
+import type { Event } from '../types';
 import { EventComposer } from './EventComposer';
 import { CalendarIcon, ClockIcon } from './icons';
 import { Card } from './ui/Card';
@@ -17,7 +18,7 @@ import { Badge } from './ui/Badge';
 export function Calendar() {
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
-  const { events, loading, error, createEvent, deleteEvent, fetchRange } = useEventsStore();
+  const { events, loading, error, createEvent, updateEvent, deleteEvent, fetchRange } = useEventsStore();
 
   const tz = useMemo(() => resolveCalendarTimeZone(profile?.timezone), [profile?.timezone]);
 
@@ -33,6 +34,7 @@ export function Calendar() {
   };
 
   const [composerOpen, setComposerOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   const week = useMemo(() => getCurrentWeekScope(tz), [tz]);
 
@@ -88,7 +90,10 @@ export function Calendar() {
             <span className="max-w-[14rem] truncate rounded-full bg-purple-600/10 px-2.5 py-1 text-xs font-medium text-purple-800 dark:bg-purple-400/10 dark:text-purple-200" title={tz}>
               {tz}
             </span>
-            <button type="button" className="btn-primary" onClick={() => setComposerOpen(true)}>
+            <button type="button" className="btn-primary" onClick={() => {
+              setEditingEvent(null);
+              setComposerOpen(true);
+            }}>
               New event
             </button>
           </div>
@@ -173,14 +178,30 @@ export function Calendar() {
                                 )}
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              className="btn-danger mt-0.5 h-8 shrink-0 px-2.5 text-xs"
-                              onClick={() => requestDelete(o.eventId, o.title)}
-                              title="Delete event"
-                            >
-                              Delete
-                            </button>
+                            <div className="flex shrink-0 gap-1.5">
+                              <button
+                                type="button"
+                                className="btn-ghost mt-0.5 h-8 px-2.5 text-xs"
+                                onClick={() => {
+                                  const event = events.find((ev) => ev.id === o.eventId);
+                                  if (event) {
+                                    setEditingEvent(event);
+                                    setComposerOpen(true);
+                                  }
+                                }}
+                                title="Edit event"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-danger mt-0.5 h-8 px-2.5 text-xs"
+                                onClick={() => requestDelete(o.eventId, o.title)}
+                                title="Delete event"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </li>
                         );
                       })}
@@ -196,12 +217,19 @@ export function Calendar() {
       <EventComposer
         open={composerOpen}
         timezone={tz}
-        onClose={() => setComposerOpen(false)}
+        initialEvent={editingEvent}
+        onClose={() => {
+          setComposerOpen(false);
+          setEditingEvent(null);
+        }}
         onCreate={async (payload) => {
           if (!user) return;
           await createEvent(user.id, payload);
           const { fromIso, toIso } = eventsFetchIsoRange(profile?.timezone);
           void fetchRange(user.id, fromIso, toIso);
+        }}
+        onUpdate={async (id, patch) => {
+          await updateEvent(id, patch);
         }}
       />
     </div>

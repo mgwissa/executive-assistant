@@ -9,6 +9,11 @@ import type { TaskPriority } from './priority';
 import { priorityRank } from './priority';
 import { normalizeDueTime } from './taskSchedule';
 import { generateOccurrences } from './recurrence';
+import {
+  type MeetingRule,
+  isBackToBackPair,
+  resolveMeetingTemperament,
+} from './meetingTemperament';
 import type { Event, Task } from '../types';
 
 const TASK_BLOCK_MINUTES = 30;
@@ -53,6 +58,7 @@ export type NowDirective = {
 export type GapKind =
   | 'untimed_today'
   | 'prep_needed'
+  | 'back_to_back'
   | 'overlap'
   | 'no_calendar'
   | 'pick_focus'
@@ -67,6 +73,10 @@ export type DirectiveGap = {
   detail: string;
   ref?: WorkItemRef;
   eventId?: string;
+  /** Earlier meeting in a back-to-back pair. */
+  relatedEventId?: string;
+  /** Meeting title for temperament rule actions. */
+  meetingTitle?: string;
   /** Suggested HH:MM (profile TZ) for set-time actions. */
   suggestedTime?: string;
   suggestedDate?: string;
@@ -92,6 +102,8 @@ export interface DirectiveInput {
   now?: Date;
   /** True when Outlook ICS is configured or manual events exist. */
   hasCalendarSource: boolean;
+  /** Title-based temperament overrides from profile. */
+  meetingRules?: MeetingRule[];
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +131,8 @@ type MeetingBlock = {
   title: string;
   start: Date;
   end: Date;
+  prepRequired: boolean;
+  allowBackToBack: boolean;
 };
 
 function addMinutes(d: Date, minutes: number): Date {
@@ -199,18 +213,32 @@ function toUnifiedWork(tasks: Task[], actionItems: ActionItem[], todayIso: strin
   return out;
 }
 
-function getMeetings(events: Event[], dayStart: Date): MeetingBlock[] {
+function getMeetings(
+  events: Event[],
+  dayStart: Date,
+  meetingRules: MeetingRule[],
+): MeetingBlock[] {
   const end = new Date(dayStart);
   end.setDate(end.getDate() + 1);
+  const eventById = new Map(events.map((e) => [e.id, e]));
   const raw = events.flatMap((e) => generateOccurrences(e, dayStart, end, { limit: 50 }));
   return raw
-    .map((o) => ({
-      id: `meeting:${o.eventId}:${o.start.getTime()}`,
-      eventId: o.eventId,
-      title: o.title,
-      start: o.start,
-      end: o.end,
-    }))
+    .map((o) => {
+      const parent = eventById.get(o.eventId);
+      const temperament = resolveMeetingTemperament(
+        parent ?? { title: o.title, prep_required: true, allow_back_to_back: false },
+        meetingRules,
+      );
+      return {
+        id: `meeting:${o.eventId}:${o.start.getTime()}`,
+        eventId: o.eventId,
+        title: o.title,
+        start: o.start,
+        end: o.end,
+        prepRequired: temperament.prepRequired,
+        allowBackToBack: temperament.allowBackToBack,
+      };
+    })
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
@@ -256,7 +284,8 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   const tz = input.timezone;
   const { start: dayStart, end: dayEnd, todayIso } = dayBounds(now, tz);
   const work = toUnifiedWork(input.tasks, input.actionItems, todayIso);
-  const meetings = getMeetings(input.events, dayStart);
+  const meetingRules = input.meetingRules ?? [];
+  const meetings = getMeetings(input.events, dayStart, meetingRules);
 
   const timeline: TimelineEntry[] = [];
   const gaps: DirectiveGap[] = [];
@@ -372,8 +401,9 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     });
   }
 
-  // Prep gaps
+  // Prep gaps (skip routine meetings marked no-prep)
   for (const m of meetings) {
+    if (!m.prepRequired) continue;
     if (m.start <= now) continue;
     const msUntil = m.start.getTime() - now.getTime();
     if (msUntil > PREP_WINDOW_MS) continue;
@@ -387,8 +417,30 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
         headline: `Prep for "${m.title}"`,
         detail: `Meeting in ${Math.max(1, Math.round(msUntil / 60_000))} min — link or create a prep task.`,
         eventId: m.eventId,
+        meetingTitle: m.title,
         suggestedTime: formatTime24(now, tz),
         suggestedDate: todayIso,
+      });
+    }
+  }
+
+  // Back-to-back warnings between consecutive meetings
+  for (let i = 0; i < meetings.length - 1; i++) {
+    const a = meetings[i];
+    const b = meetings[i + 1];
+    if (
+      isBackToBackPair(a.end, b.start, a.allowBackToBack, b.allowBackToBack) &&
+      b.start > now
+    ) {
+      gaps.push({
+        id: nextGapId(),
+        kind: 'back_to_back',
+        severity: 'warning',
+        headline: `Back-to-back: "${a.title}" → "${b.title}"`,
+        detail: 'Less than 10 min between meetings — add buffer or mark as OK.',
+        eventId: b.eventId,
+        relatedEventId: a.eventId,
+        meetingTitle: b.title,
       });
     }
   }
@@ -502,7 +554,7 @@ function buildNowDirective(
   }
 
   const nextMeeting = meetings.find((m) => m.start > now);
-  if (nextMeeting) {
+  if (nextMeeting?.prepRequired) {
     const msUntil = nextMeeting.start.getTime() - now.getTime();
     if (msUntil <= PREP_WINDOW_MS) {
       const linked = work.find((w) => w.linkedEventId === nextMeeting.eventId);

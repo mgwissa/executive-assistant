@@ -113,6 +113,7 @@ export type Database = {
           notify_email_last_digest_at: string | null;
           /** Override recipient — when null, the user's auth email is used. */
           notify_email_address: string | null;
+          meeting_rules: Json;
           created_at: string;
           updated_at: string;
         };
@@ -130,6 +131,7 @@ export type Database = {
           notify_email_escalation_enabled?: boolean;
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
+          meeting_rules?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -147,6 +149,7 @@ export type Database = {
           notify_email_escalation_enabled?: boolean;
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
+          meeting_rules?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -276,6 +279,8 @@ export type Database = {
           until_at: string | null;
           count: number | null;
           source: string;
+          prep_required: boolean;
+          allow_back_to_back: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -292,6 +297,8 @@ export type Database = {
           until_at?: string | null;
           count?: number | null;
           source?: string;
+          prep_required?: boolean;
+          allow_back_to_back?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -308,6 +315,8 @@ export type Database = {
           until_at?: string | null;
           count?: number | null;
           source?: string;
+          prep_required?: boolean;
+          allow_back_to_back?: boolean;
           created_at?: string;
           updated_at?: string;
         };
