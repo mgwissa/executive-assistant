@@ -6,6 +6,12 @@ import {
   syncMemoryFull,
   type MemoryCitation,
 } from '../lib/memoryApi';
+import {
+  clearMemoryChat,
+  loadMemoryChat,
+  saveMemoryChat,
+  type MemoryChatTurn,
+} from '../lib/memoryChatStorage';
 import { viewPath } from '../lib/routes';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
@@ -15,12 +21,7 @@ import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { IconBadge } from './ui/IconBadge';
 
-type ChatTurn = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: MemoryCitation[];
-};
+type ChatTurn = MemoryChatTurn;
 
 const STARTER_PROMPTS = [
   'Where did I leave off on the Lead Engine ping endpoint?',
@@ -62,10 +63,26 @@ export function MemoryPage() {
   const [indexing, setIndexing] = useState(false);
   const [chunkCount, setChunkCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [chatHydrated, setChatHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const lastSynced = profile?.memory_last_synced_at;
+
+  useEffect(() => {
+    if (!userId) {
+      setTurns([]);
+      setChatHydrated(false);
+      return;
+    }
+    setTurns(loadMemoryChat(userId));
+    setChatHydrated(true);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !chatHydrated) return;
+    saveMemoryChat(userId, turns);
+  }, [userId, turns, chatHydrated]);
 
   const refreshMeta = useCallback(async () => {
     try {
@@ -157,6 +174,14 @@ export function MemoryPage() {
     return 'Re-index all';
   }, [chunkCount, indexing]);
 
+  const clearChat = useCallback(() => {
+    if (turns.length === 0) return;
+    if (!window.confirm('Clear this conversation?')) return;
+    setTurns([]);
+    setError(null);
+    if (userId) clearMemoryChat(userId);
+  }, [turns.length, userId]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="border-b border-border bg-surface-raised px-4 py-4 sm:px-8">
@@ -190,6 +215,16 @@ export function MemoryPage() {
               <RefreshIcon className={`h-4 w-4 ${indexing ? 'animate-spin' : ''}`} />
               {indexLabel}
             </button>
+            {turns.length > 0 ? (
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                disabled={asking}
+                onClick={clearChat}
+              >
+                Clear chat
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

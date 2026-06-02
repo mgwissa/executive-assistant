@@ -199,6 +199,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Edge Functions:** `memory-sync` (chunk + embed via OpenAI; full or per-source), `memory-ask` (vector search + `gpt-4o-mini` with citations). Requires `OPENAI_API_KEY` in Supabase secrets.
 - **Route:** `/memory` (`MemoryPage`). Enable in Profile → Optional features.
 - **Auto-index:** `lib/memorySyncScheduler.ts` debounces re-index after note/task/debrief saves when addon is on.
+- **Chat history:** `lib/memoryChatStorage.ts` persists Memory Q&A in `localStorage` per user (survives route changes and browser restarts; cap 80 turns).
 - **Phase 2 (not built yet):** meeting transcript uploads.
 - **Gotcha:** read `OPENAI_API_KEY` via `Deno.env.get` at request time — caching it at module load returns empty and causes 503 even after `supabase secrets set`.
 - **Gotcha:** Supabase Edge bundler can **BOOT_ERROR** on exotic TS in function params (e.g. conditional `Awaited<ReturnType<…>>` types). Use plain `SupabaseClient` like `sync-outlook-calendar`; inline CORS/auth instead of fragile shared modules.
