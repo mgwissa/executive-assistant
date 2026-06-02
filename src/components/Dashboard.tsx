@@ -8,7 +8,8 @@ import { generateDirective } from '../lib/executiveDirective';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
-import { parseFocusQueue, type FocusQueuePrefs } from '../lib/focusQueue';
+import { parseFocusQueue, scheduleFocusForTomorrow, tomorrowIsoFrom, type FocusQueuePrefs } from '../lib/focusQueue';
+import type { FocusWorkItem } from '../lib/executiveDirective';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
@@ -23,6 +24,7 @@ import {
   formatLongDate,
   formatRelative,
   getGreeting,
+  setActionItemLineDueDate,
   toggleActionItemLine,
 } from '../lib/format';
 import type { TaskPriority } from '../lib/priority';
@@ -372,6 +374,8 @@ export function Dashboard() {
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const toggleTaskDone = useTasksStore((s) => s.toggleDone);
+  const setDueDate = useTasksStore((s) => s.setDueDate);
+  const setDueTime = useTasksStore((s) => s.setDueTime);
   const updateNote = useNotesStore((s) => s.updateNote);
   const setActive = useNotesStore((s) => s.setActive);
   const routineStates = useWeeklyRoutineStore((s) => s.states);
@@ -538,6 +542,33 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, directiveRefresh]);
 
+  const handleScheduleFocusTomorrow = useCallback(
+    async (item: FocusWorkItem) => {
+      if (!user || !directive) return;
+      const ref =
+        item.kind === 'task' && item.taskId
+          ? ({ kind: 'task' as const, taskId: item.taskId })
+          : ({ kind: 'action' as const, noteId: item.noteId!, line: item.line! });
+      const prefs = parseFocusQueue(useProfileStore.getState().profile?.focus_queue);
+      handleFocusQueueUpdate(scheduleFocusForTomorrow(prefs, ref, directive.todayIso));
+      const tomorrow = tomorrowIsoFrom(directive.todayIso);
+      if (item.kind === 'task' && item.taskId) {
+        await setDueDate(item.taskId, tomorrow);
+        if (item.dueTime) await setDueTime(item.taskId, null);
+      } else if (item.noteId != null && item.line != null) {
+        const note = notes.find((n) => n.id === item.noteId);
+        if (note) {
+          const patched = applyMarkdownPatchToNote(note, (md) =>
+            setActionItemLineDueDate(md, item.line!, tomorrow),
+          );
+          if (patched) await updateNote(item.noteId, patched);
+        }
+      }
+      setDirectiveRefresh((k) => k + 1);
+    },
+    [user, directive, handleFocusQueueUpdate, setDueDate, setDueTime, notes, updateNote],
+  );
+
   const briefing = useMemo(() => {
     if (!assistantEnabled) return null;
     return generateBriefing({
@@ -605,6 +636,7 @@ export function Dashboard() {
                   prefs={focusQueuePrefs}
                   disabled={!user}
                   onUpdatePrefs={handleFocusQueueUpdate}
+                  onScheduleTomorrow={handleScheduleFocusTomorrow}
                   onToggleTask={handleToggleTaskDone}
                   onToggleAction={toggleAction}
                 />
@@ -638,6 +670,7 @@ export function Dashboard() {
                 prefs={focusQueuePrefs}
                 disabled={!user}
                 onUpdatePrefs={handleFocusQueueUpdate}
+                onScheduleTomorrow={handleScheduleFocusTomorrow}
                 onToggleTask={handleToggleTaskDone}
                 onToggleAction={toggleAction}
               />

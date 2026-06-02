@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import type { ActionItem } from '../lib/format';
 import {
   buildFocusStack,
-  deferFromFocusStack,
   focusStackHint,
   pinToTopOfFocusStack,
   reorderFocusStack,
+  tomorrowIsoFrom,
   type FocusQueuePrefs,
 } from '../lib/focusQueue';
 import type { DirectiveReport, FocusWorkItem, WorkItemRef } from '../lib/executiveDirective';
@@ -29,6 +29,7 @@ type ExecutiveFocusStackProps = {
   prefs: FocusQueuePrefs;
   disabled?: boolean;
   onUpdatePrefs: (next: FocusQueuePrefs) => void;
+  onScheduleTomorrow: (item: FocusWorkItem) => void | Promise<void>;
   onToggleTask: (id: string, done: boolean) => void;
   onToggleAction: (noteId: string, line: number) => void;
 };
@@ -47,6 +48,7 @@ export function ExecutiveFocusStack({
   prefs,
   disabled = false,
   onUpdatePrefs,
+  onScheduleTomorrow,
   onToggleTask,
   onToggleAction,
 }: ExecutiveFocusStackProps) {
@@ -99,6 +101,7 @@ export function ExecutiveFocusStack({
               const rank = index + 1;
               const isTop = index === 0;
               const pinToTop = () => onUpdatePrefs(pinToTopOfFocusStack(prefs, items, ref));
+              const dueTomorrow = item.dueDate === tomorrowIsoFrom(directive.todayIso);
               return (
                 <li
                   key={item.id}
@@ -158,6 +161,11 @@ export function ExecutiveFocusStack({
                           Note
                         </Badge>
                       ) : null}
+                      {dueTomorrow ? (
+                        <Badge variant="subtle" className="text-[10px]">
+                          Due tomorrow
+                        </Badge>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -212,14 +220,12 @@ export function ExecutiveFocusStack({
                     </button>
                     <button
                       type="button"
-                      disabled={disabled}
-                      onClick={() =>
-                        onUpdatePrefs(deferFromFocusStack(prefs, ref, directive.todayIso))
-                      }
-                      className="btn-ghost px-1 py-0.5 text-[10px] font-medium text-text-muted hover:text-text"
-                      title="Not today"
+                      disabled={disabled || dueTomorrow}
+                      onClick={() => void onScheduleTomorrow(item)}
+                      className="btn-ghost px-1 py-0.5 text-[10px] font-medium text-text-muted hover:text-text disabled:opacity-40"
+                      title="Due tomorrow — drops off today's stack"
                     >
-                      Later
+                      Tomorrow
                     </button>
                   </div>
                 </li>

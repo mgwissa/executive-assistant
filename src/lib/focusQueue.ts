@@ -1,4 +1,5 @@
 import type { ActionItem } from './format';
+import { addDays, format, parseISO } from 'date-fns';
 import { buildPrioritizedWork, type FocusWorkItem, type WorkItemRef } from './executiveDirective';
 import type { Task } from '../types';
 
@@ -7,12 +8,22 @@ export const FOCUS_STACK_LIMIT = 6;
 export type FocusQueuePrefs = {
   /** User-preferred order (top first). Front of the merged focus stack. */
   stack: WorkItemRef[];
-  /** refKey → yyyy-mm-dd — hidden from focus stack on that calendar day. */
-  deferred: Record<string, string>;
+  /** refKey → yyyy-mm-dd — hide from focus stack until this date (inclusive re-show). */
+  snoozedUntil: Record<string, string>;
 };
 
 export function emptyFocusQueuePrefs(): FocusQueuePrefs {
-  return { stack: [], deferred: {} };
+  return { stack: [], snoozedUntil: {} };
+}
+
+export function tomorrowIsoFrom(todayIso: string): string {
+  return format(addDays(parseISO(todayIso), 1), 'yyyy-MM-dd');
+}
+
+function isHiddenFromFocus(key: string, todayIso: string, prefs: FocusQueuePrefs): boolean {
+  const until = prefs.snoozedUntil[key];
+  if (!until) return false;
+  return todayIso < until;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -43,15 +54,23 @@ export function parseFocusQueue(raw: unknown): FocusQueuePrefs {
       if (ref) stack.push(ref);
     }
   }
-  const deferred: Record<string, string> = {};
-  if (isRecord(raw.deferred)) {
-    for (const [key, value] of Object.entries(raw.deferred)) {
+  const snoozedUntil: Record<string, string> = {};
+  if (isRecord(raw.snoozedUntil)) {
+    for (const [key, value] of Object.entries(raw.snoozedUntil)) {
       if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        deferred[key] = value;
+        snoozedUntil[key] = value;
       }
     }
   }
-  return { stack, deferred };
+  // Legacy `deferred` (hide for one day) → snoozed until the next day
+  if (isRecord(raw.deferred)) {
+    for (const [key, value] of Object.entries(raw.deferred)) {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !snoozedUntil[key]) {
+        snoozedUntil[key] = tomorrowIsoFrom(value);
+      }
+    }
+  }
+  return { stack, snoozedUntil };
 }
 
 export function refKey(ref: WorkItemRef): string {
@@ -78,7 +97,7 @@ export function buildFocusStack(
   prefs: FocusQueuePrefs,
 ): FocusWorkItem[] {
   const pool = buildPrioritizedWork(tasks, actionItems, todayIso).filter(
-    (item) => prefs.deferred[refKey(workItemToRef(item))] !== todayIso,
+    (item) => !isHiddenFromFocus(refKey(workItemToRef(item)), todayIso, prefs),
   );
   const byKey = new Map(pool.map((item) => [refKey(workItemToRef(item)), item]));
 
@@ -135,16 +154,26 @@ export function pinToTopOfFocusStack(
   return { ...prefs, stack: next };
 }
 
-export function deferFromFocusStack(
+export function scheduleFocusForTomorrow(
   prefs: FocusQueuePrefs,
   ref: WorkItemRef,
   todayIso: string,
 ): FocusQueuePrefs {
   const key = refKey(ref);
+  const tomorrow = tomorrowIsoFrom(todayIso);
   return {
     stack: prefs.stack.filter((r) => refKey(r) !== key),
-    deferred: { ...prefs.deferred, [key]: todayIso },
+    snoozedUntil: { ...prefs.snoozedUntil, [key]: tomorrow },
   };
+}
+
+/** @deprecated Use scheduleFocusForTomorrow */
+export function deferFromFocusStack(
+  prefs: FocusQueuePrefs,
+  ref: WorkItemRef,
+  todayIso: string,
+): FocusQueuePrefs {
+  return scheduleFocusForTomorrow(prefs, ref, todayIso);
 }
 
 /** One-line context above the focus stack — plain, not pep-talk. */
@@ -159,7 +188,7 @@ export function focusStackHint(nowKind: string, inMeeting: boolean): string {
     return 'Handle the debrief first, then come back to the stack.';
   }
   if (nowKind === 'wind_down') {
-    return 'Past 5pm. Wrap up or hit Later on what can wait.';
+    return 'Past 5pm. Wrap up or push the rest to tomorrow.';
   }
-  return '#1 first, then work down. Pin or reorder as things shift.';
+  return '#1 first, then work down. Pin, reorder, or push to tomorrow when blocked.';
 }

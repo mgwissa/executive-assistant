@@ -25,6 +25,7 @@ import {
   prepTaskTitle,
 } from '../lib/meetingLifecycle';
 import { bumpPriorityOneLevel, snoozeChaseUntil } from '../lib/delegationChase';
+import { parseFocusQueue, scheduleFocusForTomorrow, tomorrowIsoFrom } from '../lib/focusQueue';
 import { ESTIMATE_PRESETS } from '../lib/taskCapacity';
 import type { TaskPriority } from '../lib/priority';
 import {
@@ -132,6 +133,7 @@ export function ExecutiveCommandCenter({
               <GapCard
                 key={gap.id}
                 gap={gap}
+                todayIso={directive.todayIso}
                 onRefresh={onRefresh}
                 onOpenDebrief={(target) => setDebriefTarget(target)}
                 onScheduleFollowUp={(target) => setFollowUpTarget(target)}
@@ -379,11 +381,13 @@ function NowHero({
 
 function GapCard({
   gap,
+  todayIso,
   onRefresh,
   onOpenDebrief,
   onScheduleFollowUp,
 }: {
   gap: DirectiveGap;
+  todayIso: string;
   onRefresh?: () => void;
   onOpenDebrief?: (target: DebriefTarget) => void;
   onScheduleFollowUp?: (target: FollowUpTarget) => void;
@@ -547,6 +551,45 @@ function GapCard({
   const applySuggestedTime = async (ref: WorkItemRef) => {
     if (!gap.suggestedTime || !gap.suggestedDate) return;
     await applyScheduledTime(ref, gap.suggestedDate, gap.suggestedTime);
+  };
+
+  const scheduleForTomorrow = async (ref: WorkItemRef) => {
+    setBusy(true);
+    try {
+      const tomorrow = tomorrowIsoFrom(todayIso);
+      if (user) {
+        const prefs = parseFocusQueue(useProfileStore.getState().profile?.focus_queue);
+        const next = scheduleFocusForTomorrow(prefs, ref, todayIso);
+        const current = useProfileStore.getState().profile;
+        if (current) {
+          useProfileStore.setState({ profile: { ...current, focus_queue: next } });
+        }
+        void updateProfile(user.id, { focus_queue: next });
+      }
+      if (ref.kind === 'task') {
+        await setDueDate(ref.taskId, tomorrow);
+        await setDueTime(ref.taskId, null);
+      } else {
+        const note = notes.find((n) => n.id === ref.noteId);
+        const lineText = note ? getNoteCanonicalMarkdown(note).split('\n')[ref.line] ?? '' : '';
+        if (note) {
+          const patched = applyMarkdownPatchToNote(note, (md) =>
+            setActionItemLineDueDate(md, ref.line, tomorrow),
+          );
+          if (patched) await updateNote(ref.noteId, patched);
+        }
+        const openTasks = useTasksStore.getState().tasks.filter((t) => !t.done);
+        const actionItems = extractActionItems(notes);
+        const existing = findOpenTaskForNoteActionRef(openTasks, actionItems, ref, lineText);
+        if (existing) {
+          await setDueDate(existing.id, tomorrow);
+          await setDueTime(existing.id, null);
+        }
+      }
+      onRefresh?.();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const actions = useMemo(() => {
@@ -787,6 +830,17 @@ function GapCard({
               className="btn-ghost py-1.5 text-xs"
             >
               Use {formatDueTimeDisplay(gap.suggestedTime)}
+            </button>
+          )}
+          {gap.kind === 'untimed_today' && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void scheduleForTomorrow(gap.ref!)}
+              className="btn-ghost py-1.5 text-xs"
+              title="Due tomorrow — drops off today's plan"
+            >
+              Tomorrow
             </button>
           )}
         </div>
