@@ -1,4 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { embedTexts, requireOpenAiKey, toPgVector } from '../_shared/openai.ts';
 import {
   buildDebriefDocument,
@@ -8,19 +9,71 @@ import {
   type MemoryChunkInput,
   type MemorySourceType,
 } from '../_shared/memoryIndex.ts';
-import { handleOptions, jsonResponse, requireMemoryAddon, requireUser } from '../_shared/userAuth.ts';
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 type SyncBody =
   | { mode: 'full' }
   | { sourceType: MemorySourceType; sourceId: string }
   | { mode: 'delete'; sourceType: MemorySourceType; sourceId: string };
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function requireAuth(req: Request): Promise<
+  | { user: { id: string }; admin: SupabaseClient }
+  | Response
+> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !anonKey || !serviceKey) {
+    return jsonResponse({ error: 'Server misconfigured' }, 500);
+  }
+
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const {
+    data: { user },
+    error: userErr,
+  } = await userClient.auth.getUser();
+  if (userErr || !user) {
+    return jsonResponse({ error: userErr?.message ?? 'Unauthorized' }, 401);
+  }
+
+  const admin = createClient(supabaseUrl, serviceKey);
+  return { user, admin };
+}
+
+async function requireMemoryAddon(admin: SupabaseClient, userId: string): Promise<Response | null> {
+  const { data: profile, error } = await admin
+    .from('profiles')
+    .select('enabled_addons')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return jsonResponse({ error: error.message }, 500);
+  const addons = (profile?.enabled_addons as string[] | null) ?? [];
+  if (!addons.includes('memory')) {
+    return jsonResponse({ error: 'Working memory is not enabled. Turn it on in Profile.' }, 403);
+  }
+  return null;
+}
+
 async function deleteSourceChunks(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
+  admin: SupabaseClient,
   userId: string,
   sourceType: MemorySourceType,
   sourceId: string,
@@ -35,11 +88,7 @@ async function deleteSourceChunks(
 }
 
 async function upsertChunks(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
+  admin: SupabaseClient,
   userId: string,
   inputs: MemoryChunkInput[],
 ): Promise<number> {
@@ -65,15 +114,7 @@ async function upsertChunks(
   return rows.length;
 }
 
-async function indexNote(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
-  userId: string,
-  noteId: string,
-): Promise<number> {
+async function indexNote(admin: SupabaseClient, userId: string, noteId: string): Promise<number> {
   const { data: note, error } = await admin
     .from('notes')
     .select('id, title, content, updated_at')
@@ -95,15 +136,7 @@ async function indexNote(
   return upsertChunks(admin, userId, inputs);
 }
 
-async function indexTask(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
-  userId: string,
-  taskId: string,
-): Promise<number> {
+async function indexTask(admin: SupabaseClient, userId: string, taskId: string): Promise<number> {
   const { data: task, error } = await admin
     .from('tasks')
     .select('id, title, description, waiting_on, priority, due_date, done, tags, updated_at')
@@ -135,15 +168,7 @@ async function indexTask(
   return upsertChunks(admin, userId, inputs);
 }
 
-async function indexDebrief(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
-  userId: string,
-  debriefId: string,
-): Promise<number> {
+async function indexDebrief(admin: SupabaseClient, userId: string, debriefId: string): Promise<number> {
   const { data: debrief, error } = await admin
     .from('meeting_debrief_states')
     .select('id, event_id, occurrence_start_at, notes, updated_at')
@@ -182,11 +207,7 @@ async function indexDebrief(
 }
 
 async function fullSync(
-  admin: Awaited<ReturnType<typeof requireUser>> extends infer R
-    ? R extends { admin: infer A }
-      ? A
-      : never
-    : never,
+  admin: SupabaseClient,
   userId: string,
 ): Promise<{ notes: number; tasks: number; debriefs: number; chunks: number }> {
   let chunkCount = 0;
@@ -234,14 +255,15 @@ async function fullSync(
 }
 
 Deno.serve(async (req) => {
-  const options = handleOptions(req);
-  if (options) return options;
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
 
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  const auth = await requireUser(req);
+  const auth = await requireAuth(req);
   if (auth instanceof Response) return auth;
 
   const addonErr = await requireMemoryAddon(auth.admin, auth.user.id);

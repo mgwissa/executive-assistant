@@ -201,6 +201,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Auto-index:** `lib/memorySyncScheduler.ts` debounces re-index after note/task/debrief saves when addon is on.
 - **Phase 2 (not built yet):** meeting transcript uploads.
 - **Gotcha:** read `OPENAI_API_KEY` via `Deno.env.get` at request time — caching it at module load returns empty and causes 503 even after `supabase secrets set`.
+- **Gotcha:** Supabase Edge bundler can **BOOT_ERROR** on exotic TS in function params (e.g. conditional `Awaited<ReturnType<…>>` types). Use plain `SupabaseClient` like `sync-outlook-calendar`; inline CORS/auth instead of fragile shared modules.
 
 ## Optional addons
 

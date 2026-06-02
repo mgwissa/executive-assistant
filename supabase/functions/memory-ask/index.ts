@@ -1,6 +1,11 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { chatJson, embedTexts, requireOpenAiKey, toPgVector } from '../_shared/openai.ts';
-import { handleOptions, jsonResponse, requireMemoryAddon, requireUser } from '../_shared/userAuth.ts';
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 type MatchedChunk = {
   id: string;
@@ -29,6 +34,58 @@ Rules:
 - When asked "where are we at", synthesize status: last known state, open questions, who is involved, suggested next step.
 - Prefer recent information when sources conflict.`;
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function requireAuth(req: Request): Promise<
+  | { user: { id: string }; admin: SupabaseClient }
+  | Response
+> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !anonKey || !serviceKey) {
+    return jsonResponse({ error: 'Server misconfigured' }, 500);
+  }
+
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const {
+    data: { user },
+    error: userErr,
+  } = await userClient.auth.getUser();
+  if (userErr || !user) {
+    return jsonResponse({ error: userErr?.message ?? 'Unauthorized' }, 401);
+  }
+
+  const admin = createClient(supabaseUrl, serviceKey);
+  return { user, admin };
+}
+
+async function requireMemoryAddon(admin: SupabaseClient, userId: string): Promise<Response | null> {
+  const { data: profile, error } = await admin
+    .from('profiles')
+    .select('enabled_addons')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return jsonResponse({ error: error.message }, 500);
+  const addons = (profile?.enabled_addons as string[] | null) ?? [];
+  if (!addons.includes('memory')) {
+    return jsonResponse({ error: 'Working memory is not enabled. Turn it on in Profile.' }, 403);
+  }
+  return null;
+}
+
 function formatContextBlock(index: number, chunk: MatchedChunk): string {
   const meta = chunk.metadata ?? {};
   const title = typeof meta.title === 'string' ? meta.title : chunk.source_type;
@@ -42,14 +99,15 @@ function formatContextBlock(index: number, chunk: MatchedChunk): string {
 }
 
 Deno.serve(async (req) => {
-  const options = handleOptions(req);
-  if (options) return options;
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
 
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  const auth = await requireUser(req);
+  const auth = await requireAuth(req);
   if (auth instanceof Response) return auth;
 
   const addonErr = await requireMemoryAddon(auth.admin, auth.user.id);
