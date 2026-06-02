@@ -1,5 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { embedTexts } from '../_shared/openai.ts';
+import { embedTexts, requireOpenAiKey, toPgVector } from '../_shared/openai.ts';
 import {
   buildDebriefDocument,
   buildNoteDocument,
@@ -55,7 +55,7 @@ async function upsertChunks(
     source_id: chunk.sourceId,
     chunk_index: chunk.chunkIndex,
     content: chunk.content,
-    embedding: embeddings[i],
+    embedding: toPgVector(embeddings[i]),
     metadata: chunk.metadata,
     source_updated_at: chunk.sourceUpdatedAt,
   }));
@@ -246,6 +246,16 @@ Deno.serve(async (req) => {
 
   const addonErr = await requireMemoryAddon(auth.admin, auth.user.id);
   if (addonErr) return addonErr;
+
+  if (!requireOpenAiKey()) {
+    return jsonResponse(
+      {
+        error:
+          'OPENAI_API_KEY is not configured on Edge Functions. Run: supabase secrets set OPENAI_API_KEY=sk-... then redeploy memory-sync.',
+      },
+      503,
+    );
+  }
 
   let body: SyncBody;
   try {

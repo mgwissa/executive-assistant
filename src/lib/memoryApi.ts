@@ -30,6 +30,24 @@ function parseError(data: unknown, fallback: string): string {
   return fallback;
 }
 
+async function invokeErrorMessage(
+  error: { message: string; context?: Response },
+  data: unknown,
+  fallback: string,
+): Promise<string> {
+  const fromData = parseError(data, '');
+  if (fromData) return fromData;
+  if (error.context) {
+    try {
+      const body = (await error.context.json()) as { error?: string };
+      if (body.error) return body.error;
+    } catch {
+      /* response already consumed or not json */
+    }
+  }
+  return error.message || fallback;
+}
+
 export async function askMemory(question: string): Promise<MemoryAskResult> {
   const { data, error } = await supabase.functions.invoke<{
     ok?: boolean;
@@ -38,7 +56,7 @@ export async function askMemory(question: string): Promise<MemoryAskResult> {
     error?: string;
   }>('memory-ask', { body: { question } });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await invokeErrorMessage(error, data, 'Ask failed'));
   if (!data?.ok) throw new Error(parseError(data, 'Ask failed'));
 
   return {
@@ -52,7 +70,7 @@ export async function syncMemoryFull(): Promise<MemorySyncStats> {
     MemorySyncStats & { ok?: boolean; error?: string }
   >('memory-sync', { body: { mode: 'full' } });
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await invokeErrorMessage(error, data, 'Index failed'));
   if (!data?.ok) throw new Error(parseError(data, 'Index failed'));
 
   return {
@@ -74,7 +92,7 @@ export async function syncMemorySource(
     { body: { sourceType, sourceId } },
   );
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await invokeErrorMessage(error, data, 'Index failed'));
   if (!data?.ok) throw new Error(parseError(data, 'Index failed'));
 }
 
@@ -89,7 +107,7 @@ export async function deleteMemorySource(
     { body: { mode: 'delete', sourceType, sourceId } },
   );
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await invokeErrorMessage(error, data, 'Delete failed'));
   if (!data?.ok) throw new Error(parseError(data, 'Delete failed'));
 }
 

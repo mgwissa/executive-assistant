@@ -190,6 +190,7 @@ When the tab is open, scheduled tasks nudge you **inside the app** instead of (o
 - **Polling:** `hooks/useWorkNudges.ts` runs in `WorkNudgeHost` (mounted from `App.tsx` `Shell`). Every 30s + on tab focus, finds open tasks with `due_date` = today (profile TZ) and `due_time` ≤ now.
 - **Dedupe:** `sessionStorage` keys `work-nudge-shown:{taskId}:{date}` and `work-nudge-snooze:{taskId}` — independent of email `reminder_sent_at`.
 - **UI:** `ToastHost` + `useToastStore`; Profile → **In-app nudges** for toggles. Browser `Notification` API when tab is hidden and permission granted.
+- **Memory OpenAI key:** read `Deno.env.get('OPENAI_API_KEY')` at request time in Edge Functions — do not cache at module load or the secret looks missing (503).
 
 ## Working memory (LLM / RAG)
 

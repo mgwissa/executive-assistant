@@ -1,5 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { chatJson, embedTexts } from '../_shared/openai.ts';
+import { chatJson, embedTexts, requireOpenAiKey, toPgVector } from '../_shared/openai.ts';
 import { handleOptions, jsonResponse, requireMemoryAddon, requireUser } from '../_shared/userAuth.ts';
 
 type MatchedChunk = {
@@ -55,9 +55,12 @@ Deno.serve(async (req) => {
   const addonErr = await requireMemoryAddon(auth.admin, auth.user.id);
   if (addonErr) return addonErr;
 
-  if (!Deno.env.get('OPENAI_API_KEY')?.trim()) {
+  if (!requireOpenAiKey()) {
     return jsonResponse(
-      { error: 'OPENAI_API_KEY is not configured. Run: supabase secrets set OPENAI_API_KEY=sk-...' },
+      {
+        error:
+          'OPENAI_API_KEY is not configured on Edge Functions. Run: supabase secrets set OPENAI_API_KEY=sk-... then redeploy memory-ask.',
+      },
       503,
     );
   }
@@ -78,7 +81,7 @@ Deno.serve(async (req) => {
     const [queryEmbedding] = await embedTexts([question]);
 
     const { data: chunks, error: matchErr } = await auth.admin.rpc('match_memory_chunks', {
-      query_embedding: queryEmbedding,
+      query_embedding: toPgVector(queryEmbedding),
       match_user_id: auth.user.id,
       match_count: 14,
     });

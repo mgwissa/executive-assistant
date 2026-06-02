@@ -1,8 +1,11 @@
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-
 export function requireOpenAiKey(): string | null {
-  const key = OPENAI_API_KEY?.trim();
+  const key = Deno.env.get('OPENAI_API_KEY')?.trim();
   return key || null;
+}
+
+/** Postgres pgvector literal for Supabase inserts / RPC. */
+export function toPgVector(values: number[]): string {
+  return `[${values.join(',')}]`;
 }
 
 export async function embedTexts(texts: string[]): Promise<number[][]> {
