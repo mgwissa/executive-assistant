@@ -9,6 +9,10 @@ import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
 import { parseFocusQueue, scheduleFocusForTomorrow, tomorrowIsoFrom, type FocusQueuePrefs } from '../lib/focusQueue';
+import {
+  loadDismissedDecisionIds,
+  persistDismissedDecisionIds,
+} from '../lib/decisionQueue';
 import type { FocusWorkItem } from '../lib/executiveDirective';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
@@ -481,6 +485,21 @@ export function Dashboard() {
 
   const assistantEnabled = isOptionalFeatureEnabled(profile, 'assistant');
   const [directiveRefresh, setDirectiveRefresh] = useState(0);
+  const [dismissedDecisionIds, setDismissedDecisionIds] = useState(() =>
+    loadDismissedDecisionIds(routineTodayDate),
+  );
+
+  useEffect(() => {
+    setDismissedDecisionIds(loadDismissedDecisionIds(routineTodayDate));
+  }, [routineTodayDate]);
+
+  const dismissDecision = useCallback((id: string) => {
+    setDismissedDecisionIds((prev) => {
+      const next = new Set(prev).add(id);
+      persistDismissedDecisionIds(routineTodayDate, next);
+      return next;
+    });
+  }, [routineTodayDate]);
 
   const toggleAction = (noteId: string, line: number) => {
     const note = notes.find((n) => n.id === noteId);
@@ -649,10 +668,19 @@ export function Dashboard() {
                   compact
                   hideBriefingBadges
                 />
-                <ExecutiveHudSidebar
-                  tasks={tasks}
-                  onRefresh={() => setDirectiveRefresh((k) => k + 1)}
-                />
+                {briefing ? (
+                  <ExecutiveHudSidebar
+                    directive={directive}
+                    briefing={briefing}
+                    tasks={tasks}
+                    actionItems={actionItems}
+                    focusPrefs={focusQueuePrefs}
+                    dismissedDecisionIds={dismissedDecisionIds}
+                    onDismissDecision={dismissDecision}
+                    onFocusPrefsUpdate={handleFocusQueueUpdate}
+                    onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                  />
+                ) : null}
               </aside>
             </div>
 
@@ -674,6 +702,19 @@ export function Dashboard() {
                 onToggleTask={handleToggleTaskDone}
                 onToggleAction={toggleAction}
               />
+              {briefing ? (
+                <ExecutiveHudSidebar
+                  directive={directive}
+                  briefing={briefing}
+                  tasks={tasks}
+                  actionItems={actionItems}
+                  focusPrefs={focusQueuePrefs}
+                  dismissedDecisionIds={dismissedDecisionIds}
+                  onDismissDecision={dismissDecision}
+                  onFocusPrefsUpdate={handleFocusQueueUpdate}
+                  onRefresh={() => setDirectiveRefresh((k) => k + 1)}
+                />
+              ) : null}
             </div>
 
             <DashboardActionItemsSection

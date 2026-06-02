@@ -167,6 +167,15 @@ export function scheduleFocusForTomorrow(
   };
 }
 
+/** Pin to #1 and clear any snooze — commit to doing it today. */
+export function commitRefToFocusToday(prefs: FocusQueuePrefs, ref: WorkItemRef): FocusQueuePrefs {
+  const key = refKey(ref);
+  const snoozedUntil = { ...prefs.snoozedUntil };
+  delete snoozedUntil[key];
+  const stack = [ref, ...prefs.stack.filter((r) => refKey(r) !== key)];
+  return { stack, snoozedUntil };
+}
+
 /** @deprecated Use scheduleFocusForTomorrow */
 export function deferFromFocusStack(
   prefs: FocusQueuePrefs,

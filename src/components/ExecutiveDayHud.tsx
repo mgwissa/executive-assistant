@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
+import type { ActionItem } from '../lib/format';
+import type { FocusQueuePrefs } from '../lib/focusQueue';
 import { listChaseCandidates, snoozeChaseUntil } from '../lib/delegationChase';
 import {
   computeDayHudMetrics,
@@ -14,9 +15,11 @@ import { formatDayEndLabel } from '../lib/executiveDirective';
 import { viewPath } from '../lib/routes';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Task } from '../types';
-import { ArrowRightIcon, CalendarIcon, CheckSquareIcon } from './icons';
+import { ArrowRightIcon, CalendarIcon } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
+import { ExecutiveDecisionQueue } from './ExecutiveDecisionQueue';
+import { ExecutiveEveningCloseout } from './ExecutiveEveningCloseout';
 
 type ExecutiveDayHudProps = {
   directive: DirectiveReport;
@@ -317,25 +320,48 @@ function DelegationChaseCard({ tasks, onRefresh }: { tasks: Task[]; onRefresh?: 
   );
 }
 
-function ReservedSlot({
-  icon,
-  title,
-  subtitle,
+function ExecutiveHudSidebar({
+  directive,
+  briefing,
+  tasks,
+  actionItems,
+  focusPrefs,
+  dismissedDecisionIds,
+  onDismissDecision,
+  onFocusPrefsUpdate,
+  onRefresh,
 }: {
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
+  directive: DirectiveReport;
+  briefing: BriefingReport;
+  tasks: Task[];
+  actionItems: ActionItem[];
+  focusPrefs: FocusQueuePrefs;
+  dismissedDecisionIds: ReadonlySet<string>;
+  onDismissDecision: (id: string) => void;
+  onFocusPrefsUpdate: (next: FocusQueuePrefs) => void;
+  onRefresh?: () => void;
 }) {
   return (
-    <Card padded="sm" tone="sunken" className="border border-dashed border-border">
-      <div className="flex items-start gap-3 opacity-70">
-        <span className="mt-0.5 text-text-muted">{icon}</span>
-        <div>
-          <p className="text-sm font-medium text-text-muted">{title}</p>
-          <p className="mt-0.5 text-xs text-text-subtle">{subtitle}</p>
-        </div>
-      </div>
-    </Card>
+    <div className="space-y-3">
+      <DelegationChaseCard tasks={tasks} onRefresh={onRefresh} />
+      <ExecutiveDecisionQueue
+        briefing={briefing}
+        todayIso={directive.todayIso}
+        focusPrefs={focusPrefs}
+        onFocusPrefsUpdate={onFocusPrefsUpdate}
+        dismissedIds={dismissedDecisionIds}
+        onDismiss={onDismissDecision}
+        onRefresh={onRefresh}
+      />
+      <ExecutiveEveningCloseout
+        directive={directive}
+        tasks={tasks}
+        actionItems={actionItems}
+        focusPrefs={focusPrefs}
+        onFocusPrefsUpdate={onFocusPrefsUpdate}
+        onRefresh={onRefresh}
+      />
+    </div>
   );
 }
 
@@ -358,29 +384,4 @@ export function ExecutiveDayHud({ directive, briefing }: ExecutiveDayHudProps) {
   );
 }
 
-export function ExecutiveHudSidebar({
-  tasks,
-  onRefresh,
-}: {
-  tasks: Task[];
-  onRefresh?: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <DelegationChaseCard tasks={tasks} onRefresh={onRefresh} />
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-subtle">Later phases</p>
-      <ReservedSlot
-        icon={<CheckSquareIcon className="h-4 w-4" />}
-        title="Decision queue"
-        subtitle="Commit, delegate, or drop — expands on Focus stack"
-      />
-      <ReservedSlot
-        icon={<CalendarIcon className="h-4 w-4" />}
-        title="Evening close-out"
-        subtitle="Done today, carry forward, tomorrow #1"
-      />
-    </div>
-  );
-}
-
-export { computeDayHudMetrics, formatHudHours };
+export { ExecutiveHudSidebar, computeDayHudMetrics, formatHudHours };
