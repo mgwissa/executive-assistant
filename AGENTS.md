@@ -190,7 +190,6 @@ When the tab is open, scheduled tasks nudge you **inside the app** instead of (o
 - **Polling:** `hooks/useWorkNudges.ts` runs in `WorkNudgeHost` (mounted from `App.tsx` `Shell`). Every 30s + on tab focus, finds open tasks with `due_date` = today (profile TZ) and `due_time` ≤ now.
 - **Dedupe:** `sessionStorage` keys `work-nudge-shown:{taskId}:{date}` and `work-nudge-snooze:{taskId}` — independent of email `reminder_sent_at`.
 - **UI:** `ToastHost` + `useToastStore`; Profile → **In-app nudges** for toggles. Browser `Notification` API when tab is hidden and permission granted.
-- **Memory OpenAI key:** read `Deno.env.get('OPENAI_API_KEY')` at request time in Edge Functions — do not cache at module load or the secret looks missing (503).
 
 ## Working memory (LLM / RAG)
 
@@ -201,6 +200,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Route:** `/memory` (`MemoryPage`). Enable in Profile → Optional features.
 - **Auto-index:** `lib/memorySyncScheduler.ts` debounces re-index after note/task/debrief saves when addon is on.
 - **Phase 2 (not built yet):** meeting transcript uploads.
+- **Gotcha:** read `OPENAI_API_KEY` via `Deno.env.get` at request time — caching it at module load returns empty and causes 503 even after `supabase secrets set`.
 
 ## Optional addons
 
