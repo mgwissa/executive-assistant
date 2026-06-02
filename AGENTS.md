@@ -86,7 +86,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `weekly_routine jsonb` (custom template; null = built-in guide), `focus_queue jsonb` (focus stack order + `snoozedUntil` per ref), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_address` (recipient override) |
+| `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `weekly_routine jsonb` (custom template; null = built-in guide), `focus_queue jsonb` (focus stack order + `snoozedUntil` per ref), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_reminder_enabled`, `notify_in_app_nudges_enabled`, `notify_browser_nudges_enabled`, `notify_email_address` (recipient override) |
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc) |
@@ -148,7 +148,7 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 3. `compareDueTime` on the Tasks page when due dates tie — timed tasks first, earliest first (`src/lib/taskSchedule.ts`)
 4. `updated_at` desc (recent first)
 
-**Task schedule helpers:** `src/lib/taskSchedule.ts` — `normalizeDueTime` (Postgres `time` → `HH:MM`), `taskDueLabel`, `compareDueTime`. Clearing `due_date` also clears `due_time`, `linked_event_id`, and `reminder_sent_at`. `reminder_sent_at` + email cron are planned (migration `2026-05-21_028_task_due_time.sql`); not wired yet.
+**Task schedule helpers:** `src/lib/taskSchedule.ts` — `normalizeDueTime` (Postgres `time` → `HH:MM`), `taskDueLabel`, `compareDueTime`. Clearing `due_date` also clears `due_time`, `linked_event_id`, and `reminder_sent_at`. **Due-time reminders:** `send-due-time-reminders` Edge Function (pg_cron every 5 min) emails when local time ≥ `due_time` on `due_date`; dedupes via `tasks.reminder_sent_at`. Toggle: `profiles.notify_email_reminder_enabled`.
 
 **Quick add:** `TaskQuickAddForm` — title + priority + optional date/time + optional tags. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
 
@@ -175,11 +175,20 @@ Realtime echo: when the client writes its own update, `markNoteSelfPersisted` re
 Detailed in README §5. Quick map:
 
 - **Migration:** `2026-05-08_025_email_notifications.sql` adds prefs to `profiles`, defines the trigger, and enables `pg_net`/`pg_cron`. `2026-05-08_026_notification_recipient.sql` adds `notify_email_address` (override email).
-- **Edge Functions:** `send-daily-digest` (cron-driven every 15 min, fans out to eligible users in their timezone, dedupes via `notify_email_last_digest_at`) and `send-task-escalation` (DB-trigger-driven).
+- **Edge Functions:** `send-daily-digest` (cron-driven every 15 min, fans out to eligible users in their timezone, dedupes via `notify_email_last_digest_at`), `send-due-time-reminders` (cron every 5 min; `due_time` on `due_date` today, dedupes via `tasks.reminder_sent_at`), and `send-task-escalation` (DB-trigger-driven).
 - **Auth between cron/trigger and functions:** shared `CRON_SECRET` passed as `x-cron-secret` header. The secret lives in **two places** that must stay in sync: Edge Function env (`supabase secrets set CRON_SECRET=…`) and Supabase Vault (`vault.create_secret(..., 'cron_secret')`).
 - **Recipient resolution:** `profiles.notify_email_address` override > `auth.users.email`.
 
 If you change anything related to notification auth, update *both* secret stores.
+
+## In-app nudges
+
+When the tab is open, scheduled tasks nudge you **inside the app** instead of (or in addition to) email:
+
+- **Migration:** `2026-05-22_037_profiles_in_app_nudges.sql` — `profiles.notify_in_app_nudges_enabled` (default true), `notify_browser_nudges_enabled` (default false).
+- **Polling:** `hooks/useWorkNudges.ts` runs in `WorkNudgeHost` (mounted from `App.tsx` `Shell`). Every 30s + on tab focus, finds open tasks with `due_date` = today (profile TZ) and `due_time` ≤ now.
+- **Dedupe:** `sessionStorage` keys `work-nudge-shown:{taskId}:{date}` and `work-nudge-snooze:{taskId}` — independent of email `reminder_sent_at`.
+- **UI:** `ToastHost` + `useToastStore`; Profile → **In-app nudges** for toggles. Browser `Notification` API when tab is hidden and permission granted.
 
 ## Optional addons
 
@@ -245,7 +254,7 @@ If you change anything related to notification auth, update *both* secret stores
 - **Delegation chase:** idle days use `last_chased_at` when set, else `updated_at`; gaps fire at 5+ days (warning) / 14+ (critical). Snooze writes `chase_snoozed_until` (+7d). “Chase again” only updates `last_chased_at` so staleness resets without touching task content.
 - **Task estimates:** `estimated_minutes` null → 30m default in capacity/timeline; explicit values size timed blocks and unscheduled work debt. Overcommit gap fires when planned work exceeds remaining time until 5pm by ≥30m.
 - **Focus stack (Phase E slice 1):** `ExecutiveFocusStack` on the dashboard fills the gap below NOW/gaps. Merges `profiles.focus_queue` (user order + `snoozedUntil` hide-until dates) with `buildPrioritizedWork()` (critical/urgent/due-today). Reorder teaches priority; **pin to #1** (rank badge or pin control) or **Tomorrow** sets `due_date` to tomorrow, clears `due_time`, and snoozes the item off today's stack. Same **Tomorrow** action appears on `untimed_today` gaps in **I need from you**.
-- **Decision queue (Phase E):** `ExecutiveDecisionQueue` in the HUD sidebar surfaces top `decisions` insights from `generateBriefing()` with inline actions. **Do today** (primary) sets due today, pins to focus stack #1 (`commitRefToFocusToday`), clears snooze, and bumps priority one level for reschedule offenders. Defer options: tomorrow, lower priority, drop. **Not now** dismisses for the day via `sessionStorage` (`decision-dismiss:yyyy-mm-dd`).
+- **Decision queue (Phase E):** `ExecutiveDecisionQueue` / `DecisionInsightCard` (shared with `/assistant` Decisions tab) surfaces top `decisions` insights from `generateBriefing()`. Stale note action items get **one row each** (`actionTarget: { kind: 'action', noteId, line }`). **Do today** (primary) sets due today, pins to focus stack #1 (`commitRefToFocusToday`), clears snooze, bumps priority for reschedule offenders; works for tasks and note action lines via `lib/commitWorkToday.ts`.
 - **Evening close-out (Phase F):** `ExecutiveEveningCloseout` activates when `directive.now.kind === 'wind_down'` (after 5pm). Shows done-today count, carry-forward list, tomorrow #1 from focus stack, and **Push rest to tomorrow** bulk action.
 - **Overload UX:** full-screen emergency mode was removed (2026-05). **Assistant on** → directive NOW/gaps/HUD + focus stack; **assistant off** → dashboard `CriticalBlocker` for critical items.
 

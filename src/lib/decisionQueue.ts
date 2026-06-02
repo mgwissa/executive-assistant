@@ -66,6 +66,23 @@ export function isRescheduleOffenderInsight(insight: BriefingInsight): boolean {
   );
 }
 
+export function isStaleActionItemInsight(insight: BriefingInsight): boolean {
+  return insight.actionTarget?.kind === 'action';
+}
+
+export function insightTaskId(insight: BriefingInsight): string | null {
+  return insight.actionTarget?.kind === 'task' ? insight.actionTarget.id : null;
+}
+
+export function insightActionRef(insight: BriefingInsight): {
+  noteId: string;
+  line: number;
+} | null {
+  const t = insight.actionTarget;
+  if (t?.kind !== 'action') return null;
+  return { noteId: t.noteId, line: t.line };
+}
+
 export function isHighPriorityNoDateInsight(insight: BriefingInsight): boolean {
   return insight.headline.includes('no due date');
 }

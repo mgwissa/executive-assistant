@@ -16,6 +16,7 @@ import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import { TopBar } from './components/TopBar';
+import { WorkNudgeHost } from './components/WorkNudgeHost';
 import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
 import { eventsFetchIsoRange } from './lib/eventQueries';
@@ -32,6 +33,7 @@ import { useNotesStore } from './store/useNotesStore';
 import { useProfileStore } from './store/useProfileStore';
 import { useSharingStore } from './store/useSharingStore';
 import { useTasksStore } from './store/useTasksStore';
+import { useToastStore } from './store/useToastStore';
 import { useTimeEntriesStore } from './store/useTimeEntriesStore';
 import { useTimeProjectsStore } from './store/useTimeProjectsStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
@@ -132,6 +134,7 @@ function Shell() {
   const clearEvents = useEventsStore((s) => s.clear);
   const fetchDebriefRange = useMeetingDebriefStore((s) => s.fetchRange);
   const clearDebrief = useMeetingDebriefStore((s) => s.clear);
+  const clearToasts = useToastStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -159,6 +162,7 @@ function Shell() {
       clearWeeklyRoutine();
       clearEvents();
       clearDebrief();
+      clearToasts();
     }
   }, [
     user,
@@ -184,6 +188,7 @@ function Shell() {
     clearWeeklyRoutine,
     clearEvents,
     clearDebrief,
+    clearToasts,
   ]);
 
   useEffect(() => {
@@ -277,6 +282,7 @@ function Shell() {
           <Outlet />
         </div>
       </div>
+      <WorkNudgeHost />
     </div>
   );
 }

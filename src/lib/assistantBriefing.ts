@@ -30,14 +30,19 @@ export type BriefingMode = 'morning' | 'midday' | 'afternoon' | 'evening';
 
 export type InsightSeverity = 'info' | 'warning' | 'critical' | 'decision';
 
+export type BriefingActionTarget =
+  | { kind: 'task'; id: string }
+  | { kind: 'note'; id: string }
+  | { kind: 'action'; noteId: string; line: number };
+
 export interface BriefingInsight {
   id: string;
   severity: InsightSeverity;
   section: 'nuts' | 'watch' | 'decisions';
   headline: string;
   detail: string;
-  /** Optional: a task or note ID the user can act on */
-  actionTarget?: { kind: 'task' | 'note'; id: string };
+  /** Optional: a task, note, or note action line the user can act on */
+  actionTarget?: BriefingActionTarget;
 }
 
 export interface NutsAndBolts {
@@ -573,19 +578,19 @@ export function generateBriefing(input: BriefingInput): BriefingReport {
     });
   }
 
-  // Action items in notes that have been sitting a long time
-  const staleActionItems = actionItems.filter((a) => {
-    const d = daysSinceUpdated(a.noteUpdatedAt);
-    return d >= 14;
-  });
-  if (staleActionItems.length > 0) {
+  // Action items in notes that have been sitting a long time — one row each
+  const staleActionItems = actionItems
+    .filter((a) => daysSinceUpdated(a.noteUpdatedAt) >= 14)
+    .sort((a, b) => daysSinceUpdated(b.noteUpdatedAt) - daysSinceUpdated(a.noteUpdatedAt));
+  for (const a of staleActionItems.slice(0, 3)) {
+    const days = daysSinceUpdated(a.noteUpdatedAt);
     insights.push({
       id: nextId(),
       severity: 'decision',
       section: 'decisions',
-      headline: `${staleActionItems.length} note action item${staleActionItems.length > 1 ? 's' : ''} haven't been touched in 14+ days`,
-      detail: staleActionItems.slice(0, 3).map((a) => `"${a.displayText}" in ${a.noteTitle}`).join('; ') +
-        ' — either convert these to tasks with due dates, or check them off.',
+      headline: `"${a.displayText}" — ${days}d untouched`,
+      detail: `In ${a.noteTitle}. Do today, schedule, or check it off in the note.`,
+      actionTarget: { kind: 'action', noteId: a.noteId, line: a.line },
     });
   }
 

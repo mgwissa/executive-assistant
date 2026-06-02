@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { formatInTimeZone } from 'date-fns-tz';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   type BriefingInsight,
@@ -9,7 +10,12 @@ import {
   MODE_META,
 } from '../lib/assistantBriefing';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
+import {
+  loadDismissedDecisionIds,
+  persistDismissedDecisionIds,
+} from '../lib/decisionQueue';
 import { generateDirective } from '../lib/executiveDirective';
+import { parseFocusQueue, type FocusQueuePrefs } from '../lib/focusQueue';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { extractActionItems } from '../lib/format';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
@@ -20,6 +26,7 @@ import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { DecisionInsightCard } from './DecisionInsightCard';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 import {
   ArrowRightIcon,
@@ -86,6 +93,7 @@ export function AssistantPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
+  const updateProfile = useProfileStore((s) => s.updateProfile);
   const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const notes = useNotesStore((s) => s.notes);
@@ -100,6 +108,11 @@ export function AssistantPage() {
   const [accepting, setAccepting] = useState<string | null>(null);
 
   const timezone = resolveCalendarTimeZone(profile?.timezone);
+  const focusQueuePrefs = useMemo(
+    () => parseFocusQueue(profile?.focus_queue),
+    [profile?.focus_queue],
+  );
+
   const actionItems = useMemo(
     () => filterActionItemsDeduped(tasks, extractActionItems(notes)),
     [notes, tasks],
@@ -119,6 +132,39 @@ export function AssistantPage() {
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, refreshKey],
+  );
+
+  const todayIso = directive.todayIso;
+  const [dismissedDecisionIds, setDismissedDecisionIds] = useState(() =>
+    loadDismissedDecisionIds(formatInTimeZone(new Date(), timezone, 'yyyy-MM-dd')),
+  );
+
+  useEffect(() => {
+    setDismissedDecisionIds(loadDismissedDecisionIds(todayIso));
+  }, [todayIso]);
+
+  const dismissDecision = useCallback(
+    (id: string) => {
+      setDismissedDecisionIds((prev) => {
+        const next = new Set(prev).add(id);
+        persistDismissedDecisionIds(todayIso, next);
+        return next;
+      });
+    },
+    [todayIso],
+  );
+
+  const handleFocusQueueUpdate = useCallback(
+    (next: FocusQueuePrefs) => {
+      if (!user) return;
+      const current = useProfileStore.getState().profile;
+      if (current) {
+        useProfileStore.setState({ profile: { ...current, focus_queue: next } });
+      }
+      void updateProfile(user.id, { focus_queue: next });
+      setRefreshKey((k) => k + 1);
+    },
+    [user, updateProfile],
   );
 
   const report: BriefingReport = useMemo(
@@ -147,10 +193,11 @@ export function AssistantPage() {
     navigate(viewPath('tasks'));
   }, [navigate]);
 
-  const tabInsights = useMemo(
-    () => report.insights.filter((i) => i.section === activeTab),
-    [report.insights, activeTab],
-  );
+  const tabInsights = useMemo(() => {
+    const section = report.insights.filter((i) => i.section === activeTab);
+    if (activeTab !== 'decisions') return section;
+    return section.filter((i) => !dismissedDecisionIds.has(i.id));
+  }, [report.insights, activeTab, dismissedDecisionIds]);
 
   const visibleProposals = useMemo(
     () =>
@@ -317,14 +364,30 @@ export function AssistantPage() {
                 />
               </Card>
             ) : (
-              tabInsights.map((insight) => (
-                <InsightCard
-                  key={insight.id}
-                  insight={insight}
-                  onOpenTask={openTask}
-                  onOpenNote={openNote}
-                />
-              ))
+              tabInsights.map((insight) =>
+                activeTab === 'decisions' ? (
+                  <DecisionInsightCard
+                    key={insight.id}
+                    insight={insight}
+                    todayIso={todayIso}
+                    focusPrefs={focusQueuePrefs}
+                    onFocusPrefsUpdate={handleFocusQueueUpdate}
+                    tasks={tasks}
+                    notes={notes}
+                    actionItems={actionItems}
+                    onDismiss={() => dismissDecision(insight.id)}
+                    onRefresh={() => setRefreshKey((k) => k + 1)}
+                    variant="card"
+                  />
+                ) : (
+                  <InsightCard
+                    key={insight.id}
+                    insight={insight}
+                    onOpenTask={openTask}
+                    onOpenNote={openNote}
+                  />
+                ),
+              )
             )}
           </div>
         </section>
@@ -413,9 +476,11 @@ function InsightCard({
           {insight.actionTarget && (
             <button
               type="button"
-              onClick={() =>
-                insight.actionTarget!.kind === 'task' ? onOpenTask() : onOpenNote(insight.actionTarget!.id)
-              }
+              onClick={() => {
+                const t = insight.actionTarget!;
+                if (t.kind === 'task') onOpenTask();
+                else onOpenNote(t.kind === 'note' ? t.id : t.noteId);
+              }}
               className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-600"
             >
               {insight.actionTarget.kind === 'task' ? 'Open tasks' : 'Open note'}

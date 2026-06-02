@@ -14,7 +14,7 @@ import type { DirectiveReport } from '../lib/executiveDirective';
 import { formatDayEndLabel } from '../lib/executiveDirective';
 import { viewPath } from '../lib/routes';
 import { useTasksStore } from '../store/useTasksStore';
-import type { Task } from '../types';
+import type { Note, Task } from '../types';
 import { ArrowRightIcon, CalendarIcon } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
@@ -324,6 +324,7 @@ function ExecutiveHudSidebar({
   directive,
   briefing,
   tasks,
+  notes,
   actionItems,
   focusPrefs,
   dismissedDecisionIds,
@@ -334,6 +335,7 @@ function ExecutiveHudSidebar({
   directive: DirectiveReport;
   briefing: BriefingReport;
   tasks: Task[];
+  notes: Note[];
   actionItems: ActionItem[];
   focusPrefs: FocusQueuePrefs;
   dismissedDecisionIds: ReadonlySet<string>;
@@ -352,6 +354,9 @@ function ExecutiveHudSidebar({
         dismissedIds={dismissedDecisionIds}
         onDismiss={onDismissDecision}
         onRefresh={onRefresh}
+        tasks={tasks}
+        notes={notes}
+        actionItems={actionItems}
       />
       <ExecutiveEveningCloseout
         directive={directive}

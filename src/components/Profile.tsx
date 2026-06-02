@@ -73,10 +73,22 @@ export function Profile() {
 
           {user && profile && (
             <EmailNotificationsSection
-              key={`notify-${profile.notify_email_enabled}-${profile.notify_email_digest_enabled}-${profile.notify_email_digest_local_time}-${profile.notify_email_escalation_enabled}-${profile.notify_email_address ?? ''}`}
+              key={`notify-${profile.notify_email_enabled}-${profile.notify_email_digest_enabled}-${profile.notify_email_digest_local_time}-${profile.notify_email_escalation_enabled}-${profile.notify_email_reminder_enabled}-${profile.notify_email_address ?? ''}`}
               userId={user.id}
               profile={profile}
               accountEmail={user.email ?? ''}
+              loading={loading}
+              saving={saving}
+              updateProfile={updateProfile}
+              fetchProfile={fetchProfile}
+            />
+          )}
+
+          {user && profile && (
+            <InAppNudgesSection
+              key={`in-app-${profile.notify_in_app_nudges_enabled}-${profile.notify_browser_nudges_enabled}`}
+              userId={user.id}
+              profile={profile}
               loading={loading}
               saving={saving}
               updateProfile={updateProfile}
@@ -278,6 +290,9 @@ function EmailNotificationsSection({
   const [escalationEnabled, setEscalationEnabled] = useState(
     profile.notify_email_escalation_enabled,
   );
+  const [reminderEnabled, setReminderEnabled] = useState(
+    profile.notify_email_reminder_enabled ?? true,
+  );
   const [digestTime, setDigestTime] = useState(
     profile.notify_email_digest_local_time?.slice(0, 5) || '07:30',
   );
@@ -290,6 +305,7 @@ function EmailNotificationsSection({
     enabled !== profile.notify_email_enabled ||
     digestEnabled !== profile.notify_email_digest_enabled ||
     escalationEnabled !== profile.notify_email_escalation_enabled ||
+    reminderEnabled !== profile.notify_email_reminder_enabled ||
     digestTime !== savedDigestTime ||
     overrideAddress.trim() !== savedOverride.trim();
 
@@ -306,6 +322,7 @@ function EmailNotificationsSection({
       notify_email_digest_enabled: digestEnabled,
       notify_email_digest_local_time: safeTime,
       notify_email_escalation_enabled: escalationEnabled,
+      notify_email_reminder_enabled: reminderEnabled,
       notify_email_address: trimmedOverride === '' ? null : trimmedOverride,
     });
     await fetchProfile(userId);
@@ -321,9 +338,9 @@ function EmailNotificationsSection({
         </IconBadge>
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-text">Email notifications</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Get a daily digest of today's work, and an instant heads-up when a task
-            escalates to Critical. Sent to the email on your account.
+          <p className="text-xs text-text-muted">
+            Get a daily digest of today's work, due-time reminders for scheduled
+            tasks, and an instant heads-up when a task escalates to Critical.
           </p>
         </div>
       </div>
@@ -390,6 +407,22 @@ function EmailNotificationsSection({
           <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
+              checked={reminderEnabled}
+              onChange={(e) => setReminderEnabled(e.target.checked)}
+              className="rounded border-border"
+            />
+            Due-time reminders
+          </label>
+          <p className="text-xs text-text-muted">
+            Email when a task with a scheduled time reaches its due time today.
+            One email per task per day.
+          </p>
+        </div>
+
+        <div className="space-y-2 rounded-lg border border-border bg-surface-raised p-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
               checked={escalationEnabled}
               onChange={(e) => setEscalationEnabled(e.target.checked)}
               className="rounded border-border"
@@ -417,6 +450,147 @@ function EmailNotificationsSection({
           onClick={() => void save()}
         >
           {saving ? 'Saving…' : 'Save notification settings'}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function InAppNudgesSection({
+  userId,
+  profile,
+  loading,
+  saving,
+  updateProfile,
+  fetchProfile,
+}: {
+  userId: string;
+  profile: Profile;
+  loading: boolean;
+  saving: boolean;
+  updateProfile: (uid: string, patch: ProfileUpdate) => Promise<void>;
+  fetchProfile: (uid: string) => Promise<void>;
+}) {
+  const [inAppEnabled, setInAppEnabled] = useState(profile.notify_in_app_nudges_enabled ?? true);
+  const [browserEnabled, setBrowserEnabled] = useState(
+    profile.notify_browser_nudges_enabled ?? false,
+  );
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission>(() =>
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+  );
+  const [message, setMessage] = useState<string | null>(null);
+
+  const dirty =
+    inAppEnabled !== (profile.notify_in_app_nudges_enabled ?? true) ||
+    browserEnabled !== (profile.notify_browser_nudges_enabled ?? false);
+
+  const requestBrowserPermission = async () => {
+    if (typeof Notification === 'undefined') {
+      setMessage('This browser does not support desktop notifications.');
+      return;
+    }
+    const next = await Notification.requestPermission();
+    setBrowserPermission(next);
+    if (next === 'granted') {
+      setBrowserEnabled(true);
+      setMessage('Browser notifications enabled.');
+    } else if (next === 'denied') {
+      setMessage('Permission denied. Check your browser site settings to allow notifications.');
+    }
+    setTimeout(() => setMessage(null), 4000);
+  };
+
+  const save = async () => {
+    setMessage(null);
+    if (browserEnabled && browserPermission !== 'granted') {
+      await requestBrowserPermission();
+      if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        setBrowserEnabled(false);
+      }
+    }
+    await updateProfile(userId, {
+      notify_in_app_nudges_enabled: inAppEnabled,
+      notify_browser_nudges_enabled:
+        browserEnabled && (typeof Notification === 'undefined' || Notification.permission === 'granted'),
+    });
+    await fetchProfile(userId);
+    setMessage('Saved.');
+    setTimeout(() => setMessage(null), 2500);
+  };
+
+  const browserSupported = typeof Notification !== 'undefined';
+
+  return (
+    <Card tone="sunken">
+      <div className="mb-4 flex items-start gap-3">
+        <IconBadge tone="brand" size="md">
+          <SparklesIcon className="h-5 w-5" />
+        </IconBadge>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text">In-app nudges</h2>
+          <p className="text-xs text-text-muted">
+            When a task reaches its scheduled due time, the app can nudge you here instead of
+            pulling you into email. Works on any route while you are signed in.
+          </p>
+        </div>
+      </div>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          checked={inAppEnabled}
+          onChange={(e) => setInAppEnabled(e.target.checked)}
+          disabled={loading}
+          className="rounded border-border"
+        />
+        Show in-app toasts when a scheduled task is due
+      </label>
+      <p className="mt-1 text-xs text-text-muted">
+        Toasts include Start, Done, and Snooze 15m. One nudge per task per day unless snoozed.
+      </p>
+
+      <div className="mt-4 space-y-2 rounded-lg border border-border bg-surface-raised p-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
+          <input
+            type="checkbox"
+            checked={browserEnabled}
+            onChange={(e) => setBrowserEnabled(e.target.checked)}
+            disabled={loading || !browserSupported}
+            className="rounded border-border"
+          />
+          Browser notifications when the tab is in the background
+        </label>
+        <p className="text-xs text-text-muted">
+          {browserSupported
+            ? `Permission: ${browserPermission}. Chrome will show a system notification if this tab is hidden.`
+            : 'Your browser does not support the Notification API.'}
+        </p>
+        {browserSupported && browserPermission !== 'granted' ? (
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            disabled={loading}
+            onClick={() => void requestBrowserPermission()}
+          >
+            Allow browser notifications
+          </button>
+        ) : null}
+      </div>
+
+      {message ? (
+        <p className="mt-3 text-sm text-text-muted" role="status">
+          {message}
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex justify-end border-t border-border pt-4">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={loading || saving || !dirty}
+          onClick={() => void save()}
+        >
+          {saving ? 'Saving…' : 'Save nudge settings'}
         </button>
       </div>
     </Card>

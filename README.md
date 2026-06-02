@@ -148,7 +148,29 @@ Opt-in email notifications: a daily digest (critical / due today / overdue tasks
 
    The function runs every 15 minutes, picks up users whose local time has reached their configured digest time, and dedupes per-day using `profiles.notify_email_last_digest_at`.
 
-8. **Turn it on in the app**: open **Profile → Email notifications**, flip the master switch, set your preferred digest time, and save. Defaults: digest ON, escalation alerts ON, time `07:30` local.
+8. **Schedule due-time reminder cron** (SQL Editor, after deploying `send-due-time-reminders`):
+
+   ```sql
+   select cron.schedule(
+     'send-due-time-reminders',
+     '*/5 * * * *',
+     $cron$
+     select net.http_post(
+       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
+              || '/functions/v1/send-due-time-reminders',
+       headers := jsonb_build_object(
+         'Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+       ),
+       body := '{}'::jsonb
+     );
+     $cron$
+   );
+   ```
+
+   Runs every 5 minutes. Sends one email per open task when local time reaches its `due_time` on `due_date` (today). Dedupes via `tasks.reminder_sent_at`.
+
+9. **Turn it on in the app**: open **Profile → Email notifications**, flip the master switch, set your preferred digest time, and save. Defaults: digest ON, due-time reminders ON, escalation alerts ON, time `07:30` local.
 
 **Verifying it works**:
 

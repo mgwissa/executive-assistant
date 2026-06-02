@@ -673,6 +673,7 @@ export function Dashboard() {
                     directive={directive}
                     briefing={briefing}
                     tasks={tasks}
+                    notes={notes}
                     actionItems={actionItems}
                     focusPrefs={focusQueuePrefs}
                     dismissedDecisionIds={dismissedDecisionIds}
@@ -707,6 +708,7 @@ export function Dashboard() {
                   directive={directive}
                   briefing={briefing}
                   tasks={tasks}
+                  notes={notes}
                   actionItems={actionItems}
                   focusPrefs={focusQueuePrefs}
                   dismissedDecisionIds={dismissedDecisionIds}

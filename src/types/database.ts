@@ -110,9 +110,12 @@ export type Database = {
           /** Stored as a Postgres `time` value, e.g. `'07:30:00'`. */
           notify_email_digest_local_time: string;
           notify_email_escalation_enabled: boolean;
+          notify_email_reminder_enabled: boolean;
           notify_email_last_digest_at: string | null;
           /** Override recipient — when null, the user's auth email is used. */
           notify_email_address: string | null;
+          notify_in_app_nudges_enabled: boolean;
+          notify_browser_nudges_enabled: boolean;
           meeting_rules: Json;
           /** Custom weekly routine template; null uses the built-in guide. */
           weekly_routine: Json | null;
@@ -132,8 +135,11 @@ export type Database = {
           notify_email_digest_enabled?: boolean;
           notify_email_digest_local_time?: string;
           notify_email_escalation_enabled?: boolean;
+          notify_email_reminder_enabled?: boolean;
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
+          notify_in_app_nudges_enabled?: boolean;
+          notify_browser_nudges_enabled?: boolean;
           meeting_rules?: Json;
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
@@ -152,8 +158,11 @@ export type Database = {
           notify_email_digest_enabled?: boolean;
           notify_email_digest_local_time?: string;
           notify_email_escalation_enabled?: boolean;
+          notify_email_reminder_enabled?: boolean;
           notify_email_last_digest_at?: string | null;
           notify_email_address?: string | null;
+          notify_in_app_nudges_enabled?: boolean;
+          notify_browser_nudges_enabled?: boolean;
           meeting_rules?: Json;
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
