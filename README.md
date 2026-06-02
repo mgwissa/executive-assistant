@@ -172,6 +172,27 @@ Opt-in email notifications: a daily digest (critical / due today / overdue tasks
 
 9. **Turn it on in the app**: open **Profile → Email notifications**, flip the master switch, set your preferred digest time, and save. Defaults: digest ON, due-time reminders ON, escalation alerts ON, time `07:30` local.
 
+### Working memory (optional addon)
+
+Requires migration `2026-05-22_038_memory_chunks.sql` (enables `pgvector`).
+
+1. **OpenAI API key** (Edge Functions):
+
+   ```powershell
+   supabase secrets set OPENAI_API_KEY=sk-...
+   ```
+
+   Uses `text-embedding-3-small` for indexing and `gpt-4o-mini` for answers. Typical personal use is a few cents per day.
+
+2. **Deploy functions** (CI deploys on push to `main`, or manually):
+
+   ```powershell
+   supabase functions deploy memory-sync
+   supabase functions deploy memory-ask
+   ```
+
+3. **In the app**: **Profile → Optional features → Memory**, then open **Memory** in the nav, click **Index workspace**, and ask questions. Notes and open tasks re-index automatically after saves when Memory is enabled.
+
 **Verifying it works**:
 
 - Test the escalation path by editing any open task and setting its due date to today (the auto-promotion trigger fires `priority → critical`, which fires the DB trigger, which calls the Edge Function).

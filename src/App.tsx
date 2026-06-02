@@ -4,6 +4,7 @@ import { Auth } from './components/Auth';
 import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
+import { MemoryPage } from './components/MemoryPage';
 import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
 import { RequireOptionalFeature } from './components/RequireOptionalFeature';
@@ -351,6 +352,14 @@ export default function App() {
           element={
             <RequireOptionalFeature featureId="routine">
               <WeeklyRoutinePage />
+            </RequireOptionalFeature>
+          }
+        />
+        <Route
+          path="memory"
+          element={
+            <RequireOptionalFeature featureId="memory">
+              <MemoryPage />
             </RequireOptionalFeature>
           }
         />

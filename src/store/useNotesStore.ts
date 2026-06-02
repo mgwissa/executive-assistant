@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { markNoteSelfPersisted } from '../lib/noteSyncEcho';
+import { scheduleMemoryDelete, scheduleMemoryIndex } from '../lib/memorySyncScheduler';
 import { randomUUID } from '../lib/uuid';
 import type { Json } from '../types/database';
 import type { Note } from '../types';
@@ -126,7 +127,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           .select('id, updated_at')
           .single();
         if (error) set({ error: error.message });
-        else if (data) markNoteSelfPersisted(data.id, data.updated_at);
+        else if (data) {
+          markNoteSelfPersisted(data.id, data.updated_at);
+          scheduleMemoryIndex('note', data.id);
+        }
       }, DEBOUNCE_MS),
     );
   },
@@ -142,6 +146,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       const { error } = await supabase.from('notes').delete().eq('id', id);
       if (error) {
         set({ notes: prev, error: error.message });
+      } else {
+        scheduleMemoryDelete('note', id);
       }
     }
   },

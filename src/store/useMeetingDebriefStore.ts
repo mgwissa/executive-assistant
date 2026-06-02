@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { occurrenceStartKey } from '../lib/meetingDebrief';
+import { scheduleMemoryIndex } from '../lib/memorySyncScheduler';
 import { supabase } from '../lib/supabase';
 import { randomUUID } from '../lib/uuid';
 import type { MeetingDebriefState } from '../types';
@@ -116,6 +117,9 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
             : s,
       ),
     });
+    if (payload.notes?.trim()) {
+      scheduleMemoryIndex('debrief', data.id);
+    }
     return data;
   },
 

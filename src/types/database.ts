@@ -120,6 +120,7 @@ export type Database = {
           /** Custom weekly routine template; null uses the built-in guide. */
           weekly_routine: Json | null;
           focus_queue: Json | null;
+          memory_last_synced_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -143,6 +144,7 @@ export type Database = {
           meeting_rules?: Json;
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
+          memory_last_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -166,6 +168,7 @@ export type Database = {
           meeting_rules?: Json;
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
+          memory_last_synced_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -385,6 +388,44 @@ export type Database = {
           notes?: string;
           created_at?: string;
           updated_at?: string;
+        };
+      };
+      memory_chunks: {
+        Row: {
+          id: string;
+          user_id: string;
+          source_type: string;
+          source_id: string;
+          chunk_index: number;
+          content: string;
+          embedding: string | null;
+          metadata: Json;
+          source_updated_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          source_type: string;
+          source_id: string;
+          chunk_index?: number;
+          content: string;
+          embedding?: string | null;
+          metadata?: Json;
+          source_updated_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          source_type?: string;
+          source_id?: string;
+          chunk_index?: number;
+          content?: string;
+          embedding?: string | null;
+          metadata?: Json;
+          source_updated_at?: string | null;
+          created_at?: string;
         };
       };
       routine_item_states: {

@@ -18,3 +18,9 @@ verify_jwt = false
 
 [functions.send-due-time-reminders]
 verify_jwt = false
+
+[functions.memory-sync]
+verify_jwt = false
+
+[functions.memory-ask]
+verify_jwt = false

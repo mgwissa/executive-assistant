@@ -10,7 +10,8 @@ export type View =
   | 'profile'
   | 'time'
   | 'routine'
-  | 'assistant';
+  | 'assistant'
+  | 'memory';
 
 export const VIEW_PATHS: Record<View, string> = {
   dashboard: '/dashboard',
@@ -23,6 +24,7 @@ export const VIEW_PATHS: Record<View, string> = {
   time: '/time',
   routine: '/routine',
   assistant: '/assistant',
+  memory: '/memory',
 };
 
 const PATH_TO_VIEW: Record<string, View> = {
@@ -36,6 +38,7 @@ const PATH_TO_VIEW: Record<string, View> = {
   '/time': 'time',
   '/routine': 'routine',
   '/assistant': 'assistant',
+  '/memory': 'memory',
 };
 
 export function viewPath(view: View): string {

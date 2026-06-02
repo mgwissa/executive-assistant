@@ -75,6 +75,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | `/links` | `UsefulLinksPage` | User-curated bookmarks |
 | `/profile` | `Profile` | Settings: name, timezone, addons, notifications, calendar URL |
 | `/assistant` | `AssistantPage` | **Optional addon** — executive command center (NOW / gaps / timeline) + briefing depth |
+| `/memory` | `MemoryPage` | **Optional addon** — RAG Q&A over notes, tasks, debriefs (OpenAI) |
 | `/time` | `TimeTrackingPage` | **Optional addon** — timers, projects, day grouping |
 | `/routine` | `WeeklyRoutinePage` | **Optional addon** — weekly product-leader rhythm |
 
@@ -190,6 +191,16 @@ When the tab is open, scheduled tasks nudge you **inside the app** instead of (o
 - **Dedupe:** `sessionStorage` keys `work-nudge-shown:{taskId}:{date}` and `work-nudge-snooze:{taskId}` — independent of email `reminder_sent_at`.
 - **UI:** `ToastHost` + `useToastStore`; Profile → **In-app nudges** for toggles. Browser `Notification` API when tab is hidden and permission granted.
 
+## Working memory (LLM / RAG)
+
+Optional addon `memory` — ask questions across indexed notes, open tasks, and meeting debrief notes:
+
+- **Migration:** `2026-05-22_038_memory_chunks.sql` — `pgvector`, `memory_chunks`, `match_memory_chunks()`, `profiles.memory_last_synced_at`.
+- **Edge Functions:** `memory-sync` (chunk + embed via OpenAI; full or per-source), `memory-ask` (vector search + `gpt-4o-mini` with citations). Requires `OPENAI_API_KEY` in Supabase secrets.
+- **Route:** `/memory` (`MemoryPage`). Enable in Profile → Optional features.
+- **Auto-index:** `lib/memorySyncScheduler.ts` debounces re-index after note/task/debrief saves when addon is on.
+- **Phase 2 (not built yet):** meeting transcript uploads.
+
 ## Optional addons
 
 `profiles.enabled_addons text[]` gates these. Defaults to empty. UI lives in Profile; routes redirect when not enabled.
@@ -197,6 +208,7 @@ When the tab is open, scheduled tasks nudge you **inside the app** instead of (o
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
 - `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard shows directive above the shared **Action items** card (`DashboardActionItemsSection` — quick-add + checkbox complete); reference schedule/notes in collapsible panel.
+- `memory` — MemoryPage (`/memory`). RAG over `memory_chunks` via `memory-sync` + `memory-ask` Edge Functions. OpenAI embeddings + chat; cited answers link back to notes/tasks/calendar.
 
 ## Conventions
 

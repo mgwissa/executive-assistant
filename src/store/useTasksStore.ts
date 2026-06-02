@@ -3,6 +3,7 @@ import { normalizeTags } from '../lib/taskTags';
 import { supabase } from '../lib/supabase';
 import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalation';
 import { normalizeDueTime } from '../lib/taskSchedule';
+import { scheduleMemoryDelete, scheduleMemoryIndex } from '../lib/memorySyncScheduler';
 import { dueDateForPriority, isPriorityLocked, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
@@ -206,6 +207,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     set({
       tasks: get().tasks.map((t) => (t.id === optimistic.id ? data : t)),
     });
+    scheduleMemoryIndex('task', data.id);
     return data;
   },
 
@@ -334,6 +336,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
           .update({ description })
           .eq('id', id);
         if (error) set({ error: error.message });
+        else scheduleMemoryIndex('task', id);
       }, DESC_DEBOUNCE_MS),
     );
   },
@@ -379,6 +382,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       })
       .eq('id', id);
     if (error) set({ error: error.message });
+    else scheduleMemoryIndex('task', id);
   },
 
   toggleDone: async (id, done) => {
@@ -389,6 +393,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('tasks').update({ done }).eq('id', id);
     if (error) set({ error: error.message });
+    else if (done) scheduleMemoryDelete('task', id);
+    else scheduleMemoryIndex('task', id);
   },
 
   setWaitingOn: async (id, value) => {
@@ -401,6 +407,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase.from('tasks').update({ waiting_on: next }).eq('id', id);
     if (error) set({ error: error.message });
+    else scheduleMemoryIndex('task', id);
   },
 
   setEstimatedMinutes: async (id, minutes) => {
@@ -473,6 +480,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set({ tasks: prev, error: error.message });
       return false;
     }
+    scheduleMemoryDelete('task', id);
     return true;
   },
 

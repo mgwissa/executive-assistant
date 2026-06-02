@@ -10,13 +10,14 @@ import {
   InboxIcon,
   LinkIcon,
   NoteIcon,
+  SparklesIcon,
   UserIcon,
 } from '../components/icons';
 import type { View } from './routes';
 import type { Profile } from '../types';
 
 /** IDs for optional features the user can turn on in Profile (`profiles.enabled_addons`). */
-export const OPTIONAL_FEATURE_IDS = ['time', 'routine', 'assistant'] as const;
+export const OPTIONAL_FEATURE_IDS = ['time', 'routine', 'assistant', 'memory'] as const;
 export type OptionalFeatureId = (typeof OPTIONAL_FEATURE_IDS)[number];
 
 export function isOptionalFeatureId(value: string): value is OptionalFeatureId {
@@ -70,6 +71,13 @@ export const OPTIONAL_FEATURE_NAV: Record<
       'Proactive daily briefings, blind-spot detection, schedule gap analysis, and decision prompts when work keeps slipping.',
     Icon: BrainIcon,
     accent: 'brand',
+  },
+  memory: {
+    label: 'Memory',
+    description:
+      'Ask questions across your notes, tasks, and meeting debriefs — a searchable working memory with cited answers.',
+    Icon: SparklesIcon,
+    accent: 'purple',
   },
 };
 
