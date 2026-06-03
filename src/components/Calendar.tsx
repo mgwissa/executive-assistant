@@ -4,7 +4,7 @@ import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { useAuthStore } from '../store/useAuthStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useProfileStore } from '../store/useProfileStore';
-import { generateOccurrences } from '../lib/recurrence';
+import { generateOccurrences, dedupeOccurrences } from '../lib/recurrence';
 import { getCurrentWeekScope, resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
 import type { Event } from '../types';
@@ -43,7 +43,7 @@ export function Calendar() {
       generateOccurrences(e, week.rangeStartUtc, week.rangeEndExclusiveUtc),
     );
     all.sort((a, b) => a.start.getTime() - b.start.getTime());
-    return all;
+    return dedupeOccurrences(all);
   }, [events, week.rangeStartUtc, week.rangeEndExclusiveUtc]);
 
   const grouped = useMemo(() => {

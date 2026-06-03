@@ -9,7 +9,7 @@ import { actionItemHasMatchingOpenTask } from './taskActionMatch';
 import type { TaskPriority } from './priority';
 import { priorityRank } from './priority';
 import { normalizeDueTime } from './taskSchedule';
-import { generateOccurrences } from './recurrence';
+import { generateOccurrences, dedupeOccurrences } from './recurrence';
 import {
   type MeetingRule,
   isBackToBackPair,
@@ -283,7 +283,7 @@ function getMeetings(
   const end = new Date(dayStart);
   end.setDate(end.getDate() + 1);
   const eventById = new Map(events.map((e) => [e.id, e]));
-  const raw = events.flatMap((e) => generateOccurrences(e, dayStart, end, { limit: 50 }));
+  const raw = dedupeOccurrences(events.flatMap((e) => generateOccurrences(e, dayStart, end, { limit: 50 })));
   return raw
     .map((o) => {
       const parent = eventById.get(o.eventId);

@@ -15,7 +15,7 @@ import type { Task } from '../types';
 import type { ActionItem } from './format';
 import type { Note } from '../types';
 import type { Event } from '../types';
-import { generateOccurrences } from './recurrence';
+import { generateOccurrences, dedupeOccurrences } from './recurrence';
 import {
   type MeetingRule,
   isBackToBackPair,
@@ -282,7 +282,7 @@ function getTodayOccurrences(
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
-  const all = events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 }));
+  const all = dedupeOccurrences(events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 })));
   all.sort((a, b) => a.start.getTime() - b.start.getTime());
   return all.map((o) => ({ eventId: o.eventId, title: o.title, start: o.start, end: o.end }));
 }
@@ -291,7 +291,7 @@ function getTomorrowOccurrences(events: Event[], now: Date): Array<{ title: stri
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
-  const all = events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 }));
+  const all = dedupeOccurrences(events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 })));
   all.sort((a, b) => a.start.getTime() - b.start.getTime());
   return all.map((o) => ({ title: o.title, start: o.start, end: o.end }));
 }

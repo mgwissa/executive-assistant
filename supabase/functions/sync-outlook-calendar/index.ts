@@ -52,6 +52,33 @@ function isCancelled(vevent: ICAL.Component): boolean {
   return typeof st === 'string' && st.toUpperCase() === 'CANCELLED';
 }
 
+type OutlookRow = {
+  user_id: string;
+  title: string;
+  start_at: string;
+  duration_minutes: number;
+  timezone: string;
+  recurrence: string;
+  interval: number;
+  by_weekday: null;
+  until_at: null;
+  count: null;
+  source: string;
+};
+
+/** Outlook ICS often lists a recurring master plus instance/exceptions — same slot twice. */
+function dedupeOutlookRows(rows: OutlookRow[]): OutlookRow[] {
+  const seen = new Set<string>();
+  const out: OutlookRow[] = [];
+  for (const row of rows) {
+    const key = `${row.start_at}|${row.title}|${row.duration_minutes}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
 /** Only persist Outlook rows in the current Mon–Sun week (profile TZ). */
 function weekImportBoundsUtc(calendarTz: string): { fromUtc: Date; toExclusiveUtc: Date } {
   const z = toZonedTime(new Date(), calendarTz);
@@ -178,19 +205,7 @@ Deno.serve(async (req) => {
     const tz = (profile?.timezone as string | null | undefined)?.trim() || 'UTC';
     const { fromUtc, toExclusiveUtc } = weekImportBoundsUtc(tz);
 
-    const rows: {
-      user_id: string;
-      title: string;
-      start_at: string;
-      duration_minutes: number;
-      timezone: string;
-      recurrence: string;
-      interval: number;
-      by_weekday: null;
-      until_at: null;
-      count: null;
-      source: string;
-    }[] = [];
+    const rows: OutlookRow[] = [];
 
     for (const vevent of vevents) {
       if (isCancelled(vevent)) continue;
@@ -222,6 +237,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    const uniqueRows = dedupeOutlookRows(rows);
+
     const { error: delErr } = await admin.from('events').delete().eq('user_id', user.id).eq('source', 'outlook_ics');
     if (delErr) {
       return new Response(JSON.stringify({ error: delErr.message }), {
@@ -231,8 +248,8 @@ Deno.serve(async (req) => {
     }
 
     const batchSize = 100;
-    for (let i = 0; i < rows.length; i += batchSize) {
-      const chunk = rows.slice(i, i + batchSize);
+    for (let i = 0; i < uniqueRows.length; i += batchSize) {
+      const chunk = uniqueRows.slice(i, i + batchSize);
       const { error: insErr } = await admin.from('events').insert(chunk);
       if (insErr) {
         return new Response(JSON.stringify({ error: insErr.message }), {
@@ -254,7 +271,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, imported: rows.length }), {
+    return new Response(JSON.stringify({ ok: true, imported: uniqueRows.length }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

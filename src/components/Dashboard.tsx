@@ -35,7 +35,7 @@ import type { TaskPriority } from '../lib/priority';
 import { PRIORITY_ORDER, PRIORITY_PILL, compareDueDate, priorityRank } from '../lib/priority';
 import { priorityInlineLabelClass, priorityRowClass, priorityTitleClass } from '../lib/priorityUiClasses';
 import type { Task } from '../types';
-import { generateOccurrences } from '../lib/recurrence';
+import { generateOccurrences, dedupeOccurrences } from '../lib/recurrence';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import type { Note } from '../types';
 import {
@@ -460,7 +460,7 @@ export function Dashboard() {
     const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
-    const all = events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 }));
+    const all = dedupeOccurrences(events.flatMap((e) => generateOccurrences(e, start, end, { limit: 50 })));
     all.sort((a, b) => a.start.getTime() - b.start.getTime());
     return all;
   }, [events, today]);

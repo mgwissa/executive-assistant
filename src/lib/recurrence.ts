@@ -158,3 +158,14 @@ export function generateOccurrences(
   return out;
 }
 
+/** Collapse duplicate slots (Outlook ICS often lists master + instance VEVENTs). */
+export function dedupeOccurrences(occurrences: Occurrence[]): Occurrence[] {
+  const seen = new Set<string>();
+  return occurrences.filter((o) => {
+    const key = `${o.start.getTime()}|${o.title}|${o.source}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
