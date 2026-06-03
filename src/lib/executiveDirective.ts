@@ -684,7 +684,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       kind: 'capacity_overcommit',
       severity: capacity.capacityRatio > 1.15 ? 'critical' : 'warning',
       headline: `Overcommitted by ~${formatEstimateMinutes(capacity.overcommitMinutes)}`,
-      detail: `${formatEstimateMinutes(capacity.bookedMinutes)} planned with ${formatEstimateMinutes(capacity.remainingMinutes)} left until ${formatDayEndLabel()} — defer, shorten estimates, or protect focus time.`,
+      detail: `${formatEstimateMinutes(capacity.bookedMinutes)} planned, ${formatEstimateMinutes(capacity.remainingMinutes)} left until ${formatDayEndLabel()} — defer work, shorten estimates, or block focus time.`,
     });
   }
 

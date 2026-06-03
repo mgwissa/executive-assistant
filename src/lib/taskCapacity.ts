@@ -30,8 +30,10 @@ export function hasExplicitEstimate(estimatedMinutes: number | null | undefined)
 }
 
 export function formatEstimateMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const h = minutes / 60;
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return `${m}m`;
+  const h = m / 60;
+  if (h >= 10) return `${Math.round(h)}h`;
   return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
 }
 
@@ -110,14 +112,16 @@ export function computeCapacitySnapshot(params: {
     remainingMinutes > 0 ? bookedMinutes / remainingMinutes : bookedMinutes > 0 ? 2 : 0;
   const overcommitMinutes = Math.max(0, bookedMinutes - remainingMinutes);
 
+  const round = (n: number) => Math.round(n);
+
   return {
-    remainingMinutes,
-    meetingMinutes,
-    scheduledWorkMinutes,
-    unscheduledWorkMinutes,
-    bookedMinutes,
+    remainingMinutes: round(remainingMinutes),
+    meetingMinutes: round(meetingMinutes),
+    scheduledWorkMinutes: round(scheduledWorkMinutes),
+    unscheduledWorkMinutes: round(unscheduledWorkMinutes),
+    bookedMinutes: round(bookedMinutes),
     capacityRatio,
-    overcommitMinutes,
+    overcommitMinutes: round(overcommitMinutes),
     explicitEstimateCount,
   };
 }
