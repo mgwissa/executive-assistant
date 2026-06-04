@@ -7,9 +7,12 @@ import { useProfileStore } from '../store/useProfileStore';
 import { generateOccurrences, dedupeOccurrences } from '../lib/recurrence';
 import { getCurrentWeekScope, resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
+import { occurrenceStartKey } from '../lib/meetingDebrief';
+import type { MeetingNoteTarget } from '../lib/meetingNotes';
 import type { Event } from '../types';
 import { EventComposer } from './EventComposer';
-import { CalendarIcon, ClockIcon } from './icons';
+import { MeetingNotesPanel } from './MeetingNotesPanel';
+import { CalendarIcon, ClockIcon, NoteIcon } from './icons';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { IconBadge } from './ui/IconBadge';
@@ -35,6 +38,7 @@ export function Calendar() {
 
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNoteTarget | null>(null);
 
   const week = useMemo(() => getCurrentWeekScope(tz), [tz]);
 
@@ -182,6 +186,21 @@ export function Calendar() {
                               <button
                                 type="button"
                                 className="btn-ghost mt-0.5 h-8 px-2.5 text-xs"
+                                onClick={() =>
+                                  setMeetingNotes({
+                                    eventId: o.eventId,
+                                    occurrenceStartAt: occurrenceStartKey(o.start),
+                                    meetingTitle: o.title,
+                                  })
+                                }
+                                title="Meeting notes"
+                              >
+                                <NoteIcon className="mr-1 inline h-3.5 w-3.5" />
+                                Notes
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-ghost mt-0.5 h-8 px-2.5 text-xs"
                                 onClick={() => {
                                   const event = events.find((ev) => ev.id === o.eventId);
                                   if (event) {
@@ -213,6 +232,14 @@ export function Calendar() {
           )}
         </Card>
       </div>
+
+      <MeetingNotesPanel
+        open={!!meetingNotes}
+        target={meetingNotes}
+        mode="notes"
+        timezone={tz}
+        onClose={() => setMeetingNotes(null)}
+      />
 
       <EventComposer
         open={composerOpen}

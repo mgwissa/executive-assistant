@@ -113,6 +113,11 @@ export function MeetingNotesPanel({
               {mode === 'debrief' ? 'Meeting debrief' : 'Meeting notes'}
             </p>
             <h2 className="mt-1 truncate text-lg font-semibold text-text">{target.meetingTitle}</h2>
+            {mode === 'notes' && (
+              <p className="mt-1 text-xs text-text-muted">
+                Private agenda and notes — only visible to you in this app.
+              </p>
+            )}
           </div>
           <button type="button" onClick={onClose} className="btn-ghost shrink-0 p-2" aria-label="Close">
             <XIcon className="h-4 w-4" />

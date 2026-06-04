@@ -5,15 +5,15 @@ import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
 import { findMeetingNote } from '../lib/meetingNotes';
 import { snoozeUntil } from '../lib/meetingDebrief';
-import { appendMeetingRule, buildMeetingRule, meetingRuleShortLabel, parseMeetingRules } from '../lib/meetingTemperament';
+import { dismissBackToBackForMeeting, dismissDebriefForMeeting, dismissPrepForMeeting } from '../lib/meetingDismissals';
+import { meetingRuleShortLabel } from '../lib/meetingTemperament';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import { findOpenTaskForNoteActionRef, displayTitleFromNoteLine } from '../lib/taskActionMatch';
 import { extractActionItems, setActionItemLineDueDate } from '../lib/format';
-import { PRIORITY_PILL } from '../lib/priority';
+import { PRIORITY_PILL, type TaskPriority } from '../lib/priority';
 import { formatDueTimeDisplay, normalizeDueTime } from '../lib/taskSchedule';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
-import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useProfileStore } from '../store/useProfileStore';
@@ -22,15 +22,15 @@ import { MeetingDebriefModal } from './MeetingDebriefModal';
 import { MeetingNotesPanel, type MeetingNotesPanelMode } from './MeetingNotesPanel';
 import { ScheduleFollowUpModal } from './ScheduleFollowUpModal';
 import { TaskDetailModal } from './TaskDetailModal';
-import {
-  defaultFollowUpDate,
-  followUpTaskTitle,
-  prepTaskTitle,
-} from '../lib/meetingLifecycle';
 import { bumpPriorityOneLevel, snoozeChaseUntil } from '../lib/delegationChase';
 import { parseFocusQueue, scheduleFocusForTomorrow, tomorrowIsoFrom } from '../lib/focusQueue';
 import { ESTIMATE_PRESETS } from '../lib/taskCapacity';
-import type { TaskPriority } from '../lib/priority';
+import {
+  defaultFollowUpDate,
+  followUpTaskTitle,
+  meetingTitleFromPrepLabel,
+  prepTaskTitle,
+} from '../lib/meetingLifecycle';
 import {
   ArrowRightIcon,
   BrainIcon,
@@ -180,7 +180,7 @@ export function ExecutiveCommandCenter({
             count={directive.next.length}
             accent="blue"
           />
-          <TimelineList entries={directive.next} tz={tz} limit={6} />
+          <TimelineList entries={directive.next} tz={tz} limit={6} onOpenMeetingNotes={openMeetingNotes} onRefresh={onRefresh} />
         </section>
       )}
 
@@ -192,7 +192,7 @@ export function ExecutiveCommandCenter({
             count={directive.timeline.length}
             accent="brand"
           />
-          <TimelineList entries={directive.timeline} tz={tz} />
+          <TimelineList entries={directive.timeline} tz={tz} onOpenMeetingNotes={openMeetingNotes} onRefresh={onRefresh} />
         </section>
       )}
 
@@ -272,6 +272,18 @@ function NowHero({
   const toggleDone = useTasksStore((s) => s.toggleDone);
   const user = useAuthStore((s) => s.user);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
+  const [prepBusy, setPrepBusy] = useState(false);
+
+  const skipPrep = async (applyToAll: boolean) => {
+    if (!user || !now.eventId || !now.meetingTitle) return;
+    setPrepBusy(true);
+    try {
+      await dismissPrepForMeeting(user.id, now.eventId, now.meetingTitle, applyToAll);
+      onRefresh?.();
+    } finally {
+      setPrepBusy(false);
+    }
+  };
 
   const kindLabel: Record<typeof now.kind, string> = {
     in_meeting: 'In meeting',
@@ -300,9 +312,13 @@ function NowHero({
       ? {
           eventId: now.eventId,
           occurrenceStartAt: now.occurrenceStartAt,
-          meetingTitle: now.headline,
+          meetingTitle: now.meetingTitle ?? now.headline,
         }
       : null;
+
+  const showMeetingNotes =
+    meetingTarget && onOpenMeetingNotes && (now.kind === 'in_meeting' || now.kind === 'prep');
+  const notesButtonMuted = now.kind === 'prep' || muted;
 
   const onPrimary = () => {
     if (!now.ref) {
@@ -344,14 +360,19 @@ function NowHero({
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          {meetingTarget && onOpenMeetingNotes && now.kind === 'in_meeting' && (
+          {showMeetingNotes && (
             <button
               type="button"
-              onClick={() => onOpenMeetingNotes(meetingTarget, 'notes')}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-colors hover:bg-white/25"
+              onClick={() => onOpenMeetingNotes!(meetingTarget!, 'notes')}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors',
+                notesButtonMuted
+                  ? 'bg-brand-600 text-white hover:bg-brand-500'
+                  : 'bg-white/15 text-white ring-1 ring-white/25 hover:bg-white/25',
+              ].join(' ')}
             >
               <NoteIcon className="h-4 w-4" />
-              Notes
+              Meeting notes
             </button>
           )}
           {meetingTarget && onOpenMeetingNotes && now.kind === 'debrief' && (
@@ -378,6 +399,24 @@ function NowHero({
               >
                 Skip
               </button>
+            </>
+          )}
+          {now.kind === 'prep' && now.eventId && now.meetingTitle && (
+            <>
+              <button
+                type="button"
+                disabled={prepBusy}
+                onClick={() => void skipPrep(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/20 transition-colors hover:bg-white/20 disabled:opacity-60"
+              >
+                Skip prep this time
+              </button>
+              <MeetingRuleButton
+                action="prep_off"
+                meetingTitle={now.meetingTitle}
+                disabled={prepBusy}
+                onClick={() => void skipPrep(true)}
+              />
             </>
           )}
           {now.ref && (
@@ -484,9 +523,7 @@ function GapCard({
 }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const profile = useProfileStore((s) => s.profile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
-  const updateEvent = useEventsStore((s) => s.updateEvent);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const setDueTime = useTasksStore((s) => s.setDueTime);
   const setDueDate = useTasksStore((s) => s.setDueDate);
@@ -554,17 +591,16 @@ function GapCard({
   };
 
   const dismissDebriefForEvent = async (applyToAll: boolean) => {
-    if (!gap.eventId) return;
+    if (!gap.eventId || !user) return;
     setBusy(true);
     try {
-      await updateEvent(gap.eventId, { debrief_required: false });
-      if (applyToAll && user && gap.meetingTitle) {
-        const rules = appendMeetingRule(
-          parseMeetingRules(profile?.meeting_rules),
-          buildMeetingRule(gap.meetingTitle, { debrief_required: false }),
-        );
-        await updateProfile(user.id, { meeting_rules: rules });
-      }
+      await dismissDebriefForMeeting(
+        user.id,
+        gap.eventId,
+        gap.meetingTitle ?? gap.headline,
+        applyToAll,
+      );
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
@@ -580,6 +616,7 @@ function GapCard({
         status: 'snoozed',
         snoozedUntil: snoozeUntil(new Date()),
       });
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
@@ -594,43 +631,40 @@ function GapCard({
         occurrenceStartAt: gap.occurrenceStartAt,
         status: 'skipped',
       });
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
   };
 
   const dismissPrepForEvent = async (applyToAll: boolean) => {
-    if (!gap.eventId) return;
+    if (!gap.eventId || !user) return;
     setBusy(true);
     try {
-      await updateEvent(gap.eventId, { prep_required: false });
-      if (applyToAll && user && gap.meetingTitle) {
-        const rules = appendMeetingRule(
-          parseMeetingRules(profile?.meeting_rules),
-          buildMeetingRule(gap.meetingTitle, { prep_required: false }),
-        );
-        await updateProfile(user.id, { meeting_rules: rules });
-      }
+      await dismissPrepForMeeting(
+        user.id,
+        gap.eventId,
+        gap.meetingTitle ?? gap.headline,
+        applyToAll,
+      );
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
   };
 
   const dismissBackToBack = async (applyToAll: boolean) => {
-    if (!gap.eventId) return;
+    if (!gap.eventId || !user) return;
     setBusy(true);
     try {
-      await updateEvent(gap.eventId, { allow_back_to_back: true });
-      if (gap.relatedEventId) {
-        await updateEvent(gap.relatedEventId, { allow_back_to_back: true });
-      }
-      if (applyToAll && user && gap.meetingTitle) {
-        const rules = appendMeetingRule(
-          parseMeetingRules(profile?.meeting_rules),
-          buildMeetingRule(gap.meetingTitle, { allow_back_to_back: true }),
-        );
-        await updateProfile(user.id, { meeting_rules: rules });
-      }
+      await dismissBackToBackForMeeting(
+        user.id,
+        gap.eventId,
+        gap.relatedEventId,
+        gap.meetingTitle ?? gap.headline,
+        applyToAll,
+      );
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
@@ -713,16 +747,31 @@ function GapCard({
     }
 
     if (gap.kind === 'prep_needed' && gap.eventId && gap.meetingTitle) {
+      if (onOpenMeetingNotes && gap.occurrenceStartAt) {
+        btns.push({
+          label: 'Meeting notes',
+          primary: true,
+          onClick: () =>
+            onOpenMeetingNotes(
+              {
+                eventId: gap.eventId!,
+                occurrenceStartAt: gap.occurrenceStartAt!,
+                meetingTitle: gap.meetingTitle!,
+              },
+              'notes',
+            ),
+        });
+      }
       btns.push({
         label: 'Create prep task',
-        primary: true,
+        primary: !onOpenMeetingNotes || !gap.occurrenceStartAt,
         onClick: () => {
           if (!user) return;
           void createTask(user.id, prepTaskTitle(gap.meetingTitle!), {
             linkedEventId: gap.eventId,
             dueDate: gap.suggestedDate,
             dueTime: gap.suggestedTime ?? null,
-          });
+          }).then(() => onRefresh?.());
         },
       });
       btns.push({
@@ -994,17 +1043,101 @@ function GapCard({
   );
 }
 
+function TimelinePrepDismiss({
+  eventId,
+  meetingTitle,
+  onRefresh,
+}: {
+  eventId: string;
+  meetingTitle: string;
+  onRefresh?: () => void;
+}) {
+  const user = useAuthStore((s) => s.user);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const run = async (applyToAll: boolean) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await dismissPrepForMeeting(user.id, eventId, meetingTitle, applyToAll);
+      onRefresh?.();
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        title="Skip prep for this meeting"
+        aria-label={`Skip prep for ${meetingTitle}`}
+        disabled={busy}
+        onClick={() => setOpen((v) => !v)}
+        className="btn-ghost mt-0.5 p-2 text-text-muted hover:text-text"
+      >
+        <span className="text-xs font-medium">No prep</span>
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close"
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute right-0 top-full z-20 mt-1 w-52 rounded-lg border border-border bg-surface-raised p-2 shadow-lg">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run(false)}
+              className="block w-full rounded-md px-2 py-1.5 text-left text-xs text-text hover:bg-surface-sunken disabled:opacity-50"
+            >
+              Skip prep this time
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run(true)}
+              className="mt-1 block w-full rounded-md border border-border px-2 py-1.5 text-left text-xs text-text hover:bg-surface-sunken disabled:opacity-50"
+            >
+              <span className="block font-medium">{meetingRuleShortLabel('prep_off')}</span>
+              <span className="mt-0.5 block truncate text-[10px] text-text-muted" title={meetingTitle}>
+                for &ldquo;{meetingTitle}&rdquo;
+              </span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TimelineList({
   entries,
   tz,
   limit,
+  onOpenMeetingNotes,
+  onRefresh,
 }: {
   entries: TimelineEntry[];
   tz: string;
   limit?: number;
+  onOpenMeetingNotes?: (target: DebriefTarget, mode: MeetingNotesPanelMode) => void;
+  onRefresh?: () => void;
 }) {
   const shown = limit ? entries.slice(0, limit) : entries;
   const navigate = useNavigate();
+
+  const openEntry = (e: TimelineEntry) => {
+    if (e.ref?.kind === 'task') navigate(viewPath('tasks'));
+    else if (e.ref?.kind === 'action') {
+      useNotesStore.getState().setActive(e.ref.noteId);
+      navigate(viewPath('notes'));
+    } else if (e.kind === 'meeting') navigate(viewPath('calendar'));
+  };
 
   const kindIcon = (kind: TimelineEntry['kind']) => {
     if (kind === 'meeting') return <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-brand-600" />;
@@ -1014,40 +1147,75 @@ function TimelineList({
 
   return (
     <Card padded="none" className="mt-3 divide-y divide-border">
-      {shown.map((e) => (
-        <button
+      {shown.map((e) => {
+        const prepMeetingTitle =
+          e.meetingTitle ??
+          (e.kind === 'suggested' ? meetingTitleFromPrepLabel(e.title) : null);
+        const showPrepDismiss =
+          e.eventId &&
+          prepMeetingTitle &&
+          (e.kind === 'suggested' || (e.kind === 'meeting' && e.prepRequired));
+
+        return (
+        <div
           key={e.id}
-          type="button"
-          onClick={() => {
-            if (e.ref?.kind === 'task') navigate(viewPath('tasks'));
-            else if (e.ref?.kind === 'action') {
-              useNotesStore.getState().setActive(e.ref.noteId);
-              navigate(viewPath('notes'));
-            } else if (e.kind === 'meeting') navigate(viewPath('calendar'));
-          }}
-          className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-sunken"
+          className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-sunken"
         >
-          <span className="mt-0.5 w-[4.5rem] shrink-0 text-xs font-medium tabular-nums text-text-muted">
-            {formatInTimeZone(e.start, tz, 'h:mm a')}
-          </span>
-          {kindIcon(e.kind)}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-text">{e.title}</p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-2">
-              {e.suggested && (
-                <Badge variant="subtle" className="text-[10px]">
-                  Suggested
-                </Badge>
-              )}
-              {e.priority && (
-                <span className="text-[10px] font-medium text-text-muted">{PRIORITY_PILL[e.priority]}</span>
-              )}
-              {e.kind === 'gap' && <span className="text-[10px] text-text-subtle">Open</span>}
+          <button
+            type="button"
+            onClick={() => openEntry(e)}
+            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          >
+            <span className="mt-0.5 w-[4.5rem] shrink-0 text-xs font-medium tabular-nums text-text-muted">
+              {formatInTimeZone(e.start, tz, 'h:mm a')}
+            </span>
+            {kindIcon(e.kind)}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-text">{e.title}</p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                {e.suggested && (
+                  <Badge variant="subtle" className="text-[10px]">
+                    Suggested
+                  </Badge>
+                )}
+                {e.priority && (
+                  <span className="text-[10px] font-medium text-text-muted">{PRIORITY_PILL[e.priority]}</span>
+                )}
+                {e.kind === 'gap' && <span className="text-[10px] text-text-subtle">Open</span>}
+              </div>
             </div>
-          </div>
-          <span className="shrink-0 text-xs text-text-subtle">{formatInTimeZone(e.end, tz, 'h:mm a')}</span>
-        </button>
-      ))}
+            <span className="shrink-0 text-xs text-text-subtle">{formatInTimeZone(e.end, tz, 'h:mm a')}</span>
+          </button>
+          {showPrepDismiss && (
+            <TimelinePrepDismiss
+              eventId={e.eventId!}
+              meetingTitle={prepMeetingTitle!}
+              onRefresh={onRefresh}
+            />
+          )}
+          {e.kind === 'meeting' && e.eventId && e.occurrenceStartAt && onOpenMeetingNotes && (
+            <button
+              type="button"
+              title="Meeting notes"
+              aria-label={`Meeting notes for ${e.title}`}
+              onClick={() =>
+                onOpenMeetingNotes(
+                  {
+                    eventId: e.eventId!,
+                    occurrenceStartAt: e.occurrenceStartAt!,
+                    meetingTitle: e.title,
+                  },
+                  'notes',
+                )
+              }
+              className="btn-ghost mt-0.5 shrink-0 p-2"
+            >
+              <NoteIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        );
+      })}
     </Card>
   );
 }

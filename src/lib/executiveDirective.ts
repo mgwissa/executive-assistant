@@ -72,6 +72,12 @@ export type TimelineEntry = {
   priority?: TaskPriority;
   ref?: WorkItemRef;
   eventId?: string;
+  /** ISO start of the meeting occurrence (for linked meeting notes). */
+  occurrenceStartAt?: string;
+  /** Calendar event title for prep/suggested rows. */
+  meetingTitle?: string;
+  /** When true on a meeting row, prep suggestions are active. */
+  prepRequired?: boolean;
   /** Auto-assigned slot — user hasn't confirmed time yet. */
   suggested?: boolean;
 };
@@ -85,8 +91,10 @@ export type NowDirective = {
   until?: Date;
   ref?: WorkItemRef;
   eventId?: string;
-  /** ISO start of the meeting occurrence (debrief). */
+  /** ISO start of the meeting occurrence (meeting notes + debrief). */
   occurrenceStartAt?: string;
+  /** Calendar event title when `headline` is prep/work wording. */
+  meetingTitle?: string;
 };
 
 export type GapKind =
@@ -370,6 +378,9 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       start: m.start,
       end: m.end,
       eventId: m.eventId,
+      occurrenceStartAt: occurrenceStartKey(m.start),
+      meetingTitle: m.title,
+      prepRequired: m.prepRequired,
     });
   }
 
@@ -516,6 +527,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       start: effectiveStart,
       end: m.start,
       eventId: m.eventId,
+      meetingTitle: m.title,
       suggested: true,
     });
   }
@@ -537,6 +549,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
       detail: `${PREP_BLOCK_MINUTES}-min prep block suggested before meeting — create a linked prep task or accept the slot.`,
       eventId: m.eventId,
       meetingTitle: m.title,
+      occurrenceStartAt: occurrenceStartKey(m.start),
       suggestedTime: formatTime24(slotStart, tz),
       suggestedDate: todayIso,
     });
@@ -718,6 +731,7 @@ function buildNowDirective(
       until: inMeeting.end,
       eventId: inMeeting.eventId,
       occurrenceStartAt: occurrenceStartKey(inMeeting.start),
+      meetingTitle: inMeeting.title,
     };
   }
 
@@ -736,6 +750,7 @@ function buildNowDirective(
       until: new Date(debriefMeeting.end.getTime() + DEBRIEF_WINDOW_MS),
       eventId: debriefMeeting.eventId,
       occurrenceStartAt: occurrenceStartKey(debriefMeeting.start),
+      meetingTitle: debriefMeeting.title,
     };
   }
 
@@ -755,6 +770,8 @@ function buildNowDirective(
               ? { kind: 'task', taskId: linked.taskId! }
               : { kind: 'action', noteId: linked.noteId!, line: linked.line! },
           eventId: nextMeeting.eventId,
+          occurrenceStartAt: occurrenceStartKey(nextMeeting.start),
+          meetingTitle: nextMeeting.title,
         };
       }
       return {
@@ -763,6 +780,8 @@ function buildNowDirective(
         detail: `Starts in ${Math.max(1, Math.round(msUntil / 60_000))} min — no prep task linked yet.`,
         until: nextMeeting.start,
         eventId: nextMeeting.eventId,
+        occurrenceStartAt: occurrenceStartKey(nextMeeting.start),
+        meetingTitle: nextMeeting.title,
       };
     }
   }

@@ -64,7 +64,16 @@ type OutlookRow = {
   until_at: null;
   count: null;
   source: string;
+  prep_required: boolean;
+  allow_back_to_back: boolean;
+  debrief_required: boolean;
 };
+
+type SavedAssistantFlags = Pick<OutlookRow, 'prep_required' | 'allow_back_to_back' | 'debrief_required'>;
+
+function outlookOccurrenceFlagKey(title: string, startAt: string, durationMinutes: number): string {
+  return `${startAt}|${title}|${durationMinutes}`;
+}
 
 /** Outlook ICS often lists a recurring master plus instance/exceptions — same slot twice. */
 function dedupeOutlookRows(rows: OutlookRow[]): OutlookRow[] {
@@ -205,6 +214,30 @@ Deno.serve(async (req) => {
     const tz = (profile?.timezone as string | null | undefined)?.trim() || 'UTC';
     const { fromUtc, toExclusiveUtc } = weekImportBoundsUtc(tz);
 
+    const { data: existingOutlook, error: existingErr } = await admin
+      .from('events')
+      .select('title, start_at, duration_minutes, prep_required, allow_back_to_back, debrief_required')
+      .eq('user_id', user.id)
+      .eq('source', 'outlook_ics');
+    if (existingErr) {
+      return new Response(JSON.stringify({ error: existingErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const savedFlags = new Map<string, SavedAssistantFlags>();
+    for (const row of existingOutlook ?? []) {
+      savedFlags.set(
+        outlookOccurrenceFlagKey(row.title, row.start_at, row.duration_minutes),
+        {
+          prep_required: row.prep_required ?? true,
+          allow_back_to_back: row.allow_back_to_back ?? false,
+          debrief_required: row.debrief_required ?? true,
+        },
+      );
+    }
+
     const rows: OutlookRow[] = [];
 
     for (const vevent of vevents) {
@@ -221,10 +254,12 @@ Deno.serve(async (req) => {
       for (const start of starts) {
         const t = start.getTime();
         if (t < fromUtc.getTime() || t >= toExclusiveUtc.getTime()) continue;
+        const startAt = start.toISOString();
+        const saved = savedFlags.get(outlookOccurrenceFlagKey(title, startAt, dm));
         rows.push({
           user_id: user.id,
           title,
-          start_at: start.toISOString(),
+          start_at: startAt,
           duration_minutes: dm,
           timezone: tz,
           recurrence: 'none',
@@ -233,6 +268,9 @@ Deno.serve(async (req) => {
           until_at: null,
           count: null,
           source: 'outlook_ics',
+          prep_required: saved?.prep_required ?? true,
+          allow_back_to_back: saved?.allow_back_to_back ?? false,
+          debrief_required: saved?.debrief_required ?? true,
         });
       }
     }

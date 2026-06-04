@@ -5,6 +5,13 @@ import { useProfileStore } from '../store/useProfileStore';
 import { syncOutlookCalendar } from '../lib/calendarSync';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
 import {
+  describeMeetingRule,
+  displayTitlePattern,
+  removeProfileMeetingRule,
+  resetMeetingAssistantPreferences,
+} from '../lib/meetingDismissals';
+import { parseMeetingRules } from '../lib/meetingTemperament';
+import {
   DEFAULT_ESCALATION_CONFIG,
   escalationConfigForSave,
   parseEscalationConfig,
@@ -19,7 +26,7 @@ import {
   sortOptionalFeatureIds,
   type OptionalFeatureId,
 } from '../lib/optionalFeatures';
-import { BellIcon, CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
+import { BellIcon, BrainIcon, CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 
@@ -106,6 +113,16 @@ export function Profile() {
             />
           )}
 
+          {user && profile && (
+            <MeetingAssistantSection
+              key={`meeting-rules-${JSON.stringify(profile.meeting_rules)}`}
+              userId={user.id}
+              rawRules={profile.meeting_rules}
+              loading={loading}
+              saving={saving}
+            />
+          )}
+
           {user && (
             <CalendarSyncSection
               key={`${user.id}:${profile?.outlook_ics_url ?? ''}:${profile?.outlook_ics_last_synced_at ?? ''}`}
@@ -123,6 +140,112 @@ export function Profile() {
         </div>
       </div>
     </div>
+  );
+}
+
+function MeetingAssistantSection({
+  userId,
+  rawRules,
+  loading,
+  saving,
+}: {
+  userId: string;
+  rawRules: unknown;
+  loading: boolean;
+  saving: boolean;
+}) {
+  const rules = parseMeetingRules(rawRules);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const removeRule = async (ruleId: string) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await removeProfileMeetingRule(userId, ruleId);
+      setMessage('Rule removed.');
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMessage(null), 2500);
+    }
+  };
+
+  const resetAll = async () => {
+    const ok = window.confirm(
+      'Reset all meeting assistant preferences?\n\nThis clears saved title rules and restores default prep / debrief / back-to-back flags on every calendar event. You can configure them again from the dashboard or calendar.',
+    );
+    if (!ok) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await resetMeetingAssistantPreferences(userId);
+      setMessage('Meeting assistant preferences reset.');
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
+  return (
+    <Card tone="sunken">
+      <div className="mb-4 flex items-start gap-3">
+        <IconBadge tone="brand" size="md">
+          <BrainIcon className="h-5 w-5" />
+        </IconBadge>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text">Meeting assistant</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Saved rules from &ldquo;Never ask to prep&rdquo; and similar choices. You can also toggle prep per
+            event on the Calendar. Use reset if prep suggestions look wrong and you want a clean slate.
+          </p>
+        </div>
+      </div>
+
+      {rules.length === 0 ? (
+        <p className="text-sm text-text-muted">No saved meeting rules yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {rules.map((rule) => (
+            <li
+              key={rule.id}
+              className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-text" title={displayTitlePattern(rule.titlePattern)}>
+                  {displayTitlePattern(rule.titlePattern)}
+                </p>
+                <p className="mt-0.5 text-xs text-text-muted">{describeMeetingRule(rule)}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost shrink-0 text-xs text-text-muted"
+                disabled={loading || saving || busy}
+                onClick={() => void removeRule(rule.id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {message && (
+        <p className="mt-3 text-sm text-text-muted" role="status">
+          {message}
+        </p>
+      )}
+
+      <div className="mt-4 border-t border-border pt-4">
+        <button
+          type="button"
+          className="btn-secondary text-sm"
+          disabled={loading || saving || busy}
+          onClick={() => void resetAll()}
+        >
+          {busy ? 'Working…' : 'Reset all meeting assistant preferences'}
+        </button>
+      </div>
+    </Card>
   );
 }
 

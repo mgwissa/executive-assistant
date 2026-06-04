@@ -10,6 +10,12 @@ export function prepTaskTitle(meetingTitle: string): string {
   return `Prep: ${meetingTitle}`;
 }
 
+export function meetingTitleFromPrepLabel(title: string): string | null {
+  const prefix = 'Prep: ';
+  if (title.startsWith(prefix)) return title.slice(prefix.length);
+  return null;
+}
+
 export function followUpTaskTitle(meetingTitle: string): string {
   return `Follow up: ${meetingTitle}`;
 }

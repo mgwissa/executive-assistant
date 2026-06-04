@@ -21,6 +21,7 @@ type EventsState = {
   updateEvent: (id: string, patch: Partial<Event>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   deleteOutlookImports: (userId: string) => Promise<string | null>;
+  resetAssistantFlags: (userId: string) => Promise<void>;
   clear: () => void;
 };
 
@@ -192,6 +193,28 @@ export const useEventsStore = create<EventsState>((set, get) => ({
     }
     set({ events: prev.filter((e) => e.source !== 'outlook_ics') });
     return null;
+  },
+
+  resetAssistantFlags: async (userId) => {
+    const now = new Date().toISOString();
+    set({
+      events: get().events.map((e) => ({
+        ...e,
+        prep_required: true,
+        allow_back_to_back: false,
+        debrief_required: true,
+        updated_at: now,
+      })),
+    });
+    const { error } = await supabase
+      .from('events')
+      .update({
+        prep_required: true,
+        allow_back_to_back: false,
+        debrief_required: true,
+      })
+      .eq('user_id', userId);
+    if (error) set({ error: error.message });
   },
 
   clear: () => set({ events: [], loading: false, error: null }),

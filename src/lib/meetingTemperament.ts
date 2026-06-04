@@ -58,6 +58,20 @@ export function titleToMeetingPattern(title: string): string {
   return title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Stable key for merging assistant flags across Outlook re-imports. */
+export function outlookOccurrenceFlagKey(
+  title: string,
+  startAt: string,
+  durationMinutes: number,
+): string {
+  return `${startAt}|${title}|${durationMinutes}`;
+}
+
+export function eventsMatchingMeetingTitle(events: Event[], meetingTitle: string): Event[] {
+  const pattern = titleToMeetingPattern(meetingTitle);
+  return events.filter((e) => titleMatchesPattern(e.title, pattern));
+}
+
 export function resolveMeetingTemperament(
   event: Pick<Event, 'title' | 'prep_required' | 'allow_back_to_back' | 'debrief_required'>,
   rules: MeetingRule[],
