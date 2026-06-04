@@ -87,6 +87,19 @@ export function buildMeetingRule(
   };
 }
 
+export function meetingRuleShortLabel(
+  action: 'prep_off' | 'back_to_back_ok' | 'debrief_off',
+): string {
+  switch (action) {
+    case 'prep_off':
+      return 'Never ask to prep';
+    case 'back_to_back_ok':
+      return 'Always allow back-to-back';
+    case 'debrief_off':
+      return 'Never ask to debrief';
+  }
+}
+
 export function appendMeetingRule(rules: MeetingRule[], rule: MeetingRule): MeetingRule[] {
   const withoutDup = rules.filter(
     (r) =>

@@ -5,7 +5,7 @@ import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
 import { findMeetingNote } from '../lib/meetingNotes';
 import { snoozeUntil } from '../lib/meetingDebrief';
-import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/meetingTemperament';
+import { appendMeetingRule, buildMeetingRule, meetingRuleShortLabel, parseMeetingRules } from '../lib/meetingTemperament';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import { findOpenTaskForNoteActionRef, displayTitleFromNoteLine } from '../lib/taskActionMatch';
 import { extractActionItems, setActionItemLineDueDate } from '../lib/format';
@@ -21,6 +21,7 @@ import { useTasksStore } from '../store/useTasksStore';
 import { MeetingDebriefModal } from './MeetingDebriefModal';
 import { MeetingNotesPanel, type MeetingNotesPanelMode } from './MeetingNotesPanel';
 import { ScheduleFollowUpModal } from './ScheduleFollowUpModal';
+import { TaskDetailModal } from './TaskDetailModal';
 import {
   defaultFollowUpDate,
   followUpTaskTitle,
@@ -76,9 +77,11 @@ export function ExecutiveCommandCenter({
   const user = useAuthStore((s) => s.user);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const notes = useNotesStore((s) => s.notes);
+  const tasks = useTasksStore((s) => s.tasks);
   const createTask = useTasksStore((s) => s.createTask);
   const [debriefTarget, setDebriefTarget] = useState<DebriefTarget | null>(null);
   const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [meetingNotes, setMeetingNotes] = useState<{
     target: DebriefTarget;
     mode: MeetingNotesPanelMode;
@@ -93,6 +96,13 @@ export function ExecutiveCommandCenter({
   const openMeetingNotes = (target: DebriefTarget, mode: MeetingNotesPanelMode) => {
     setMeetingNotes({ target, mode });
   };
+
+  const detailTask = useMemo(
+    () => (detailTaskId ? tasks.find((t) => t.id === detailTaskId) ?? null : null),
+    [tasks, detailTaskId],
+  );
+
+  const openTaskDetail = (taskId: string) => setDetailTaskId(taskId);
 
   const show = (section: 'now' | 'gaps' | 'next' | 'timeline') =>
     !sections || sections.includes(section);
@@ -154,6 +164,7 @@ export function ExecutiveCommandCenter({
                 onRefresh={onRefresh}
                 onOpenDebrief={(target) => setDebriefTarget(target)}
                 onOpenMeetingNotes={openMeetingNotes}
+                onOpenTask={openTaskDetail}
                 onScheduleFollowUp={(target) => setFollowUpTarget(target)}
               />
             ))}
@@ -237,6 +248,9 @@ export function ExecutiveCommandCenter({
         onClose={() => setFollowUpTarget(null)}
         onSave={saveFollowUp}
       />
+      {detailTask && (
+        <TaskDetailModal task={detailTask} onClose={() => setDetailTaskId(null)} />
+      )}
     </div>
   );
 }
@@ -415,12 +429,49 @@ function NowHero({
   );
 }
 
+type GapAction = {
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+  /** Profile rule — rendered as a bordered two-line control, not a ghost pill. */
+  ruleAction?: 'prep_off' | 'back_to_back_ok' | 'debrief_off';
+  ruleMeetingTitle?: string;
+};
+
+function MeetingRuleButton({
+  action,
+  meetingTitle,
+  onClick,
+  disabled,
+}: {
+  action: 'prep_off' | 'back_to_back_ok' | 'debrief_off';
+  meetingTitle: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const title = meetingTitle.trim() || 'this meeting';
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-left shadow-sm transition-colors hover:border-brand-400 hover:bg-surface-sunken disabled:opacity-50 sm:max-w-md"
+    >
+      <span className="block text-xs font-semibold text-text">{meetingRuleShortLabel(action)}</span>
+      <span className="mt-0.5 block truncate text-xs text-text-muted" title={title}>
+        for &ldquo;{title}&rdquo;
+      </span>
+    </button>
+  );
+}
+
 function GapCard({
   gap,
   todayIso,
   onRefresh,
   onOpenDebrief,
   onOpenMeetingNotes,
+  onOpenTask,
   onScheduleFollowUp,
 }: {
   gap: DirectiveGap;
@@ -428,6 +479,7 @@ function GapCard({
   onRefresh?: () => void;
   onOpenDebrief?: (target: DebriefTarget) => void;
   onOpenMeetingNotes?: (target: DebriefTarget, mode: MeetingNotesPanelMode) => void;
+  onOpenTask?: (taskId: string) => void;
   onScheduleFollowUp?: (target: FollowUpTarget) => void;
 }) {
   const navigate = useNavigate();
@@ -448,6 +500,11 @@ function GapCard({
   const updateNote = useNotesStore((s) => s.updateNote);
   const notes = useNotesStore((s) => s.notes);
   const [busy, setBusy] = useState(false);
+
+  const openTask = (taskId: string) => {
+    if (onOpenTask) onOpenTask(taskId);
+    else navigate(viewPath('tasks'));
+  };
 
   const canPickTime =
     Boolean(gap.ref && gap.suggestedDate) &&
@@ -631,7 +688,7 @@ function GapCard({
   };
 
   const actions = useMemo(() => {
-    const btns: Array<{ label: string; onClick: () => void; primary?: boolean }> = [];
+    const btns: GapAction[] = [];
 
     if (gap.kind === 'no_calendar') {
       btns.push({
@@ -642,11 +699,11 @@ function GapCard({
       return btns;
     }
 
-    if (gap.ref) {
+    if (gap.ref && gap.kind !== 'missing_estimate' && gap.kind !== 'delegation_chase') {
       btns.push({
         label: gap.ref.kind === 'task' ? 'Open task' : 'Open note',
         onClick: () => {
-          if (gap.ref!.kind === 'task') navigate(viewPath('tasks'));
+          if (gap.ref!.kind === 'task') openTask(gap.ref!.taskId);
           else {
             useNotesStore.getState().setActive(gap.ref!.noteId);
             navigate(viewPath('notes'));
@@ -669,12 +726,14 @@ function GapCard({
         },
       });
       btns.push({
-        label: "Don't prep for this again",
+        label: 'Skip prep this time',
         onClick: () => void dismissPrepForEvent(false),
       });
       if (gap.meetingTitle) {
         btns.push({
-          label: 'Apply to all like this',
+          label: '',
+          ruleAction: 'prep_off',
+          ruleMeetingTitle: gap.meetingTitle,
           onClick: () => void dismissPrepForEvent(true),
         });
       }
@@ -688,7 +747,9 @@ function GapCard({
       });
       if (gap.meetingTitle) {
         btns.push({
-          label: 'Apply to all like this',
+          label: '',
+          ruleAction: 'back_to_back_ok',
+          ruleMeetingTitle: gap.meetingTitle,
           onClick: () => void dismissBackToBack(true),
         });
       }
@@ -739,12 +800,14 @@ function GapCard({
         onClick: () => void skipDebrief(),
       });
       btns.push({
-        label: "Don't debrief for this again",
+        label: 'Skip debrief this time',
         onClick: () => void dismissDebriefForEvent(false),
       });
       if (gap.meetingTitle) {
         btns.push({
-          label: 'Apply to all like this',
+          label: '',
+          ruleAction: 'debrief_off',
+          ruleMeetingTitle: gap.meetingTitle,
           onClick: () => void dismissDebriefForEvent(true),
         });
       }
@@ -803,7 +866,7 @@ function GapCard({
       });
       btns.push({
         label: 'Open task',
-        onClick: () => navigate(viewPath('tasks')),
+        onClick: () => openTask(taskRef.taskId),
       });
       return btns;
     }
@@ -824,7 +887,7 @@ function GapCard({
       }
       btns.push({
         label: 'Open task',
-        onClick: () => navigate(viewPath('tasks')),
+        onClick: () => openTask(taskRef.taskId),
       });
       return btns;
     }
@@ -891,21 +954,42 @@ function GapCard({
           )}
         </div>
       )}
-      {actions.length > 0 && (
-        <div className={['flex flex-wrap gap-2', canPickTime ? 'mt-2' : 'mt-2.5'].join(' ')}>
-          {actions.map((a) => (
-            <button
-              key={a.label}
-              type="button"
-              disabled={busy}
-              onClick={a.onClick}
-              className={a.primary ? 'btn-primary py-1.5 text-xs' : 'btn-ghost py-1.5 text-xs'}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {actions.length > 0 && (() => {
+        const pillActions = actions.filter((a) => !a.ruleAction);
+        const ruleActions = actions.filter((a) => a.ruleAction && a.ruleMeetingTitle);
+        return (
+          <div className={canPickTime ? 'mt-2 space-y-2' : 'mt-2.5 space-y-2'}>
+            {pillActions.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pillActions.map((a, i) => (
+                  <button
+                    key={`${a.label}-${i}`}
+                    type="button"
+                    disabled={busy}
+                    onClick={a.onClick}
+                    className={a.primary ? 'btn-primary py-1.5 text-xs' : 'btn-ghost py-1.5 text-xs'}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {ruleActions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {ruleActions.map((a, i) => (
+                  <MeetingRuleButton
+                    key={`rule-${a.ruleAction}-${i}`}
+                    action={a.ruleAction!}
+                    meetingTitle={a.ruleMeetingTitle!}
+                    onClick={a.onClick}
+                    disabled={busy}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </li>
   );
 }
