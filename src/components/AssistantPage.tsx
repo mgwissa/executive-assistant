@@ -14,6 +14,7 @@ import {
   loadDismissedDecisionIds,
   persistDismissedDecisionIds,
 } from '../lib/decisionQueue';
+import { useDirectiveClock } from '../hooks/useDirectiveClock';
 import { generateDirective } from '../lib/executiveDirective';
 import { parseFocusQueue, type FocusQueuePrefs } from '../lib/focusQueue';
 import { parseMeetingRules } from '../lib/meetingTemperament';
@@ -102,6 +103,7 @@ export function AssistantPage() {
   const debriefStates = useMeetingDebriefStore((s) => s.states);
 
   const [activeTab, setActiveTab] = useState<Tab>('watch');
+  const directiveClock = useDirectiveClock(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [dismissedProposals, setDismissedProposals] = useState<Set<string>>(new Set());
   const [acceptedProposals, setAcceptedProposals] = useState<Set<string>>(new Set());
@@ -131,7 +133,7 @@ export function AssistantPage() {
         debriefStates,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, refreshKey],
+    [tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, refreshKey, directiveClock],
   );
 
   const todayIso = directive.todayIso;
@@ -178,7 +180,7 @@ export function AssistantPage() {
         meetingRules: parseMeetingRules(profile?.meeting_rules),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, actionItems, notes, events, profile?.meeting_rules, refreshKey],
+    [tasks, actionItems, notes, events, profile?.meeting_rules, refreshKey, directiveClock],
   );
 
   const openNote = useCallback(

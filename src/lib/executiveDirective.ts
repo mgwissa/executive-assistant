@@ -717,6 +717,7 @@ function buildNowDirective(
       detail: `In meeting until ${formatTime(inMeeting.end, tz)}`,
       until: inMeeting.end,
       eventId: inMeeting.eventId,
+      occurrenceStartAt: occurrenceStartKey(inMeeting.start),
     };
   }
 

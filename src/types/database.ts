@@ -72,6 +72,8 @@ export type Database = {
           title: string;
           content: string;
           content_blocks: Json | null;
+          linked_event_id: string | null;
+          linked_occurrence_start_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -82,6 +84,8 @@ export type Database = {
           title?: string;
           content?: string;
           content_blocks?: Json | null;
+          linked_event_id?: string | null;
+          linked_occurrence_start_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -92,6 +96,8 @@ export type Database = {
           title?: string;
           content?: string;
           content_blocks?: Json | null;
+          linked_event_id?: string | null;
+          linked_occurrence_start_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

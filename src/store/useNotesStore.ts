@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { markNoteSelfPersisted } from '../lib/noteSyncEcho';
+import { findMeetingNote } from '../lib/meetingNotes';
+import { occurrenceStartKey } from '../lib/meetingDebrief';
 import { scheduleMemoryDelete, scheduleMemoryIndex } from '../lib/memorySyncScheduler';
 import { randomUUID } from '../lib/uuid';
 import type { Json } from '../types/database';
@@ -18,6 +20,12 @@ type NotesState = {
 
   fetchAll: (userId: string) => Promise<void>;
   createNote: (userId: string, sectionId: string) => Promise<Note | null>;
+  /** Find or create a note tied to one calendar occurrence. */
+  ensureMeetingNote: (
+    userId: string,
+    sectionId: string,
+    target: { eventId: string; occurrenceStartAt: string; title: string },
+  ) => Promise<Note | null>;
   moveNote: (id: string, sectionId: string) => Promise<void>;
   updateNote: (
     id: string,
@@ -67,6 +75,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       title: 'Untitled',
       content: '',
       content_blocks: null,
+      linked_event_id: null,
+      linked_occurrence_start_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -82,6 +92,57 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       set({
         notes: get().notes.filter((n) => n.id !== optimistic.id),
         error: error?.message ?? 'Failed to create note',
+      });
+      return null;
+    }
+
+    set({
+      notes: get().notes.map((n) => (n.id === optimistic.id ? data : n)),
+      activeId: data.id,
+    });
+    return data;
+  },
+
+  ensureMeetingNote: async (userId, sectionId, target) => {
+    const occKey = occurrenceStartKey(target.occurrenceStartAt);
+    const existing = findMeetingNote(get().notes, target.eventId, occKey);
+    if (existing) {
+      set({ activeId: existing.id });
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    const optimistic: Note = {
+      id: `tmp-${randomUUID()}`,
+      user_id: userId,
+      section_id: sectionId,
+      title: target.title,
+      content: '',
+      content_blocks: null,
+      linked_event_id: target.eventId,
+      linked_occurrence_start_at: occKey,
+      created_at: now,
+      updated_at: now,
+    };
+    set({ notes: [optimistic, ...get().notes], activeId: optimistic.id });
+
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({
+        user_id: userId,
+        section_id: sectionId,
+        title: target.title,
+        content: '',
+        linked_event_id: target.eventId,
+        linked_occurrence_start_at: occKey,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      set({
+        notes: get().notes.filter((n) => n.id !== optimistic.id),
+        error: error?.message ?? 'Failed to create meeting note',
       });
       return null;
     }

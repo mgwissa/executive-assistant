@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
 import { viewPath } from '../lib/routes';
 import { generateBriefing } from '../lib/assistantBriefing';
+import { useDirectiveClock } from '../hooks/useDirectiveClock';
 import { generateDirective } from '../lib/executiveDirective';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
@@ -484,6 +485,7 @@ export function Dashboard() {
   const visibleWork = workRows.slice(0, ACTION_ITEM_LIMIT);
 
   const assistantEnabled = isOptionalFeatureEnabled(profile, 'assistant');
+  const directiveClock = useDirectiveClock(assistantEnabled);
   const [directiveRefresh, setDirectiveRefresh] = useState(0);
   const [dismissedDecisionIds, setDismissedDecisionIds] = useState(() =>
     loadDismissedDecisionIds(routineTodayDate),
@@ -559,7 +561,7 @@ export function Dashboard() {
       debriefStates,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, directiveRefresh]);
+  }, [assistantEnabled, tasks, actionItems, events, timezone, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates, directiveRefresh, directiveClock]);
 
   const handleScheduleFocusTomorrow = useCallback(
     async (item: FocusWorkItem) => {
@@ -599,7 +601,7 @@ export function Dashboard() {
       meetingRules: parseMeetingRules(profile?.meeting_rules),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistantEnabled, tasks, actionItems, notes, events, profile?.meeting_rules, directiveRefresh]);
+  }, [assistantEnabled, tasks, actionItems, notes, events, profile?.meeting_rules, directiveRefresh, directiveClock]);
 
   return (
     <div className="h-full overflow-y-auto bg-surface">

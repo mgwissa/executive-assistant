@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
+import { findMeetingNote } from '../lib/meetingNotes';
 import { snoozeUntil } from '../lib/meetingDebrief';
 import { appendMeetingRule, buildMeetingRule, parseMeetingRules } from '../lib/meetingTemperament';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
@@ -18,6 +19,7 @@ import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { MeetingDebriefModal } from './MeetingDebriefModal';
+import { MeetingNotesPanel, type MeetingNotesPanelMode } from './MeetingNotesPanel';
 import { ScheduleFollowUpModal } from './ScheduleFollowUpModal';
 import {
   defaultFollowUpDate,
@@ -34,7 +36,7 @@ import {
   CalendarIcon,
   CheckSquareIcon,
   ClockIcon,
-  RefreshIcon,
+  NoteIcon,
 } from './icons';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
@@ -73,9 +75,24 @@ export function ExecutiveCommandCenter({
   const tz = directive.timezone;
   const user = useAuthStore((s) => s.user);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
+  const notes = useNotesStore((s) => s.notes);
   const createTask = useTasksStore((s) => s.createTask);
   const [debriefTarget, setDebriefTarget] = useState<DebriefTarget | null>(null);
   const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
+  const [meetingNotes, setMeetingNotes] = useState<{
+    target: DebriefTarget;
+    mode: MeetingNotesPanelMode;
+  } | null>(null);
+
+  const debriefInitialNotes = useMemo(() => {
+    if (!debriefTarget) return '';
+    const note = findMeetingNote(notes, debriefTarget.eventId, debriefTarget.occurrenceStartAt);
+    return note ? getNoteCanonicalMarkdown(note) : '';
+  }, [debriefTarget, notes]);
+
+  const openMeetingNotes = (target: DebriefTarget, mode: MeetingNotesPanelMode) => {
+    setMeetingNotes({ target, mode });
+  };
 
   const show = (section: 'now' | 'gaps' | 'next' | 'timeline') =>
     !sections || sections.includes(section);
@@ -116,7 +133,7 @@ export function ExecutiveCommandCenter({
           tz={tz}
           onRefresh={onRefresh}
           compact={compact}
-          onOpenDebrief={(target) => setDebriefTarget(target)}
+          onOpenMeetingNotes={openMeetingNotes}
         />
       )}
 
@@ -136,6 +153,7 @@ export function ExecutiveCommandCenter({
                 todayIso={directive.todayIso}
                 onRefresh={onRefresh}
                 onOpenDebrief={(target) => setDebriefTarget(target)}
+                onOpenMeetingNotes={openMeetingNotes}
                 onScheduleFollowUp={(target) => setFollowUpTarget(target)}
               />
             ))}
@@ -183,6 +201,7 @@ export function ExecutiveCommandCenter({
       <MeetingDebriefModal
         open={!!debriefTarget}
         meetingTitle={debriefTarget?.meetingTitle ?? ''}
+        initialNotes={debriefInitialNotes}
         onClose={() => setDebriefTarget(null)}
         onSave={saveDebrief}
         onScheduleFollowUp={() => {
@@ -194,6 +213,21 @@ export function ExecutiveCommandCenter({
           });
           setDebriefTarget(null);
         }}
+      />
+      <MeetingNotesPanel
+        open={!!meetingNotes}
+        target={meetingNotes?.target ?? null}
+        mode={meetingNotes?.mode ?? 'notes'}
+        timezone={tz}
+        onClose={() => setMeetingNotes(null)}
+        onCaptureFollowUps={
+          meetingNotes?.mode === 'debrief'
+            ? () => {
+                setDebriefTarget(meetingNotes.target);
+                setMeetingNotes(null);
+              }
+            : undefined
+        }
       />
       <ScheduleFollowUpModal
         open={!!followUpTarget}
@@ -212,13 +246,13 @@ function NowHero({
   tz,
   onRefresh,
   compact,
-  onOpenDebrief,
+  onOpenMeetingNotes,
 }: {
   now: DirectiveReport['now'];
   tz: string;
   onRefresh?: () => void;
   compact?: boolean;
-  onOpenDebrief?: (target: DebriefTarget) => void;
+  onOpenMeetingNotes?: (target: DebriefTarget, mode: MeetingNotesPanelMode) => void;
 }) {
   const navigate = useNavigate();
   const toggleDone = useTasksStore((s) => s.toggleDone);
@@ -246,6 +280,15 @@ function NowHero({
   };
 
   const muted = now.kind === 'gap' || now.kind === 'wind_down';
+
+  const meetingTarget: DebriefTarget | null =
+    now.eventId && now.occurrenceStartAt
+      ? {
+          eventId: now.eventId,
+          occurrenceStartAt: now.occurrenceStartAt,
+          meetingTitle: now.headline,
+        }
+      : null;
 
   const onPrimary = () => {
     if (!now.ref) {
@@ -279,48 +322,41 @@ function NowHero({
             <p className={['mt-2 max-w-xl text-sm leading-relaxed', muted ? 'text-text-muted' : 'text-white/85'].join(' ')}>
               {now.detail}
             </p>
-            {now.until && (
+            {now.until && now.kind !== 'in_meeting' && (
               <p className={['mt-3 text-xs font-medium', muted ? 'text-text-subtle' : 'text-white/70'].join(' ')}>
                 Until {formatInTimeZone(now.until, tz, 'h:mm a')}
               </p>
             )}
           </div>
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={onRefresh}
-              className={['btn-ghost shrink-0 p-2', muted ? '' : 'text-white/80 hover:bg-white/10 hover:text-white'].join(' ')}
-              title="Refresh"
-              aria-label="Refresh directive"
-            >
-              <RefreshIcon className="h-4 w-4" />
-            </button>
-          )}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
-          {now.kind === 'debrief' && now.eventId && now.occurrenceStartAt && onOpenDebrief && (
+          {meetingTarget && onOpenMeetingNotes && now.kind === 'in_meeting' && (
+            <button
+              type="button"
+              onClick={() => onOpenMeetingNotes(meetingTarget, 'notes')}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-colors hover:bg-white/25"
+            >
+              <NoteIcon className="h-4 w-4" />
+              Notes
+            </button>
+          )}
+          {meetingTarget && onOpenMeetingNotes && now.kind === 'debrief' && (
             <>
               <button
                 type="button"
-                onClick={() =>
-                  onOpenDebrief({
-                    eventId: now.eventId!,
-                    occurrenceStartAt: now.occurrenceStartAt!,
-                    meetingTitle: now.headline,
-                  })
-                }
+                onClick={() => onOpenMeetingNotes(meetingTarget, 'debrief')}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-colors hover:bg-white/25"
               >
-                Capture outcomes
-                <ArrowRightIcon className="h-3.5 w-3.5" />
+                <NoteIcon className="h-4 w-4" />
+                Debrief
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!user) return;
                   void upsertDebrief(user.id, {
-                    eventId: now.eventId!,
-                    occurrenceStartAt: now.occurrenceStartAt!,
+                    eventId: meetingTarget.eventId,
+                    occurrenceStartAt: meetingTarget.occurrenceStartAt,
                     status: 'skipped',
                   }).then(() => onRefresh?.());
                 }}
@@ -384,12 +420,14 @@ function GapCard({
   todayIso,
   onRefresh,
   onOpenDebrief,
+  onOpenMeetingNotes,
   onScheduleFollowUp,
 }: {
   gap: DirectiveGap;
   todayIso: string;
   onRefresh?: () => void;
   onOpenDebrief?: (target: DebriefTarget) => void;
+  onOpenMeetingNotes?: (target: DebriefTarget, mode: MeetingNotesPanelMode) => void;
   onScheduleFollowUp?: (target: FollowUpTarget) => void;
 }) {
   const navigate = useNavigate();
@@ -664,17 +702,25 @@ function GapCard({
       });
     }
 
-    if (gap.kind === 'meeting_debrief' && gap.eventId && gap.occurrenceStartAt && onOpenDebrief) {
-      btns.push({
-        label: 'Capture outcomes',
-        primary: true,
-        onClick: () =>
-          onOpenDebrief({
-            eventId: gap.eventId!,
-            occurrenceStartAt: gap.occurrenceStartAt!,
-            meetingTitle: gap.meetingTitle ?? gap.headline,
-          }),
-      });
+    if (gap.kind === 'meeting_debrief' && gap.eventId && gap.occurrenceStartAt) {
+      const debriefTarget: DebriefTarget = {
+        eventId: gap.eventId,
+        occurrenceStartAt: gap.occurrenceStartAt,
+        meetingTitle: gap.meetingTitle ?? gap.headline,
+      };
+      if (onOpenMeetingNotes) {
+        btns.push({
+          label: 'Debrief',
+          primary: true,
+          onClick: () => onOpenMeetingNotes(debriefTarget, 'debrief'),
+        });
+      } else if (onOpenDebrief) {
+        btns.push({
+          label: 'Capture outcomes',
+          primary: true,
+          onClick: () => onOpenDebrief(debriefTarget),
+        });
+      }
       btns.push({
         label: 'Snooze 24h',
         onClick: () => void snoozeDebrief(),

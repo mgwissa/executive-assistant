@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from './ui/Card';
 
 type MeetingDebriefModalProps = {
   open: boolean;
   meetingTitle: string;
+  /** Pre-fill outcomes textarea (e.g. from linked meeting note). */
+  initialNotes?: string;
   onClose: () => void;
   onSave: (payload: { taskTitles: string[]; notes: string }) => Promise<void>;
   onScheduleFollowUp?: () => void;
@@ -12,6 +14,7 @@ type MeetingDebriefModalProps = {
 export function MeetingDebriefModal({
   open,
   meetingTitle,
+  initialNotes = '',
   onClose,
   onSave,
   onScheduleFollowUp,
@@ -19,6 +22,10 @@ export function MeetingDebriefModal({
   const [taskLines, setTaskLines] = useState<string[]>(['']);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) setNotes(initialNotes);
+  }, [open, initialNotes]);
 
   if (!open) return null;
 
