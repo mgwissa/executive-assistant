@@ -18,10 +18,10 @@ import {
 import {
   DEBRIEF_WINDOW_MS,
   findDebriefState,
-  isDebriefSuppressed,
-  isInDebriefWindow,
   occurrenceStartKey,
+  shouldPromptDebrief,
 } from './meetingDebrief';
+import { findFreeGaps, EXECUTIVE_DAY_END_HOUR } from './scheduleAvailability';
 import { PREP_BLOCK_MINUTES, hasOpenLinkedTask, prepBlockStart, prepTaskTitle } from './meetingLifecycle';
 import {
   computeCapacitySnapshot,
@@ -39,8 +39,7 @@ import {
 import type { Event, MeetingDebriefState, Task } from '../types';
 
 const PREP_WINDOW_MS = 30 * 60 * 1000;
-const MIN_GAP_MS = 20 * 60 * 1000;
-const DAY_END_HOUR = 17;
+const DAY_END_HOUR = EXECUTIVE_DAY_END_HOUR;
 
 /** End of the executive workday (local hour) for capacity, wind-down, and HUD copy. */
 export function executiveDayEndHour(): number {
@@ -318,31 +317,6 @@ function getMeetings(
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-function findFreeGaps(
-  now: Date,
-  dayEnd: Date,
-  busy: Array<{ start: Date; end: Date }>,
-): Array<{ start: Date; end: Date }> {
-  const sorted = [...busy].sort((a, b) => a.start.getTime() - b.start.getTime());
-  const gaps: Array<{ start: Date; end: Date }> = [];
-  let cursor = now.getTime() < dayEnd.getTime() ? now : dayEnd;
-
-  for (const b of sorted) {
-    if (b.end <= cursor) continue;
-    if (b.start > cursor) {
-      const gapEnd = b.start.getTime() < dayEnd.getTime() ? b.start : dayEnd;
-      if (gapEnd.getTime() - cursor.getTime() >= MIN_GAP_MS) {
-        gaps.push({ start: new Date(cursor), end: gapEnd });
-      }
-    }
-    if (b.end > cursor) cursor = b.end;
-  }
-  if (dayEnd.getTime() - cursor.getTime() >= MIN_GAP_MS) {
-    gaps.push({ start: new Date(cursor), end: dayEnd });
-  }
-  return gaps;
-}
-
 function formatTime(d: Date, tz: string): string {
   return formatInTimeZone(d, tz, 'h:mm a');
 }
@@ -429,6 +403,9 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     (w) => !w.dueTime && w.dueDate && (w.dueDate === todayIso || isOverdue(w.dueDate, todayIso)),
   );
   const busyIntervals = allBusy.map((b) => ({ start: b.start, end: b.end }));
+  const inFreeGap = findFreeGaps(now, dayEnd, busyIntervals).some(
+    (g) => now >= g.start && now < g.end,
+  );
   const freeGaps = findFreeGaps(now, dayEnd, busyIntervals);
 
   let gapCursor = 0;
@@ -576,12 +553,12 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
     }
   }
 
-  // Post-meeting debrief (0–15 min after end)
+  // Post-meeting debrief (initial window or after snooze until free / fixed)
   for (const m of meetings) {
     if (!m.debriefRequired) continue;
-    if (!isInDebriefWindow(now, m.end)) continue;
+    if (m.end > now) continue;
     const state = findDebriefState(debriefStates, m.eventId, m.start);
-    if (isDebriefSuppressed(state, now)) continue;
+    if (!shouldPromptDebrief(m.end, now, state, inFreeGap)) continue;
     const minsAgo = Math.max(1, Math.round((now.getTime() - m.end.getTime()) / 60_000));
     gaps.push({
       id: nextGapId(),
@@ -676,7 +653,16 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   timeline.sort((a, b) => a.start.getTime() - b.start.getTime());
 
   // NOW directive
-  const nowDirective = buildNowDirective(now, tz, meetings, timeline, work, dayEnd, debriefStates);
+  const nowDirective = buildNowDirective(
+    now,
+    tz,
+    meetings,
+    timeline,
+    work,
+    dayEnd,
+    debriefStates,
+    inFreeGap,
+  );
 
   // NEXT: entries starting within ~3 hours after now
   const horizon = addMinutes(now, 180);
@@ -721,6 +707,7 @@ function buildNowDirective(
   work: UnifiedWork[],
   dayEnd: Date,
   debriefStates: MeetingDebriefState[],
+  inFreeGap: boolean,
 ): NowDirective {
   const inMeeting = meetings.find((m) => now >= m.start && now < m.end);
   if (inMeeting) {
@@ -737,9 +724,9 @@ function buildNowDirective(
 
   const debriefMeeting = meetings.find((m) => {
     if (!m.debriefRequired) return false;
-    if (!isInDebriefWindow(now, m.end)) return false;
+    if (m.end > now) return false;
     const state = findDebriefState(debriefStates, m.eventId, m.start);
-    return !isDebriefSuppressed(state, now);
+    return shouldPromptDebrief(m.end, now, state, inFreeGap);
   });
   if (debriefMeeting) {
     const minsAgo = Math.max(1, Math.round((now.getTime() - debriefMeeting.end.getTime()) / 60_000));

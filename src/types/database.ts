@@ -369,6 +369,7 @@ export type Database = {
           occurrence_start_at: string;
           status: string;
           snoozed_until: string | null;
+          snooze_mode: string | null;
           notes: string;
           created_at: string;
           updated_at: string;
@@ -380,6 +381,7 @@ export type Database = {
           occurrence_start_at: string;
           status?: string;
           snoozed_until?: string | null;
+          snooze_mode?: string | null;
           notes?: string;
           created_at?: string;
           updated_at?: string;
@@ -391,6 +393,7 @@ export type Database = {
           occurrence_start_at?: string;
           status?: string;
           snoozed_until?: string | null;
+          snooze_mode?: string | null;
           notes?: string;
           created_at?: string;
           updated_at?: string;

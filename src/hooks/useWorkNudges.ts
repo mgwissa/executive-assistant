@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
 import { isOptionalFeatureEnabled } from '../lib/optionalFeatures';
+import { parseMeetingRules } from '../lib/meetingTemperament';
 import { viewPath } from '../lib/routes';
+import { snoozeUntilFreeIso } from '../lib/scheduleAvailability';
 import { formatDueTimeDisplay } from '../lib/taskSchedule';
 import {
   currentLocalHm,
@@ -14,6 +16,7 @@ import {
   todayIsoInTz,
 } from '../lib/workNudges';
 import { useProfileStore } from '../store/useProfileStore';
+import { useEventsStore } from '../store/useEventsStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { useToastStore } from '../store/useToastStore';
 import type { Task } from '../types';
@@ -45,6 +48,7 @@ export function useWorkNudges() {
   const navigate = useNavigate();
   const profile = useProfileStore((s) => s.profile);
   const tasks = useTasksStore((s) => s.tasks);
+  const events = useEventsStore((s) => s.events);
   const toggleDone = useTasksStore((s) => s.toggleDone);
   const pushToast = useToastStore((s) => s.push);
   const dismissToast = useToastStore((s) => s.dismiss);
@@ -104,6 +108,20 @@ export function useWorkNudges() {
               },
             },
             {
+              label: "Until I'm free",
+              onClick: () => {
+                const until = snoozeUntilFreeIso({
+                  timezone: resolveCalendarTimeZone(profile?.timezone),
+                  events,
+                  tasks,
+                  meetingRules: parseMeetingRules(profile?.meeting_rules),
+                });
+                snoozeNudge(task.id, new Date(until).getTime());
+                activeRef.current.delete(task.id);
+                if (toastId) dismissToast(toastId);
+              },
+            },
+            {
               label: 'Snooze 15m',
               onClick: () => {
                 snoozeNudge(task.id, Date.now() + NUDGE_SNOOZE_MS);
@@ -135,6 +153,7 @@ export function useWorkNudges() {
       openWork,
       toggleDone,
       dismissToast,
+      events,
     ],
   );
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { occurrenceStartKey } from '../lib/meetingDebrief';
+import { occurrenceStartKey, type DebriefSnoozeMode } from '../lib/meetingDebrief';
 import { scheduleMemoryIndex } from '../lib/memorySyncScheduler';
 import { supabase } from '../lib/supabase';
 import { randomUUID } from '../lib/uuid';
@@ -20,6 +20,7 @@ type MeetingDebriefStateStore = {
       occurrenceStartAt: string;
       status: DebriefStatus;
       snoozedUntil?: string | null;
+      snoozeMode?: DebriefSnoozeMode | null;
       notes?: string;
     },
   ) => Promise<MeetingDebriefState | null>;
@@ -70,6 +71,7 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
       occurrence_start_at: occurrenceKey,
       status: payload.status,
       snoozed_until: payload.snoozedUntil ?? null,
+      snooze_mode: payload.snoozeMode ?? null,
       notes: payload.notes ?? '',
       created_at: existing?.created_at ?? now,
       updated_at: now,
@@ -90,6 +92,7 @@ export const useMeetingDebriefStore = create<MeetingDebriefStateStore>((set, get
           occurrence_start_at: occurrenceKey,
           status: payload.status,
           snoozed_until: payload.snoozedUntil ?? null,
+          snooze_mode: payload.snoozeMode ?? null,
           notes: payload.notes ?? '',
         },
         { onConflict: 'user_id,event_id,occurrence_start_at' },

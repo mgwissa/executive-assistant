@@ -669,7 +669,7 @@ function InAppNudgesSection({
         Show in-app toasts when a scheduled task is due
       </label>
       <p className="mt-1 text-xs text-text-muted">
-        Toasts include Start, Done, and Snooze 15m. One nudge per task per day unless snoozed.
+        Toasts include Start, Done, Snooze 15m, and Until I&apos;m free (next open calendar block).
       </p>
 
       <div className="mt-4 space-y-2 rounded-lg border border-border bg-surface-raised p-3">

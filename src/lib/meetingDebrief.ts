@@ -4,6 +4,8 @@ import type { MeetingDebriefState } from '../types';
 export const DEBRIEF_WINDOW_MS = 15 * 60 * 1000;
 export const DEBRIEF_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
+export type DebriefSnoozeMode = 'fixed' | 'until_free';
+
 export function occurrenceStartKey(start: Date | string): string {
   const ms = new Date(start).getTime();
   if (Number.isNaN(ms)) {
@@ -23,15 +25,28 @@ export function findDebriefState(
   );
 }
 
+export function debriefSnoozeMode(
+  state: MeetingDebriefState | undefined,
+): DebriefSnoozeMode | null {
+  if (!state || state.status !== 'snoozed') return null;
+  const mode = state.snooze_mode;
+  if (mode === 'until_free' || mode === 'fixed') return mode;
+  return 'fixed';
+}
+
 /** True when debrief gap should be suppressed for this occurrence. */
 export function isDebriefSuppressed(
   state: MeetingDebriefState | undefined,
   now: Date,
+  options?: { isInFreeGap?: boolean },
 ): boolean {
   if (!state) return false;
   if (state.status === 'done' || state.status === 'skipped') return true;
   if (state.status === 'snoozed' && state.snoozed_until) {
-    return new Date(state.snoozed_until).getTime() > now.getTime();
+    if (new Date(state.snoozed_until).getTime() > now.getTime()) return true;
+    if (debriefSnoozeMode(state) === 'until_free' && options?.isInFreeGap === false) {
+      return true;
+    }
   }
   return false;
 }
@@ -40,6 +55,24 @@ export function isDebriefSuppressed(
 export function isInDebriefWindow(now: Date, meetingEnd: Date): boolean {
   const elapsed = now.getTime() - meetingEnd.getTime();
   return elapsed >= 0 && elapsed <= DEBRIEF_WINDOW_MS;
+}
+
+export function shouldPromptDebrief(
+  meetingEnd: Date,
+  now: Date,
+  state: MeetingDebriefState | undefined,
+  isInFreeGap: boolean,
+): boolean {
+  if (state?.status === 'done' || state?.status === 'skipped') return false;
+  if (isDebriefSuppressed(state, now, { isInFreeGap })) return false;
+  if (isInDebriefWindow(now, meetingEnd)) return true;
+  if (state?.status === 'snoozed' && state.snoozed_until) {
+    const expired = new Date(state.snoozed_until).getTime() <= now.getTime();
+    if (!expired) return false;
+    if (debriefSnoozeMode(state) === 'until_free') return isInFreeGap;
+    return true;
+  }
+  return false;
 }
 
 export function snoozeUntil(now: Date): string {

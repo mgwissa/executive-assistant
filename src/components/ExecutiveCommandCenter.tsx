@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { BriefingReport } from '../lib/assistantBriefing';
 import type { DirectiveGap, DirectiveReport, TimelineEntry, WorkItemRef } from '../lib/executiveDirective';
+import { dismissBackToBackForMeeting, dismissDebriefForMeeting, dismissPrepForMeeting } from '../lib/meetingDismissals';
 import { findMeetingNote } from '../lib/meetingNotes';
 import { snoozeUntil } from '../lib/meetingDebrief';
-import { dismissBackToBackForMeeting, dismissDebriefForMeeting, dismissPrepForMeeting } from '../lib/meetingDismissals';
-import { meetingRuleShortLabel } from '../lib/meetingTemperament';
+import { meetingRuleShortLabel, parseMeetingRules } from '../lib/meetingTemperament';
+import { snoozeUntilFreeIso } from '../lib/scheduleAvailability';
 import { applyMarkdownPatchToNote, getNoteCanonicalMarkdown } from '../lib/noteContentBridge';
 import { findOpenTaskForNoteActionRef, displayTitleFromNoteLine } from '../lib/taskActionMatch';
 import { extractActionItems, setActionItemLineDueDate } from '../lib/format';
@@ -14,6 +15,7 @@ import { PRIORITY_PILL, type TaskPriority } from '../lib/priority';
 import { formatDueTimeDisplay, normalizeDueTime } from '../lib/taskSchedule';
 import { viewPath } from '../lib/routes';
 import { useAuthStore } from '../store/useAuthStore';
+import { useEventsStore } from '../store/useEventsStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useProfileStore } from '../store/useProfileStore';
@@ -271,6 +273,7 @@ function NowHero({
   const navigate = useNavigate();
   const toggleDone = useTasksStore((s) => s.toggleDone);
   const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const [prepBusy, setPrepBusy] = useState(false);
 
@@ -319,6 +322,23 @@ function NowHero({
   const showMeetingNotes =
     meetingTarget && onOpenMeetingNotes && (now.kind === 'in_meeting' || now.kind === 'prep');
   const notesButtonMuted = now.kind === 'prep' || muted;
+
+  const snoozeDebriefUntilFree = async () => {
+    if (!user || !meetingTarget) return;
+    await upsertDebrief(user.id, {
+      eventId: meetingTarget.eventId,
+      occurrenceStartAt: meetingTarget.occurrenceStartAt,
+      status: 'snoozed',
+      snoozedUntil: snoozeUntilFreeIso({
+        timezone: profile?.timezone ?? 'UTC',
+        events: useEventsStore.getState().events,
+        tasks: useTasksStore.getState().tasks,
+        meetingRules: parseMeetingRules(profile?.meeting_rules),
+      }),
+      snoozeMode: 'until_free',
+    });
+    onRefresh?.();
+  };
 
   const onPrimary = () => {
     if (!now.ref) {
@@ -384,6 +404,13 @@ function NowHero({
               >
                 <NoteIcon className="h-4 w-4" />
                 Debrief
+              </button>
+              <button
+                type="button"
+                onClick={() => void snoozeDebriefUntilFree()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/20 transition-colors hover:bg-white/20"
+              >
+                Until I&apos;m free
               </button>
               <button
                 type="button"
@@ -523,6 +550,7 @@ function GapCard({
 }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const upsertDebrief = useMeetingDebriefStore((s) => s.upsertState);
   const setDueTime = useTasksStore((s) => s.setDueTime);
@@ -606,6 +634,28 @@ function GapCard({
     }
   };
 
+  const snoozeDebriefUntilFree = async () => {
+    if (!user || !gap.eventId || !gap.occurrenceStartAt) return;
+    setBusy(true);
+    try {
+      await upsertDebrief(user.id, {
+        eventId: gap.eventId,
+        occurrenceStartAt: gap.occurrenceStartAt,
+        status: 'snoozed',
+        snoozedUntil: snoozeUntilFreeIso({
+          timezone: profile?.timezone ?? 'UTC',
+          events: useEventsStore.getState().events,
+          tasks: useTasksStore.getState().tasks,
+          meetingRules: parseMeetingRules(profile?.meeting_rules),
+        }),
+        snoozeMode: 'until_free',
+      });
+      onRefresh?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const snoozeDebrief = async () => {
     if (!user || !gap.eventId || !gap.occurrenceStartAt) return;
     setBusy(true);
@@ -615,6 +665,7 @@ function GapCard({
         occurrenceStartAt: gap.occurrenceStartAt,
         status: 'snoozed',
         snoozedUntil: snoozeUntil(new Date()),
+        snoozeMode: 'fixed',
       });
       onRefresh?.();
     } finally {
@@ -831,6 +882,11 @@ function GapCard({
           onClick: () => onOpenDebrief(debriefTarget),
         });
       }
+      btns.push({
+        label: "Until I'm free",
+        primary: true,
+        onClick: () => void snoozeDebriefUntilFree(),
+      });
       btns.push({
         label: 'Snooze 24h',
         onClick: () => void snoozeDebrief(),
