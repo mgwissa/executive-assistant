@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import { Auth } from './components/Auth';
+import { AgentDeskPage } from './components/AgentDeskPage';
 import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
 import { Dashboard } from './components/Dashboard';
@@ -25,6 +26,7 @@ import { debriefFetchRangeForDay } from './lib/meetingDebrief';
 import { resolveCalendarTimeZone } from './lib/calendarWeek';
 import { PENDING_NOTEBOOK_INVITE_KEY } from './lib/notebookSharing';
 import { viewPath } from './lib/routes';
+import { useAgentStore } from './store/useAgentStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useShellLayoutStore } from './store/useShellLayoutStore';
 import { useEventsStore } from './store/useEventsStore';
@@ -136,6 +138,7 @@ function Shell() {
   const fetchDebriefRange = useMeetingDebriefStore((s) => s.fetchRange);
   const clearDebrief = useMeetingDebriefStore((s) => s.clear);
   const clearToasts = useToastStore((s) => s.clear);
+  const clearAgent = useAgentStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -164,6 +167,7 @@ function Shell() {
       clearEvents();
       clearDebrief();
       clearToasts();
+      clearAgent();
     }
   }, [
     user,
@@ -190,6 +194,7 @@ function Shell() {
     clearEvents,
     clearDebrief,
     clearToasts,
+    clearAgent,
   ]);
 
   useEffect(() => {
@@ -360,6 +365,14 @@ export default function App() {
           element={
             <RequireOptionalFeature featureId="memory">
               <MemoryPage />
+            </RequireOptionalFeature>
+          }
+        />
+        <Route
+          path="agent"
+          element={
+            <RequireOptionalFeature featureId="agent">
+              <AgentDeskPage />
             </RequireOptionalFeature>
           }
         />

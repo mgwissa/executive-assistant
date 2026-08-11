@@ -127,6 +127,11 @@ export type Database = {
           weekly_routine: Json | null;
           focus_queue: Json | null;
           memory_last_synced_at: string | null;
+          /** Standing instructions the agent reads at the start of every run. */
+          agent_playbook: string | null;
+          agent_last_run_at: string | null;
+          /** Last time the owner opened the agent activity log. */
+          agent_log_seen_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -151,6 +156,9 @@ export type Database = {
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
           memory_last_synced_at?: string | null;
+          agent_playbook?: string | null;
+          agent_last_run_at?: string | null;
+          agent_log_seen_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -175,6 +183,9 @@ export type Database = {
           weekly_routine?: Json | null;
           focus_queue?: Json | null;
           memory_last_synced_at?: string | null;
+          agent_playbook?: string | null;
+          agent_last_run_at?: string | null;
+          agent_log_seen_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -563,6 +574,183 @@ export type Database = {
           created_at?: string;
           expires_at?: string;
           revoked_at?: string | null;
+        };
+      };
+      agent_runs: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: string;
+          status: string;
+          trigger_source: string;
+          summary: string | null;
+          stats: Json;
+          error: string | null;
+          started_at: string;
+          finished_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          kind?: string;
+          status?: string;
+          trigger_source?: string;
+          summary?: string | null;
+          stats?: Json;
+          error?: string | null;
+          started_at?: string;
+          finished_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          kind?: string;
+          status?: string;
+          trigger_source?: string;
+          summary?: string | null;
+          stats?: Json;
+          error?: string | null;
+          started_at?: string;
+          finished_at?: string | null;
+        };
+      };
+      agent_actions: {
+        Row: {
+          id: string;
+          user_id: string;
+          run_id: string | null;
+          kind: string;
+          title: string;
+          rationale: string | null;
+          /** Plain-language change lines, rendered as-is in the log. */
+          effects: Json;
+          /** What was touched, e.g. `{ type: 'task', id: '...' }`. */
+          target: Json;
+          /** Prior value of every column written - the undo contract. */
+          before: Json | null;
+          after: Json | null;
+          category: string;
+          status: string;
+          apply_error: string | null;
+          undo_error: string | null;
+          dedupe_key: string | null;
+          created_at: string;
+          undone_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          run_id?: string | null;
+          kind: string;
+          title: string;
+          rationale?: string | null;
+          effects?: Json;
+          target?: Json;
+          before?: Json | null;
+          after?: Json | null;
+          category?: string;
+          status?: string;
+          apply_error?: string | null;
+          undo_error?: string | null;
+          dedupe_key?: string | null;
+          created_at?: string;
+          undone_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          run_id?: string | null;
+          kind?: string;
+          title?: string;
+          rationale?: string | null;
+          effects?: Json;
+          target?: Json;
+          before?: Json | null;
+          after?: Json | null;
+          category?: string;
+          status?: string;
+          apply_error?: string | null;
+          undo_error?: string | null;
+          dedupe_key?: string | null;
+          created_at?: string;
+          undone_at?: string | null;
+        };
+      };
+      agent_memory: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: string;
+          key: string;
+          content: string;
+          source_run_id: string | null;
+          confidence: string;
+          pinned: boolean;
+          created_at: string;
+          updated_at: string;
+          expires_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          kind?: string;
+          key: string;
+          content: string;
+          source_run_id?: string | null;
+          confidence?: string;
+          pinned?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          expires_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          kind?: string;
+          key?: string;
+          content?: string;
+          source_run_id?: string | null;
+          confidence?: string;
+          pinned?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          expires_at?: string | null;
+        };
+      };
+      agent_briefs: {
+        Row: {
+          id: string;
+          user_id: string;
+          run_id: string | null;
+          kind: string;
+          /** `yyyy-MM-dd` in the owner's profile timezone. */
+          brief_date: string;
+          body: string;
+          stats: Json;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          run_id?: string | null;
+          kind: string;
+          brief_date: string;
+          body: string;
+          stats?: Json;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          run_id?: string | null;
+          kind?: string;
+          brief_date?: string;
+          body?: string;
+          stats?: Json;
+          read_at?: string | null;
+          created_at?: string;
         };
       };
     };

@@ -212,6 +212,91 @@ Requires migration `2026-05-22_038_memory_chunks.sql` (enables `pgvector`).
 
   Logs are visible under **Edge Functions → send-daily-digest → Invocations**.
 
+### Agent Desk (optional addon)
+
+A scheduled agent that works your queue between check-ins — triaging tasks,
+drafting chases, prepping meetings — and **acts directly** rather than filing
+suggestions. Every change it makes is written to an audit log at `/agent` with
+one-tap undo.
+
+Requires migration `2026-08-10_041_agent_desk.sql`.
+
+1. **Run the migration** in the Supabase SQL Editor.
+
+2. **Generate an agent secret** (authenticates the scheduled session to the
+   Edge Function):
+
+   ```powershell
+   openssl rand -hex 32
+   ```
+
+3. **Find your user id** — run this in the SQL Editor:
+
+   ```sql
+   select user_id, first_name from public.profiles;
+   ```
+
+4. **Set the Edge Function secrets:**
+
+   ```powershell
+   supabase secrets set AGENT_SECRET=<the random string from step 2>
+   supabase secrets set AGENT_USER_ID=<your user_id from step 3>
+   ```
+
+   `AGENT_USER_ID` pins the agent to a single account. The target user is never
+   read from the request, so the secret cannot be pointed at anyone else's data.
+
+5. **Deploy** — CI deploys every function on push to `main`, or manually:
+
+   ```powershell
+   supabase functions deploy agent-api
+   ```
+
+6. **Turn it on in the app**: **Profile → Optional features → Agent**, then open
+   **Agent** in the nav. The **Playbook** tab holds the standing instructions
+   each run reads — edit there to change behaviour without redeploying.
+
+**Smoke test** — confirms auth, context, and the log end to end:
+
+```powershell
+$body = '{"action":"context"}'
+curl -X POST "https://jfvwpxykktyehqeliwnx.supabase.co/functions/v1/agent-api" `
+  -H "x-agent-secret: <your AGENT_SECRET>" `
+  -H "Content-Type: application/json" `
+  -d $body
+```
+
+A 200 with a `context` object means the agent can see your workspace. A 401
+means the secret does not match; a 500 mentioning misconfiguration means one of
+the two env vars is missing.
+
+7. **Set up the scheduled runs** (GitHub Actions is the runtime — Cowork
+   sessions are behind an egress allowlist that blocks `*.supabase.co`, so they
+   cannot reach the function).
+
+   In **GitHub → Settings → Secrets and variables → Actions**, add two secrets:
+
+   | Secret | Value |
+   | --- | --- |
+   | `ANTHROPIC_API_KEY` | from console.anthropic.com |
+   | `AGENT_SECRET` | the same value you set in Supabase |
+
+   Optionally add a **variable** `AGENT_MODEL` to override the default
+   (`claude-sonnet-5`).
+
+   Then push. `.github/workflows/agent.yml` runs four crons — morning brief,
+   midday triage, evening close-out, and a Monday chase sweep. Times are UTC and
+   do **not** follow daylight saving; they are tuned for EDT.
+
+   Test it before trusting it: **Actions → Executive assistant agent → Run
+   workflow**, pick a run kind, and tick **dry run** to see what it would do
+   without changing anything.
+
+**How a run works**: `run.start` → `context` → do the thinking → `act` with a
+batch of changes → `brief.write` → `run.finish`. Each `act` entry carries a
+`dedupeKey` so reruns do not duplicate work, and the function refuses to make a
+change it cannot log.
+
 ## Scripts
 
 | Command         | What it does                    |

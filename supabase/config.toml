@@ -24,3 +24,9 @@ verify_jwt = false
 
 [functions.memory-ask]
 verify_jwt = false
+
+# Called by scheduled agent sessions over plain HTTP. Authorization is enforced
+# inside the function by checking `x-agent-secret` against the `AGENT_SECRET`
+# env var; the target user is pinned by `AGENT_USER_ID`.
+[functions.agent-api]
+verify_jwt = false

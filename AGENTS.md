@@ -49,6 +49,8 @@ src/
   styles/              CSS (notesEditor.css for BlockNote overrides)
   types/               database.ts (generated/maintained) + index.ts (re-exports)
   editor-test/         Scratch fixtures (not shipped to users)
+agent/
+  runner.mjs           Scheduled agent runtime (GitHub Actions; see Agent Desk)
 supabase/
   config.toml          Edge Function deploy config (verify_jwt = false where intentional)
   functions/           Deno Edge Functions
@@ -76,6 +78,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | `/profile` | `Profile` | Settings: name, timezone, addons, notifications, calendar URL |
 | `/assistant` | `AssistantPage` | **Optional addon** — executive command center (NOW / gaps / timeline) + briefing depth |
 | `/memory` | `MemoryPage` | **Optional addon** — RAG Q&A over notes, tasks, debriefs (OpenAI) |
+| `/agent` | `AgentDeskPage` | **Optional addon** — audit log of everything the scheduled agent changed, each entry undoable; plus brief, memory, and playbook tabs |
 | `/time` | `TimeTrackingPage` | **Optional addon** — timers, projects, day grouping |
 | `/routine` | `WeeklyRoutinePage` | **Optional addon** — weekly product-leader rhythm |
 
@@ -98,6 +101,11 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `time_entries`, `time_projects` | Time tracking | day-grouped, project-tagged |
 | `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status`, `template_version` (isolates progress when user saves a custom routine) |
 | `notebook_members`, `notebook_invites` | Notebook sharing | shared notebooks expose notes to other auth users via RLS |
+
+| `agent_runs` | One row per scheduled agent invocation | `kind`, `status`, `summary`, `stats`, `started_at` |
+| `agent_actions` | **The audit trail.** One row per write the agent made | `kind`, `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
+| `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
+| `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
 ### Notebook sharing (briefly)
 
@@ -128,6 +136,7 @@ Conventions:
 | `useSharingStore` | notebook invites + members |
 | `useShellLayoutStore` | mobile nav drawer + notes-sidebar collapsed flag |
 | `useThemeStore` | light/dark/system |
+| `useAgentStore` | agent runs / actions / briefs / memory; executes undo; saves the playbook |
 
 ## Priority system (tasks + action items)
 
@@ -160,6 +169,85 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
 **Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → B meeting lifecycle ✅ → C delegation (slice 1 ✅) → **D capacity** ✅ → **E focus stack** ✅ → **E decisions** ✅ (dashboard `ExecutiveDecisionQueue`) → **F evening close-out** ✅ (dashboard `ExecutiveEveningCloseout`, active after 5pm) → F capture → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
+
+## Agent Desk (Claude as a contributor)
+
+A scheduled agent **acts directly on the workspace** — creating tasks, adjusting
+priorities, reordering focus, logging chases. There is no approval queue. Trust
+comes from the audit trail instead, so the rules below are load-bearing rather
+than stylistic.
+
+**The runtime is GitHub Actions** (`.github/workflows/agent.yml` →
+`agent/runner.mjs`), not a Cowork scheduled session. This is not a preference:
+Cowork sessions run behind an egress allowlist that does not include
+`*.supabase.co`, so they cannot reach this workspace over HTTP at all. Actions
+runners have unrestricted network. See Gotchas.
+
+### The undo contract
+
+`agent_actions.before` holds the prior value of **every column the action
+wrote**, using **raw database column names** — not the camelCase used elsewhere
+in the app. Undo is then a literal `update(before)` against the row, with no
+translation layer to get wrong. If you add an action kind, preserve this.
+
+`lib/agentDesk.ts` `planUndo()` turns a logged action into an executable
+`UndoPlan`, or an `UndoRefusal` carrying a human reason (shown on the disabled
+Undo button, so an un-undoable entry is never a mystery).
+
+**A mutation that cannot be logged is not performed.** `agent-api` rolls the
+data change back if the audit insert fails, and writes the log row *before*
+deleting a task, since the row itself is the only way back.
+
+### Pieces
+
+| Piece | Where | Notes |
+|-------|-------|-------|
+| Migration | `2026-08-10_041_agent_desk.sql` | `agent_runs`, `agent_actions`, `agent_memory`, `agent_briefs` + `profiles.agent_playbook` / `agent_last_run_at` / `agent_log_seen_at` |
+| Edge Function | `supabase/functions/agent-api` | The agent's eyes (`context`) and hands (`act`). `verify_jwt = false` |
+| Store | `store/useAgentStore.ts` | Reads the log; executes undo client-side via the user's own RLS |
+| Page | `components/AgentDeskPage.tsx` | `/agent` — Activity / Brief / What I remember / Playbook |
+| Shared logic | `lib/agentDesk.ts`, `lib/agentPlaybook.ts` | Undo planning + narrowing; default standing instructions |
+| Runner | `agent/runner.mjs` | Node 22, zero deps. Anthropic tool-use loop: `context` → think → `act` → `finish_run` |
+| Schedule | `.github/workflows/agent.yml` | Four crons (morning / midday / evening / Monday chase) + manual dispatch with a dry-run flag |
+
+### agent-api
+
+Auth is an `x-agent-secret` header matched against the `AGENT_SECRET` env var
+(same shape as the cron functions). The target user is pinned by the
+`AGENT_USER_ID` env var and **never taken from the request**, so a leaked
+secret cannot be aimed at another user's data.
+
+Actions: `context`, `run.start`, `run.finish`, `act`, `brief.write`.
+Action kinds for `act`: `task_create`, `task_update`, `task_complete`,
+`task_delete`, `focus_reorder`, `chase_logged`, `memory_write`.
+
+Writes to `tasks` are filtered through the `TASK_WRITABLE` allowlist — unknown
+keys are dropped rather than rejected, so a slightly-wrong payload still does
+the useful part of its job.
+
+`act` runs its batch **sequentially on purpose**: dedupe checks and
+before-state reads must observe the effects of earlier actions in the batch.
+
+### Dedupe
+
+Every action should carry a `dedupeKey`, enforced by a partial unique index.
+Stable keys (`estimate:<taskId>`) for once-only work; time-bucketed keys
+(`chase:<taskId>:2026-W33`) for work allowed to recur. The `context` response
+includes recent actions so the agent can see what it already did.
+
+### Memory is the only continuity
+
+Agent runs are ephemeral and start with no memory of previous runs.
+`agent_memory` is the sole carry-forward. **Undone actions are the highest-value
+signal available** — the playbook instructs the agent to check for them at the
+start of every run and record the correction.
+
+### Steering it
+
+`profiles.agent_playbook` is read at the start of every run and is editable in
+the app (`/agent` → Playbook). Changing behaviour should mean editing that
+text, not redeploying. `lib/agentPlaybook.ts` holds the default offered when
+nothing is saved yet.
 
 ## Notes editor
 
@@ -211,6 +299,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
 - `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard shows directive above the shared **Action items** card (`DashboardActionItemsSection` — quick-add + checkbox complete); reference schedule/notes in collapsible panel.
+- `agent` — AgentDeskPage (`/agent`). Scheduled agent that acts directly on the workspace; see **Agent Desk** below.
 - `memory` — MemoryPage (`/memory`). RAG over `memory_chunks` via `memory-sync` + `memory-ask` Edge Functions. OpenAI embeddings + chat; cited answers link back to notes/tasks/calendar.
 
 ## Conventions
@@ -245,6 +334,13 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - Owner is on **Windows + PowerShell**. Bash-isms (`&&` chaining, heredocs, `$(cat <<EOF…)`) break the shell. Use `;` for chaining or split commands. For multi-line strings prefer `Write` tool over inline heredocs.
 
 ## Gotchas (already learned)
+
+- **Cowork/Claude sandbox sessions cannot reach `*.supabase.co`.** Egress is allowlisted — `registry.npmjs.org`, `pypi.org` and `api.github.com` resolve; `supabase.com` and the project domain return `000` (proxy 403 on CONNECT). Anything that needs to talk to this Supabase project on a schedule must run somewhere with real network, which is why the agent runtime is GitHub Actions. Verify with `curl -o /dev/null -w "%{http_code}"` before designing against any external host.
+- **This checkout has CRLF on disk but LF in the index**, so `git status` reports every tracked file as modified even when untouched. Use `git diff --ignore-cr-at-eol` to see real changes. When patching an existing file programmatically, read it, work in LF, and write it back as CRLF — otherwise you turn a phantom diff into a real 200-file one.
+- **`node_modules` holds Windows native binaries.** `npx vite build` fails with `MODULE_NOT_FOUND` on rolldown's native binding when run from a Linux shell against the same folder. `tsc -b` and `eslint` are pure JS and do work there, so use those for agent-side verification and run `npm run build` on Windows.
+- **Agent writes must be logged or rolled back.** `agent-api` reverses the data change when the `agent_actions` insert fails, and logs *before* deleting a task. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
+- **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
+- **`AGENT_USER_ID` pins the agent to one user.** Never read the target user from the request body; a leaked `AGENT_SECRET` would then be aimable at anyone.
 
 - **`auth.uid()` is NULL in the Supabase SQL Editor** (it runs as superuser). Filter by an explicit `user_id` when testing queries that reference RLS-sensitive policies.
 - **`pg_net` schema:** call `net.http_post`, **not** `extensions.http_post`. We had a trigger bug from this once.
@@ -288,7 +384,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 ## CI
 
-`.github/workflows/` contains a workflow that auto-deploys Edge Functions on push to `main` (manual trigger also available).
+`.github/workflows/agent.yml` runs the scheduled agent (see **Agent Desk**). `.github/workflows/deploy-edge-functions.yml` auto-deploys Edge Functions on push to `main` (manual trigger also available).
 
 ## When you (the agent) start working
 

@@ -42,3 +42,16 @@ export type EventUpdate = Database['public']['Tables']['events']['Update'];
 export type UsefulLink = Database['public']['Tables']['useful_links']['Row'];
 export type UsefulLinkInsert = Database['public']['Tables']['useful_links']['Insert'];
 export type UsefulLinkUpdate = Database['public']['Tables']['useful_links']['Update'];
+
+export type AgentRun = Database['public']['Tables']['agent_runs']['Row'];
+export type AgentRunInsert = Database['public']['Tables']['agent_runs']['Insert'];
+
+export type AgentAction = Database['public']['Tables']['agent_actions']['Row'];
+export type AgentActionInsert = Database['public']['Tables']['agent_actions']['Insert'];
+export type AgentActionUpdate = Database['public']['Tables']['agent_actions']['Update'];
+
+export type AgentMemory = Database['public']['Tables']['agent_memory']['Row'];
+export type AgentMemoryInsert = Database['public']['Tables']['agent_memory']['Insert'];
+
+export type AgentBrief = Database['public']['Tables']['agent_briefs']['Row'];
+export type AgentBriefInsert = Database['public']['Tables']['agent_briefs']['Insert'];
