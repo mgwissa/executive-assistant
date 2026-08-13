@@ -26,6 +26,7 @@ export const AGENT_ACTION_KINDS = [
   'focus_reorder',
   'chase_logged',
   'memory_write',
+  'note_create',
 ] as const;
 
 export type AgentActionKind = (typeof AGENT_ACTION_KINDS)[number];
@@ -71,6 +72,7 @@ export type AgentTarget =
   | { type: 'task'; id: string }
   | { type: 'profile' }
   | { type: 'memory'; key: string }
+  | { type: 'note'; id: string }
   | { type: 'unknown' };
 
 export function parseTarget(raw: unknown): AgentTarget {
@@ -81,6 +83,10 @@ export function parseTarget(raw: unknown): AgentTarget {
     return id ? { type: 'task', id } : { type: 'unknown' };
   }
   if (type === 'profile') return { type: 'profile' };
+  if (type === 'note') {
+    const id = str(raw.id);
+    return id ? { type: 'note', id } : { type: 'unknown' };
+  }
   if (type === 'memory') {
     const key = str(raw.key);
     return key ? { type: 'memory', key } : { type: 'unknown' };
@@ -110,7 +116,8 @@ export type UndoPlan =
   | { op: 'restore_task'; row: ColumnPatch }
   | { op: 'patch_profile'; patch: ColumnPatch }
   | { op: 'delete_memory'; key: string }
-  | { op: 'restore_memory'; key: string; row: ColumnPatch };
+  | { op: 'restore_memory'; key: string; row: ColumnPatch }
+  | { op: 'delete_note'; noteId: string };
 
 export type UndoRefusal = { reason: string };
 
@@ -192,6 +199,13 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'restore_memory', key: target.key, row: before };
     }
 
+    case 'note_create': {
+      if (target.type !== 'note') {
+        return { reason: 'Missing the note reference needed to undo this' };
+      }
+      return { op: 'delete_note', noteId: target.id };
+    }
+
     default:
       return { reason: `Unrecognised action type "${action.kind}"` };
   }
@@ -214,6 +228,7 @@ export const ACTION_KIND_META: Record<
   focus_reorder: { label: 'Reordered focus', accent: 'brand' },
   chase_logged: { label: 'Chase drafted', accent: 'blue' },
   memory_write: { label: 'Learned', accent: 'purple' },
+  note_create: { label: 'Captured note', accent: 'blue' },
 };
 
 export const RUN_KIND_LABEL: Record<AgentRunKind, string> = {

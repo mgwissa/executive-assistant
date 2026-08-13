@@ -53,6 +53,9 @@ src/
   editor-test/         Scratch fixtures (not shipped to users)
 agent/
   runner.mjs           Dormant legacy Claude runner retained for reference
+codex/
+  bridge.mjs           Local secret-loading HTTP client for the Codex bridge
+  README.md            One-time setup + request contract
 supabase/
   config.toml          Edge Function deploy config (verify_jwt = false where intentional)
   functions/           Deno Edge Functions
@@ -60,6 +63,7 @@ supabase/
     send-daily-digest/
     send-task-escalation/
     sync-outlook-calendar/
+    codex-api/          Explicit secret-protected context + audited mutations
   migrations/          Apply in filename order via SQL editor
 README.md              Human setup guide (Resend, cron, secrets, etc.)
 AGENTS.md              ← you are here
@@ -105,7 +109,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `notebook_members`, `notebook_invites` | Notebook sharing | shared notebooks expose notes to other auth users via RLS |
 
 | `agent_runs` | One row per scheduled agent invocation | `kind`, `status`, `summary`, `stats`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per write the agent made | `kind`, `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
+| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
@@ -147,8 +151,8 @@ The agent-first operational model separates **real deadlines** (`due_date`) from
 review dates mean “bring this back for a decision.” Today ranks an explicit
 `profiles.focus_queue` first, then real deadlines, then review dates that have
 arrived, and explains “why now” for each item. Future review dates stay quiet.
-`WorkPage` is the full operational inventory and lets the owner temporarily add
-or remove a task from `focus_queue` while the Codex bridge is not yet present.
+`WorkPage` is the full operational inventory and lets the owner manually
+override `focus_queue`; Codex can manage the same queue through the bridge.
 
 The five-level priority field remains for legacy screens, note syntax, and data
 compatibility, but quick capture and task details no longer ask the owner to
@@ -188,12 +192,11 @@ Today path.
 
 **Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → B meeting lifecycle ✅ → C delegation (slice 1 ✅) → **D capacity** ✅ → **E focus stack** ✅ → **E decisions** ✅ (dashboard `ExecutiveDecisionQueue`) → **F evening close-out** ✅ (dashboard `ExecutiveEveningCloseout`, active after 5pm) → F capture → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
 
-## Agent Desk (dormant legacy Claude implementation)
+## Agent audit trail and legacy Claude implementation
 
-The Claude runner and Agent Desk were the previous automation direction. The
-scheduled GitHub Actions workflow has been removed, its secrets were deleted,
-and this addon is hidden. Keep the runner, API, tables, and audit UI intact for
-reference until the Codex bridge has a concrete replacement and migration plan.
+The Claude runner was the previous automation direction. Its schedule and
+secrets are removed. The hidden Agent Desk, audit tables, and undo machinery are
+retained because the explicit Codex bridge reuses that trust layer.
 
 ### The undo contract
 
@@ -206,9 +209,8 @@ translation layer to get wrong. If you add an action kind, preserve this.
 `UndoPlan`, or an `UndoRefusal` carrying a human reason (shown on the disabled
 Undo button, so an un-undoable entry is never a mystery).
 
-**A mutation that cannot be logged is not performed.** `agent-api` rolls the
-data change back if the audit insert fails, and writes the log row *before*
-deleting a task, since the row itself is the only way back.
+**A mutation that cannot be logged is not performed.** Both bridge functions
+roll the data change back if the audit insert fails.
 
 ### Pieces
 
@@ -220,6 +222,31 @@ deleting a task, since the row itself is the only way back.
 | Page | `components/AgentDeskPage.tsx` | `/agent` — Activity / Brief / What I remember / Playbook |
 | Shared logic | `lib/agentDesk.ts`, `lib/agentPlaybook.ts` | Undo planning + narrowing; default standing instructions |
 | Runner | `agent/runner.mjs` | Dormant Node 22 Anthropic tool-use loop retained for reference; nothing invokes it |
+
+## Codex bridge (explicit desktop access)
+
+`supabase/functions/codex-api` is the active agent-first integration. It does
+not call a model or poll. Codex invokes it from this repository only when the
+owner asks for workspace context or a change.
+
+- Auth: `x-codex-secret` matched against `CODEX_BRIDGE_SECRET`.
+- Scope: `CODEX_USER_ID` pins every read/write to one user; request payloads
+  never choose the user.
+- Client: `codex/bridge.mjs` reads `.env.codex-bridge` (gitignored). Never print
+  or commit the secret.
+- Reads: two-week calendar window, open/recent tasks, focus state, notebook and
+  section ids, recent/linked-note excerpts, recent audit actions; plus bounded
+  note search.
+- Writes: task create/update/complete, ordered focus queue, and safe creation of
+  a legacy-markdown note. No task deletion, priority mutation, or arbitrary
+  rewrite of existing BlockNote documents.
+- Audit: each `mutate` request creates a manual `agent_runs` row; each applied
+  mutation creates an undoable `agent_actions` row. `note_create` undo deletes
+  the created note.
+
+Deployment order: apply `2026-08-13_043_codex_bridge_actions.sql`, set
+`CODEX_BRIDGE_SECRET` + `CODEX_USER_ID`, then deploy `codex-api`. See
+`codex/README.md` for the local configuration and request schema.
 
 ### agent-api
 

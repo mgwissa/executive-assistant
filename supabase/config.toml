@@ -30,3 +30,7 @@ verify_jwt = false
 # env var; the target user is pinned by `AGENT_USER_ID`.
 [functions.agent-api]
 verify_jwt = false
+
+# Explicit Codex desktop bridge. Own secret auth + server-pinned user id.
+[functions.codex-api]
+verify_jwt = false

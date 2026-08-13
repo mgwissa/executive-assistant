@@ -11,6 +11,7 @@ import type {
   TaskUpdate,
 } from '../types';
 import { useProfileStore } from './useProfileStore';
+import { useNotesStore } from './useNotesStore';
 import { useTasksStore } from './useTasksStore';
 
 const RUN_LIMIT = 40;
@@ -92,6 +93,10 @@ async function executeUndo(userId: string, plan: UndoPlan): Promise<string | nul
         .upsert({ ...plan.row, user_id: userId, key: plan.key } as never, {
           onConflict: 'user_id,key',
         });
+      return error?.message ?? null;
+    }
+    case 'delete_note': {
+      const { error } = await supabase.from('notes').delete().eq('id', plan.noteId);
       return error?.message ?? null;
     }
     default:
@@ -205,6 +210,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     await useTasksStore.getState().fetchAll(userId);
     if (plan.op === 'patch_profile') {
       await useProfileStore.getState().fetchProfile(userId);
+    }
+    if (plan.op === 'delete_note') {
+      await useNotesStore.getState().fetchAll(userId);
     }
     return !markErr;
   },
