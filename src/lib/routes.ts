@@ -12,6 +12,7 @@ export type View =
   | 'routine'
   | 'assistant'
   | 'memory'
+  | 'activity'
   | 'agent';
 
 export const VIEW_PATHS: Record<View, string> = {
@@ -26,6 +27,7 @@ export const VIEW_PATHS: Record<View, string> = {
   routine: '/routine',
   assistant: '/assistant',
   memory: '/memory',
+  activity: '/activity',
   agent: '/agent',
 };
 
@@ -41,6 +43,7 @@ const PATH_TO_VIEW: Record<string, View> = {
   '/routine': 'routine',
   '/assistant': 'assistant',
   '/memory': 'memory',
+  '/activity': 'activity',
   '/agent': 'agent',
 };
 

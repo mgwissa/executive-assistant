@@ -12,6 +12,7 @@ const titles: Record<string, string> = {
   profile: 'Profile',
   time: 'Time tracking',
   routine: 'Weekly routine',
+  activity: 'Codex activity',
 };
 
 const subtitles: Record<string, string> = {
@@ -25,6 +26,7 @@ const subtitles: Record<string, string> = {
   time: 'Where your hours are going.',
   routine: 'This week\u2019s rhythm.',
   assistant: 'Your morning briefing in full.',
+  activity: 'A reversible record of changes Codex made to your workspace.',
 };
 
 export function TopBar() {

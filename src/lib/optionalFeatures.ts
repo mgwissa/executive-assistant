@@ -96,6 +96,7 @@ const CORE_NAV_ORDER: NavItemDef[] = [
   { id: 'tasks', label: 'Work', Icon: CheckSquareIcon, accent: 'amber' },
   { id: 'owed', label: 'Owed to me', Icon: InboxIcon, accent: 'green' },
   { id: 'notes', label: 'Notes', Icon: NoteIcon, accent: 'brand' },
+  { id: 'activity', label: 'Codex activity', Icon: TargetIcon, accent: 'brand' },
 ];
 
 export const PROFILE_NAV_ITEM: NavItemDef = {

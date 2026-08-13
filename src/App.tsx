@@ -338,6 +338,7 @@ export default function App() {
         <Route path="tasks" element={<WorkPage />} />
         <Route path="owed" element={<OwedToMePage />} />
         <Route path="notes" element={<NotesView />} />
+        <Route path="activity" element={<AgentDeskPage activityOnly />} />
         <Route
           path="time"
           element={

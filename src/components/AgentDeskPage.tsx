@@ -140,6 +140,32 @@ function ActionRow({
             This change did not apply: {action.apply_error}
           </p>
         ) : null}
+
+        {action.before || action.after ? (
+          <details className="mt-2 text-xs text-text-subtle">
+            <summary className="cursor-pointer select-none font-medium text-text-muted hover:text-text">
+              Exact change
+            </summary>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {action.before ? (
+                <div className="min-w-0 rounded-md border border-border bg-surface-sunken p-2">
+                  <p className="mb-1 font-semibold uppercase tracking-wide">Before</p>
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                    {JSON.stringify(action.before, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+              {action.after ? (
+                <div className="min-w-0 rounded-md border border-border bg-surface-sunken p-2">
+                  <p className="mb-1 font-semibold uppercase tracking-wide">After</p>
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
+                    {JSON.stringify(action.after, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-3 sm:pt-0.5">
@@ -294,7 +320,7 @@ function PlaybookPanel({
   );
 }
 
-export function AgentDeskPage() {
+export function AgentDeskPage({ activityOnly = false }: { activityOnly?: boolean } = {}) {
   const user = useAuthStore((s) => s.user);
   const profile = useProfileStore((s) => s.profile);
   const savingProfile = useProfileStore((s) => s.saving);
@@ -343,10 +369,13 @@ export function AgentDeskPage() {
                 <BrainIcon className="h-5 w-5" />
               </IconBadge>
               <div className="min-w-0">
-                <h1 className="text-2xl font-semibold tracking-tight text-text">Agent</h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-text">
+                  {activityOnly ? 'Codex activity' : 'Agent'}
+                </h1>
                 <p className="mt-1.5 text-sm leading-relaxed text-text-muted">
-                  Everything I changed in your workspace, newest first. Nothing here is a
-                  suggestion — it already happened, and every entry can be reversed.
+                  {activityOnly
+                    ? 'Every workspace change Codex made, newest first, with the reason, exact data, and an undo action when reversal is safe.'
+                    : 'Everything I changed in your workspace, newest first. Nothing here is a suggestion — it already happened, and every reversible entry has an undo action.'}
                   {lastRunAt ? (
                     <> Last run {formatRelative(lastRunAt)}.</>
                   ) : (
@@ -380,7 +409,7 @@ export function AgentDeskPage() {
             </div>
           </div>
 
-          <nav className="flex flex-wrap gap-1 border-b border-border">
+          {!activityOnly ? <nav className="flex flex-wrap gap-1 border-b border-border">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -396,7 +425,7 @@ export function AgentDeskPage() {
                 {t.label}
               </button>
             ))}
-          </nav>
+          </nav> : null}
         </header>
 
         {error ? (
@@ -405,7 +434,7 @@ export function AgentDeskPage() {
           </p>
         ) : null}
 
-        {tab === 'activity' ? (
+        {activityOnly || tab === 'activity' ? (
           loading && actions.length === 0 ? (
             <Card padded="none">
               <EmptyState
@@ -419,7 +448,7 @@ export function AgentDeskPage() {
               <EmptyState
                 icon={<BrainIcon className="h-5 w-5" />}
                 title="Nothing yet"
-                message="Once a scheduled run happens, everything I touch shows up here with an undo button."
+                message="Once Codex changes something, it will show up here with its reason and an undo action when reversal is safe."
               />
             </Card>
           ) : (
@@ -437,7 +466,7 @@ export function AgentDeskPage() {
           )
         ) : null}
 
-        {tab === 'brief' ? (
+        {!activityOnly && tab === 'brief' ? (
           latestBrief ? (
             <div>
               <SectionHeader
@@ -461,7 +490,7 @@ export function AgentDeskPage() {
           )
         ) : null}
 
-        {tab === 'memory' ? (
+        {!activityOnly && tab === 'memory' ? (
           memory.length === 0 ? (
             <Card padded="none">
               <EmptyState
@@ -493,7 +522,7 @@ export function AgentDeskPage() {
           )
         ) : null}
 
-        {tab === 'playbook' && user ? (
+        {!activityOnly && tab === 'playbook' && user ? (
           <PlaybookPanel
             key={profile?.agent_playbook ?? ''}
             initial={profile?.agent_playbook ?? DEFAULT_AGENT_PLAYBOOK}
