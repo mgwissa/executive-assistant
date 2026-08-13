@@ -299,7 +299,7 @@ export function TodayPage() {
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Focus queue</h2>
             </div>
             <button type="button" className="btn-ghost" onClick={() => navigate(viewPath('tasks'))}>
-              All tasks <ArrowRightIcon className="h-3.5 w-3.5" />
+              All work <ArrowRightIcon className="h-3.5 w-3.5" />
             </button>
           </div>
           <Card padded="none" className="overflow-hidden">
@@ -315,7 +315,7 @@ export function TodayPage() {
             </div>
             {today.focus.length === 0 ? (
               <div className="px-4 py-5 text-sm text-text-muted sm:px-5">
-                Nothing is being pushed right now. Real deadlines and tasks whose review date has arrived will appear here.
+                Nothing is being pushed right now. Real deadlines and arrived review dates appear automatically; Work can set a temporary starting point until the Codex bridge manages this queue.
               </div>
             ) : (
               <ul className="divide-y divide-border">

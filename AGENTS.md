@@ -40,6 +40,7 @@ src/
   main.tsx             Vite entry
   components/          UI components (one file per concern)
     TodayPage.tsx       Routed home view: actual schedule, linked note context, focus windows, advisory concerns
+    WorkPage.tsx        Routed commitments view: focus, deadlines, reviews, waiting, unscheduled, note items
     TaskQuickAddForm.tsx  Shared task create form (Tasks, Today, legacy Dashboard/Assistant)
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
@@ -72,7 +73,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 |------|------|-------|
 | `/dashboard` | `TodayPage` | Primary daily view: chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
-| `/tasks` | `Tasks` | Standalone tasks + extracted action items from notes |
+| `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, and note action items. Legacy `Tasks` remains in code but is not routed. |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
 | `/calendar` | `Calendar` | Today/Week view; sources: manual events + Outlook ICS |
 | `/links` | `UsefulLinksPage` | User-curated bookmarks |
@@ -146,6 +147,8 @@ The agent-first operational model separates **real deadlines** (`due_date`) from
 review dates mean “bring this back for a decision.” Today ranks an explicit
 `profiles.focus_queue` first, then real deadlines, then review dates that have
 arrived, and explains “why now” for each item. Future review dates stay quiet.
+`WorkPage` is the full operational inventory and lets the owner temporarily add
+or remove a task from `focus_queue` while the Codex bridge is not yet present.
 
 The five-level priority field remains for legacy screens, note syntax, and data
 compatibility, but quick capture and task details no longer ask the owner to

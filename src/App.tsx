@@ -15,7 +15,7 @@ import { Editor } from './components/Editor';
 import { BookIcon, ChevronRightIcon } from './components/icons';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
-import { Tasks } from './components/Tasks';
+import { WorkPage } from './components/WorkPage';
 import { TodayPage } from './components/TodayPage';
 import { TopBar } from './components/TopBar';
 import { WorkNudgeHost } from './components/WorkNudgeHost';
@@ -335,7 +335,7 @@ export default function App() {
         />
         <Route path="calendar" element={<Calendar />} />
         <Route path="links" element={<UsefulLinksPage />} />
-        <Route path="tasks" element={<Tasks />} />
+        <Route path="tasks" element={<WorkPage />} />
         <Route path="owed" element={<OwedToMePage />} />
         <Route path="notes" element={<NotesView />} />
         <Route

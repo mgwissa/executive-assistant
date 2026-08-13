@@ -7,7 +7,7 @@ const titles: Record<string, string> = {
   links: 'Links',
   calendar: 'Calendar',
   owed: 'Owed to me',
-  tasks: 'Tasks',
+  tasks: 'Work',
   notes: 'Notes',
   profile: 'Profile',
   time: 'Time tracking',

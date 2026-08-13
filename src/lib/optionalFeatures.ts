@@ -93,7 +93,7 @@ const CORE_NAV_ORDER: NavItemDef[] = [
   { id: 'dashboard', label: 'Today', Icon: HomeIcon, accent: 'purple' },
   { id: 'links', label: 'Links', Icon: LinkIcon, accent: 'brand' },
   { id: 'calendar', label: 'Calendar', Icon: CalendarIcon, accent: 'blue' },
-  { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon, accent: 'amber' },
+  { id: 'tasks', label: 'Work', Icon: CheckSquareIcon, accent: 'amber' },
   { id: 'owed', label: 'Owed to me', Icon: InboxIcon, accent: 'green' },
   { id: 'notes', label: 'Notes', Icon: NoteIcon, accent: 'brand' },
 ];
