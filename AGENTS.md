@@ -377,6 +377,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **This checkout has CRLF on disk but LF in the index**, so `git status` reports every tracked file as modified even when untouched. Use `git diff --ignore-cr-at-eol` to see real changes. When patching an existing file programmatically, read it, work in LF, and write it back as CRLF — otherwise you turn a phantom diff into a real 200-file one.
 - **`node_modules` holds Windows native binaries.** `npx vite build` fails with `MODULE_NOT_FOUND` on rolldown's native binding when run from a Linux shell against the same folder. `tsc -b` and `eslint` are pure JS and do work there, so use those for agent-side verification and run `npm run build` on Windows.
 - **Agent writes must be logged or rolled back.** `agent-api` reverses the data change when the `agent_actions` insert fails, and logs *before* deleting a task. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
+- **Codex bridge note responses strip embedded image data.** Keep `sanitizeNoteText()` ahead of response truncation in `codex-api`; otherwise markdown data-URI images can inflate a context response by megabytes.
 - **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
 - **`AGENT_USER_ID` pins the agent to one user.** Never read the target user from the request body; a leaked `AGENT_SECRET` would then be aimable at anyone.
 

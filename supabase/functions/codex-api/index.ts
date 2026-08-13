@@ -86,6 +86,14 @@ function truncate(value: unknown, length: number): string {
   return text.length <= length ? text : `${text.slice(0, length)}…`;
 }
 
+function sanitizeNoteText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/!\[[^\]]*\]\(data:image\/[^)]+\)/gi, '[embedded image omitted]')
+    .replace(/<img\b[^>]*\bsrc=["']data:image\/[^"']+["'][^>]*>/gi, '[embedded image omitted]')
+    .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+/gi, '[embedded image omitted]');
+}
+
 function priorValues(row: JsonRecord, keys: string[]): JsonRecord {
   return Object.fromEntries(keys.map((key) => [key, row[key] ?? null]));
 }
@@ -376,11 +384,14 @@ async function buildContext(admin: SupabaseClient, userId: string) {
 
   const events = eventsRes.data ?? [];
   const eventIds = new Set(events.map((event) => event.id));
-  const notes = (notesRes.data ?? []).map((note) => ({
-    ...note,
-    content: eventIds.has(note.linked_event_id) ? truncate(note.content, 12_000) : undefined,
-    excerpt: truncate(note.content, 800),
-  }));
+  const notes = (notesRes.data ?? []).map((note) => {
+    const safeContent = sanitizeNoteText(note.content);
+    return {
+      ...note,
+      content: eventIds.has(note.linked_event_id) ? truncate(safeContent, 12_000) : undefined,
+      excerpt: truncate(safeContent, 800),
+    };
+  });
 
   return {
     now: now.toISOString(),
@@ -408,7 +419,7 @@ async function searchNotes(admin: SupabaseClient, userId: string, query: string)
   return (data ?? [])
     .filter((note) => `${note.title}\n${note.content}`.toLocaleLowerCase().includes(needle))
     .slice(0, 20)
-    .map((note) => ({ ...note, content: truncate(note.content, 12_000) }));
+    .map((note) => ({ ...note, content: truncate(sanitizeNoteText(note.content), 12_000) }));
 }
 
 Deno.serve(async (req) => {
