@@ -1,17 +1,15 @@
 import type { BlockNoteEditor } from '@blocknote/core';
 import { setActionItemLineDueDate, setActionItemLinePriority } from './format';
 import type { TaskPriority } from './priority';
-import { PRIORITY_ORDER, dueDateForPriority } from './priority';
+import { PRIORITY_ORDER } from './priority';
 
-/** Markdown for a new checkbox line at a given priority (with auto due when applicable). */
+/** Markdown for a new checkbox line at a legacy priority. Deadlines stay explicit. */
 export function newTaskMarkdown(priority: TaskPriority | 'plain'): string {
   if (priority === 'plain') {
     return '- [ ] New task\n';
   }
   const n = PRIORITY_ORDER.indexOf(priority);
-  const due = dueDateForPriority(priority);
-  const duePart = due ? ` [due:${due}]` : '';
-  return `- [ ] [P${n}]${duePart} New task\n`;
+  return `- [ ] [P${n}] New task\n`;
 }
 
 export function insertTaskMarkdownAfterCursor(

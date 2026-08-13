@@ -9,6 +9,13 @@ import { normalizeDueTime } from './taskSchedule';
 import { workMinutesForItem } from './taskCapacity';
 import type { Event, Note, Task } from '../types';
 
+export type TodayFocusItem = {
+  taskId: string;
+  title: string;
+  whyNow: string;
+  timingLabel: string | null;
+};
+
 export type TodayAgendaItem =
   | {
       id: string;
@@ -46,6 +53,7 @@ export type TodayViewModel = {
   agenda: TodayAgendaItem[];
   openWindows: Array<{ id: string; start: Date; end: Date }>;
   concerns: TodayConcern[];
+  focus: TodayFocusItem[];
   summary: {
     meetingCount: number;
     meetingMinutes: number;
@@ -61,6 +69,7 @@ type TodayViewInput = {
   tasks: Task[];
   notes: Note[];
   directive: DirectiveReport;
+  focusTaskIds?: string[];
 };
 
 const SEVERITY_RANK: Record<TodayConcern['severity'], number> = {
@@ -117,7 +126,7 @@ function nextIsoDate(isoDate: string): string {
 }
 
 export function buildTodayViewModel(input: TodayViewInput): TodayViewModel {
-  const { now, timezone, events, tasks, notes, directive } = input;
+  const { now, timezone, events, tasks, notes, directive, focusTaskIds = [] } = input;
   const { start: dayStart, end: workdayEnd, todayIso } = executiveDayBounds(now, timezone);
   const meetings = dedupeOccurrences(
     events.flatMap((event) =>
@@ -195,6 +204,44 @@ export function buildTodayViewModel(input: TodayViewInput): TodayViewModel {
   const dueWorkCount = tasks.filter(
     (task) => !task.done && task.due_date != null && task.due_date <= todayIso,
   ).length;
+
+  const focusOrder = new Map(focusTaskIds.map((id, index) => [id, index]));
+  const focus = tasks
+    .filter((task) => {
+      if (task.done || task.waiting_on) return false;
+      if (focusOrder.has(task.id)) return true;
+      if (task.due_date) return true;
+      if (task.review_date) return task.review_date <= todayIso;
+      return false;
+    })
+    .map((task) => {
+      const explicitIndex = focusOrder.get(task.id);
+      if (explicitIndex != null) {
+        return { task, rank: explicitIndex, whyNow: 'Chosen for the active focus queue.' };
+      }
+      if (task.due_date && task.due_date < todayIso) {
+        return { task, rank: 100, whyNow: 'A real deadline has passed; decide whether to finish, renegotiate, or close it.' };
+      }
+      if (task.due_date === todayIso) {
+        return { task, rank: 110, whyNow: 'A real deadline lands today.' };
+      }
+      if (task.due_date) {
+        return { task, rank: 120, whyNow: 'A real deadline is approaching.' };
+      }
+      return { task, rank: 200, whyNow: 'Its review date has arrived; decide whether to activate, defer, or close it.' };
+    })
+    .sort((a, b) => a.rank - b.rank || (a.task.due_date ?? a.task.review_date ?? '').localeCompare(b.task.due_date ?? b.task.review_date ?? ''))
+    .slice(0, 5)
+    .map(({ task, whyNow }) => ({
+      taskId: task.id,
+      title: task.title,
+      whyNow,
+      timingLabel: task.due_date
+        ? `Deadline ${task.due_date}`
+        : task.review_date
+          ? `Review ${task.review_date}`
+          : null,
+    }));
   const meetingMinutes = Math.round(
     meetings.reduce((sum, meeting) => sum + (meeting.end.getTime() - meeting.start.getTime()) / 60_000, 0),
   );
@@ -240,6 +287,7 @@ export function buildTodayViewModel(input: TodayViewInput): TodayViewModel {
     agenda,
     openWindows,
     concerns: rankedConcerns,
+    focus,
     summary: {
       meetingCount: meetings.length,
       meetingMinutes,

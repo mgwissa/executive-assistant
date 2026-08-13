@@ -8,6 +8,8 @@ import { extractActionItems } from '../lib/format';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { viewPath } from '../lib/routes';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
+import { parseFocusQueue } from '../lib/focusQueue';
+import { toCreateTaskOptions, type TaskQuickAddPayload } from '../lib/taskQuickAdd';
 import {
   buildTodayViewModel,
   formatDuration,
@@ -29,11 +31,7 @@ import {
   SparklesIcon,
 } from './icons';
 import { TaskDetailModal } from './TaskDetailModal';
-import {
-  TaskQuickAddForm,
-  toCreateTaskOptions,
-  type TaskQuickAddPayload,
-} from './TaskQuickAddForm';
+import { TaskQuickAddForm } from './TaskQuickAddForm';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
@@ -110,17 +108,18 @@ export function TodayPage() {
     [tasks, actionItems, events, timezone, now, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates],
   );
   const today = useMemo(
-    () => buildTodayViewModel({ now, timezone, events, tasks, notes, directive }),
-    [now, timezone, events, tasks, notes, directive],
+    () => {
+      const focusTaskIds = parseFocusQueue(profile?.focus_queue).stack
+        .filter((ref) => ref.kind === 'task')
+        .map((ref) => ref.taskId);
+      return buildTodayViewModel({ now, timezone, events, tasks, notes, directive, focusTaskIds });
+    },
+    [now, timezone, events, tasks, notes, directive, profile?.focus_queue],
   );
 
   const selectedTask = selectedTaskId
     ? tasks.find((task) => task.id === selectedTaskId) ?? null
     : null;
-  const dueWork = tasks
-    .filter((task) => !task.done && task.due_date != null && task.due_date <= today.todayIso)
-    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
-    .slice(0, 5);
   const loading = notesLoading || tasksLoading || eventsLoading;
   const dateLabel = formatInTimeZone(now, timezone, 'EEEE, MMMM d');
 
@@ -172,7 +171,7 @@ export function TodayPage() {
             detail="In windows of 20m or more"
           />
           <SummaryMetric
-            label="Due work"
+            label="Deadlines"
             value={String(today.summary.dueWorkCount)}
             detail="Due today or overdue"
           />
@@ -297,7 +296,7 @@ export function TodayPage() {
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">Commitments</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Due now</h2>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Focus queue</h2>
             </div>
             <button type="button" className="btn-ghost" onClick={() => navigate(viewPath('tasks'))}>
               All tasks <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -314,23 +313,29 @@ export function TodayPage() {
                 onSubmit={handleQuickAdd}
               />
             </div>
-            {dueWork.length === 0 ? (
-              <div className="px-4 py-5 text-sm text-text-muted sm:px-5">Nothing is due today or overdue.</div>
+            {today.focus.length === 0 ? (
+              <div className="px-4 py-5 text-sm text-text-muted sm:px-5">
+                Nothing is being pushed right now. Real deadlines and tasks whose review date has arrived will appear here.
+              </div>
             ) : (
               <ul className="divide-y divide-border">
-                {dueWork.map((task) => (
-                  <li key={task.id} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+                {today.focus.map((item, index) => (
+                  <li key={item.taskId} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-xs font-semibold text-brand-600 dark:text-brand-300">
+                      {index + 1}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => void toggleTaskDone(task.id, true)}
+                      onClick={() => void toggleTaskDone(item.taskId, true)}
                       className="mt-0.5 text-text-muted hover:text-emerald-500"
-                      aria-label={`Complete ${task.title}`}
+                      aria-label={`Complete ${item.title}`}
                     >
                       <SquareIcon className="h-4 w-4" />
                     </button>
-                    <button type="button" onClick={() => setSelectedTaskId(task.id)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm font-medium text-text hover:text-brand-600 dark:hover:text-brand-300">{task.title}</p>
-                      <p className="mt-0.5 text-xs text-text-muted">{task.due_date && task.due_date < today.todayIso ? `Overdue since ${task.due_date}` : 'Due today'}</p>
+                    <button type="button" onClick={() => setSelectedTaskId(item.taskId)} className="min-w-0 flex-1 text-left">
+                      <p className="truncate text-sm font-medium text-text hover:text-brand-600 dark:hover:text-brand-300">{item.title}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.whyNow}</p>
+                      {item.timingLabel ? <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-text-subtle">{item.timingLabel}</p> : null}
                     </button>
                   </li>
                 ))}

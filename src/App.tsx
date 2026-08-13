@@ -124,7 +124,6 @@ function Shell() {
   const profile = useProfileStore((s) => s.profile);
   const updateProfile = useProfileStore((s) => s.updateProfile);
   const fetchTasks = useTasksStore((s) => s.fetchAll);
-  const applyEscalationFromProfile = useTasksStore((s) => s.applyEscalationFromProfile);
   const clearTasks = useTasksStore((s) => s.clear);
   const fetchTimeEntries = useTimeEntriesStore((s) => s.fetchAll);
   const clearTimeEntries = useTimeEntriesStore((s) => s.clear);
@@ -239,11 +238,6 @@ function Shell() {
     if (!browserTz) return;
     updateProfile(user.id, { timezone: browserTz });
   }, [user, profile, updateProfile]);
-
-  useEffect(() => {
-    if (!user || !profile) return;
-    void applyEscalationFromProfile(user.id);
-  }, [user, profile, applyEscalationFromProfile]);
 
   return (
     <div className="app-shell flex h-full min-h-0">

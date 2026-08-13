@@ -8,8 +8,6 @@ import { ACTION_ITEM_RE, DUE_TAG_RE } from '../../lib/format';
 import {
   PRIORITY_LABEL,
   PRIORITY_ORDER,
-  dueDateForPriority,
-  isPriorityLocked,
   parsePriorityPrefix,
   type TaskPriority,
 } from '../../lib/priority';
@@ -31,7 +29,7 @@ function parseTaskLineMeta(md: string): Omit<TaskLineMeta, 'blockId' | 'locked'>
   const explicitDue = dueMatch ? dueMatch[1] : null;
   const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
   const { priority } = parsePriorityPrefix(withoutDue);
-  const effectiveDue = explicitDue ?? dueDateForPriority(priority);
+  const effectiveDue = explicitDue;
   return { priority, effectiveDue, explicitDue };
 }
 
@@ -55,7 +53,7 @@ export function NotesTaskToolbar() {
       return {
         blockId: b.id,
         ...meta,
-        locked: !b.props.checked && isPriorityLocked(meta.effectiveDue),
+        locked: false,
       } satisfies TaskLineMeta;
     },
   });

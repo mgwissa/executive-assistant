@@ -199,6 +199,7 @@ export type Database = {
           priority: string;
           priority_set_at: string;
           due_date: string | null;
+          review_date: string | null;
           due_time: string | null;
           reminder_sent_at: string | null;
           linked_event_id: string | null;
@@ -220,6 +221,7 @@ export type Database = {
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
+          review_date?: string | null;
           due_time?: string | null;
           reminder_sent_at?: string | null;
           linked_event_id?: string | null;
@@ -241,6 +243,7 @@ export type Database = {
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
+          review_date?: string | null;
           due_time?: string | null;
           reminder_sent_at?: string | null;
           linked_event_id?: string | null;

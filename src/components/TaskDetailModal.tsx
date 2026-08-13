@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatInTimeZone } from 'date-fns-tz';
-import type { TaskPriority } from '../lib/priority';
-import { PRIORITY_LABEL, PRIORITY_ORDER, isPriorityLocked } from '../lib/priority';
 import { normalizeDueTime } from '../lib/taskSchedule';
 import { ESTIMATE_PRESETS, formatEstimateMinutes, resolveTaskMinutes } from '../lib/taskCapacity';
-import { PriorityBadge } from './ui/PriorityBadge';
-import { prioritySelectClass } from '../lib/priorityUiClasses';
 import { MarkdownPreview } from './MarkdownPreview';
 import { useEventsStore } from '../store/useEventsStore';
 import { useProfileStore } from '../store/useProfileStore';
@@ -23,15 +19,23 @@ export function TaskDetailModal({
   task: Task;
   onClose: () => void;
 }) {
-  const { setTaskPriority, setDueDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, setTags, updateDescription, renameTask, toggleDone, deleteTask } =
+  return <TaskDetailModalBody key={task.id} task={task} onClose={onClose} />;
+}
+
+function TaskDetailModalBody({
+  task,
+  onClose,
+}: {
+  task: Task;
+  onClose: () => void;
+}) {
+  const { setDueDate, setReviewDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, setTags, updateDescription, renameTask, toggleDone, deleteTask } =
     useTasksStore();
   const events = useEventsStore((s) => s.events);
   const profileTz = useProfileStore((s) => s.profile?.timezone);
 
   const fresh = useTasksStore((s) => s.tasks.find((t) => t.id === task.id));
   const t = fresh ?? task;
-  const priority = (t.priority as TaskPriority) ?? 'normal';
-  const locked = !t.done && isPriorityLocked(t.due_date);
 
   const [mode, setMode] = useState<Mode>('write');
   const [titleDraft, setTitleDraft] = useState(t.title);
@@ -40,16 +44,6 @@ export function TaskDetailModal({
 
   const [waitingEnabled, setWaitingEnabled] = useState(() => (t.waiting_on ?? '').trim().length > 0);
   const [waitingDraft, setWaitingDraft] = useState(t.waiting_on ?? '');
-
-  useEffect(() => {
-    setTitleDraft(t.title);
-  }, [t.title]);
-
-  useEffect(() => {
-    const w = (t.waiting_on ?? '').trim();
-    setWaitingDraft(t.waiting_on ?? '');
-    setWaitingEnabled(w.length > 0);
-  }, [t.waiting_on, t.id]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -127,9 +121,6 @@ export function TaskDetailModal({
               placeholder="Task title"
               maxLength={200}
             />
-            <div className="mt-2">
-              <PriorityBadge priority={priority} />
-            </div>
           </div>
           <button
             type="button"
@@ -144,36 +135,8 @@ export function TaskDetailModal({
         {/* Controls row */}
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-text-muted" htmlFor={`modal-pri-${t.id}`}>
-              Priority
-            </label>
-            <select
-              id={`modal-pri-${t.id}`}
-              value={priority}
-              disabled={locked}
-              onChange={(e) => void setTaskPriority(t.id, e.target.value as TaskPriority)}
-              className={[
-                'input mt-0 min-h-[2rem] py-1 text-sm',
-                prioritySelectClass(priority),
-                locked ? 'cursor-not-allowed opacity-60' : '',
-              ].filter(Boolean).join(' ')}
-              title={locked ? 'Update due date to change priority' : undefined}
-            >
-              {PRIORITY_ORDER.map((opt) => (
-                <option key={opt} value={opt}>
-                  {PRIORITY_LABEL[opt]}
-                </option>
-              ))}
-            </select>
-            {locked && (
-              <span className="text-xs italic text-text-subtle">
-                Update due date to change priority
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-text-muted" htmlFor={`modal-due-${t.id}`}>
-              Due
+              Deadline
             </label>
             <input
               id={`modal-due-${t.id}`}
@@ -181,6 +144,19 @@ export function TaskDetailModal({
               value={t.due_date ?? ''}
               onChange={(e) => void setDueDate(t.id, e.target.value || null)}
               className="input mt-0 min-h-[2rem] py-1 text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-text-muted" htmlFor={`modal-review-${t.id}`}>
+              Review
+            </label>
+            <input
+              id={`modal-review-${t.id}`}
+              type="date"
+              value={t.review_date ?? ''}
+              onChange={(e) => void setReviewDate(t.id, e.target.value || null)}
+              className="input mt-0 min-h-[2rem] py-1 text-sm"
+              title="When this should return for reconsideration; not a deadline"
             />
           </div>
           {t.due_date ? (

@@ -95,7 +95,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel) |
-| `tasks` | Standalone tasks | `priority` (critical/urgent/high/normal/low), `due_date`, `due_time` (optional; requires `due_date`), `tags text[]` (filter on `/tasks`), `reminder_sent_at` (email dedupe; future cron), `linked_event_id` (FK → `events`), `waiting_on`, `chase_snoozed_until`, `last_chased_at`, `estimated_minutes`, `description`, `priority_set_at`, `reschedule_count`, `done` |
+| `tasks` | Standalone tasks | `due_date` (real external deadline), `review_date` (resurface/reconsider; never escalates), `due_time` (optional; requires `due_date`), legacy `priority` (retained for compatibility), `tags text[]` (filter on `/tasks`), `reminder_sent_at`, `linked_event_id` (FK → `events`), `waiting_on`, `chase_snoozed_until`, `last_chased_at`, `estimated_minutes`, `description`, `priority_set_at`, `reschedule_count`, `done` |
 | `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required`, `allow_back_to_back`, `debrief_required` (assistant temperament; Outlook rows flags-only on edit) |
 | `meeting_debrief_states` | Per-occurrence post-meeting debrief progress | `event_id`, `occurrence_start_at`, `status` ('done' \| 'skipped' \| 'snoozed'), `snoozed_until`, `notes` |
 | `useful_links` | Bookmarks | `title`, `url`, `category` |
@@ -128,7 +128,7 @@ Conventions:
 | `useProfileStore` | profile row; `updateProfile(userId, patch)` |
 | `useNotebooksStore` | notebooks + sections + member counts + `activeNotebookId` |
 | `useNotesStore` | notes + `activeId` + free-text `query` (consumed only by notes Sidebar) |
-| `useTasksStore` | tasks; `createTask(userId, title, options?)` accepts optional `priority` / `dueDate` / `dueTime` / `tags`; `setTags`; `setDueTime`, `setLinkedEvent`; `deleteTask` prompts via `window.confirm` (returns `boolean`); runs `applyDueDatePromotion` and `applyEscalationFromProfile` post-fetch |
+| `useTasksStore` | tasks; `createTask(userId, title, options?)` accepts optional `priority` (legacy) / `dueDate` / `reviewDate` / `dueTime` / `tags`; `setReviewDate`; `setTags`; `setDueTime`, `setLinkedEvent`; `deleteTask` prompts via `window.confirm` (returns `boolean`). Fetching tasks does not mutate priority. |
 | `useEventsStore` | events; range-based fetch via `eventsFetchIsoRange(timezone)` |
 | `useMeetingDebriefStore` | per-occurrence debrief dismiss/snooze/done (`meeting_debrief_states`) |
 | `useUsefulLinksStore` | links |
@@ -139,19 +139,33 @@ Conventions:
 | `useThemeStore` | light/dark/system |
 | `useAgentStore` | agent runs / actions / briefs / memory; executes undo; saves the playbook |
 
-## Priority system (tasks + action items)
+## Task attention model
+
+The agent-first operational model separates **real deadlines** (`due_date`) from
+**review dates** (`review_date`). Deadlines mean an external consequence;
+review dates mean “bring this back for a decision.” Today ranks an explicit
+`profiles.focus_queue` first, then real deadlines, then review dates that have
+arrived, and explains “why now” for each item. Future review dates stay quiet.
+
+The five-level priority field remains for legacy screens, note syntax, and data
+compatibility, but quick capture and task details no longer ask the owner to
+maintain it. Priority changes no longer manufacture due dates, and due dates no
+longer force or lock Critical. Profile escalation is not run automatically.
+
+### Legacy priority compatibility
 
 Five levels stored as enum-ish strings: `critical | urgent | high | normal | low` (`src/lib/priority.ts`).
 
 Public-facing names are **calmer** than the storage values: `Critical / Important / Active / Routine / Later`. Use `PRIORITY_PILL` for UI labels.
 
 Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the title of a checkbox.
+Note action items only receive a deadline from an explicit `[due:YYYY-MM-DD]`
+tag; changing or adding a legacy priority marker never manufactures a date.
 
-**Auto-promotion / escalation:**
-
-- When a task's `due_date` is today or past, it is **locked to `critical`** until the due date is pushed forward (`isPriorityLocked`).
-- Profile field `priority_escalation jsonb` configures bump cadences per level (e.g. "if a `high` task sits N days, bump to `urgent`"). `applyEscalationFromProfile` runs on every store fetch.
-- A DB trigger `tasks_notify_escalated_to_critical` fires when `priority` transitions to `critical` and calls the `send-task-escalation` Edge Function via `net.http_post`.
+The old helpers, profile escalation configuration, and critical-notification
+trigger remain for compatibility, but normal task loading and deadline editing
+do not invoke them. Do not reintroduce automatic priority mutation into the
+Today path.
 
 **Sort order everywhere** (tasks list, dashboard, owed-to-me):
 1. `priorityRank` (critical first)
@@ -161,7 +175,7 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 
 **Task schedule helpers:** `src/lib/taskSchedule.ts` — `normalizeDueTime` (Postgres `time` → `HH:MM`), `taskDueLabel`, `compareDueTime`. Clearing `due_date` also clears `due_time`, `linked_event_id`, and `reminder_sent_at`. **Due-time reminders:** `send-due-time-reminders` Edge Function (pg_cron every 5 min) emails when local time ≥ `due_time` on `due_date`; dedupes via `tasks.reminder_sent_at`. Toggle: `profiles.notify_email_reminder_enabled`.
 
-**Quick add:** `TaskQuickAddForm` — title + priority + optional date/time + optional tags. Empty date → auto due-from-priority; explicit date/time passed to `createTask`. Used on `/tasks`, Dashboard action-items card, and Assistant page.
+**Quick add:** `TaskQuickAddForm` — title + date intent (`No date`, `Review later`, or `Real deadline`) + optional time/tags. Priority is omitted and defaults to the legacy `normal` storage value. Used on `/tasks`, Today, legacy Dashboard, and Assistant.
 
 **Task tags:** `tasks.tags text[]` (lowercase, comma-separated input; spaces allowed within a tag — `lib/taskTags.ts`). Edit in `TaskDetailModal`; filter on `/tasks` with `TaskTagFilter` (note action items hidden while a tag filter is active).
 

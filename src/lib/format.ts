@@ -16,7 +16,7 @@ export function formatRelative(iso: string): string {
 }
 
 import type { TaskPriority } from './priority';
-import { PRIORITY_ORDER, dueDateForPriority, parsePriorityInTitle, parsePriorityPrefix } from './priority';
+import { PRIORITY_ORDER, parsePriorityInTitle, parsePriorityPrefix } from './priority';
 import { getNoteCanonicalMarkdown } from './noteContentBridge';
 import type { Json } from '../types/database';
 
@@ -116,7 +116,7 @@ export function toggleActionItemLine(content: string, line: number): string {
   return lines.join('\n');
 }
 
-/** Set legacy `[P0]`–`[P4]` on a note checkbox line to match `priority`, and auto-set due date. */
+/** Set legacy `[P0]`–`[P4]` while preserving any explicit deadline tag. */
 export function setActionItemLinePriority(
   content: string,
   lineIndex: number,
@@ -128,6 +128,7 @@ export function setActionItemLinePriority(
   const m = src.match(ACTION_ITEM_RE);
   if (!m) return null;
   const raw = m[2];
+  const existingDue = raw.match(DUE_TAG_RE)?.[1] ?? null;
   const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
   const { label } = parsePriorityPrefix(withoutDue);
   const trimmed = label.trim();
@@ -136,8 +137,7 @@ export function setActionItemLinePriority(
   if (!prefix) return null;
   const n = PRIORITY_ORDER.indexOf(priority);
   if (n < 0) return null;
-  const due = dueDateForPriority(priority);
-  const duePart = due ? ` [due:${due}]` : '';
+  const duePart = existingDue ? ` [due:${existingDue}]` : '';
   lines[lineIndex] = `${prefix}[P${n}]${duePart} ${trimmed}`;
   return lines.join('\n');
 }
@@ -185,9 +185,7 @@ export function renameActionItemLine(
   if (!trimmed) return null;
   const n = PRIORITY_ORDER.indexOf(priority);
   if (n < 0) return null;
-  const priorityChanged = priority !== currentPriority;
-  const due = priorityChanged ? dueDateForPriority(priority) : existingDue;
-  const duePart = due ? ` [due:${due}]` : '';
+  const duePart = existingDue ? ` [due:${existingDue}]` : '';
   lines[lineIndex] = `${prefix}[P${n}]${duePart} ${trimmed}`;
   return lines.join('\n');
 }
@@ -226,7 +224,7 @@ export function extractActionItems(
       const explicitDue = dueMatch ? dueMatch[1] : null;
       const withoutDue = raw.replace(DUE_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
       const { priority, label } = parsePriorityPrefix(withoutDue);
-      const dueDate = explicitDue ?? dueDateForPriority(priority);
+      const dueDate = explicitDue;
       const { start, end, indentStr } = findNotesRange(lines, i);
       const description =
         end > start

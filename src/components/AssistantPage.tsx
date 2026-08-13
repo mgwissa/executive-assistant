@@ -44,7 +44,8 @@ import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 import { IconBadge } from './ui/IconBadge';
 import { SectionHeader } from './ui/SectionHeader';
-import { TaskQuickAddForm, toCreateTaskOptions } from './TaskQuickAddForm';
+import { TaskQuickAddForm } from './TaskQuickAddForm';
+import { toCreateTaskOptions } from '../lib/taskQuickAdd';
 
 type Tab = 'watch' | 'decisions' | 'nuts';
 

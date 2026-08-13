@@ -1,19 +1,17 @@
 import { create } from 'zustand';
 import { normalizeTags } from '../lib/taskTags';
 import { supabase } from '../lib/supabase';
-import { computeEscalation, parseEscalationConfig } from '../lib/priorityEscalation';
 import { normalizeDueTime } from '../lib/taskSchedule';
 import { scheduleMemoryDelete, scheduleMemoryIndex } from '../lib/memorySyncScheduler';
-import { dueDateForPriority, isPriorityLocked, parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
+import { parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
 import { randomUUID } from '../lib/uuid';
-import { useProfileStore } from './useProfileStore';
 
 export type CreateTaskOptions = {
   priority?: TaskPriority;
-  /** When omitted, due date is derived from priority. Pass `null` for no due date. */
   dueDate?: string | null;
+  reviewDate?: string | null;
   dueTime?: string | null;
   linkedEventId?: string | null;
   tags?: string[];
@@ -25,11 +23,10 @@ type TasksState = {
   error: string | null;
 
   fetchAll: (userId: string) => Promise<void>;
-  applyDueDatePromotion: () => Promise<void>;
-  applyEscalationFromProfile: (userId: string) => Promise<void>;
   createTask: (userId: string, title: string, options?: CreateTaskOptions) => Promise<Task | null>;
   setTaskPriority: (id: string, priority: TaskPriority) => Promise<void>;
   setDueDate: (id: string, dueDate: string | null) => Promise<void>;
+  setReviewDate: (id: string, reviewDate: string | null) => Promise<void>;
   setDueTime: (id: string, dueTime: string | null) => Promise<void>;
   setLinkedEvent: (id: string, eventId: string | null) => Promise<void>;
   updateDescription: (id: string, description: string) => void;
@@ -65,94 +62,24 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       return;
     }
     set({ tasks: data ?? [], loading: false });
-    await get().applyDueDatePromotion();
-    await get().applyEscalationFromProfile(userId);
-  },
-
-  applyDueDatePromotion: async () => {
-    const open = get().tasks.filter(
-      (t) => !t.done && !t.id.startsWith('tmp-') && t.priority !== 'critical' && isPriorityLocked(t.due_date),
-    );
-    if (open.length === 0) return;
-
-    const now = new Date().toISOString();
-    for (const task of open) {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ priority: 'critical', priority_set_at: now })
-        .eq('id', task.id);
-      if (error) {
-        set({ error: error.message });
-        continue;
-      }
-      set({
-        tasks: get().tasks.map((t) =>
-          t.id === task.id
-            ? { ...t, priority: 'critical', priority_set_at: now, updated_at: now }
-            : t,
-        ),
-      });
-    }
-  },
-
-  applyEscalationFromProfile: async (userId) => {
-    const profile = useProfileStore.getState().profile;
-    if (!profile || profile.user_id !== userId) return;
-    const cfg = parseEscalationConfig(profile.priority_escalation);
-    if (!cfg.enabled) return;
-
-    const now = new Date();
-    const open = get().tasks.filter((t) => !t.done && !t.id.startsWith('tmp-'));
-
-    for (const task of open) {
-      const priority_set_at = task.priority_set_at ?? task.updated_at;
-      const result = computeEscalation(
-        { id: task.id, done: task.done, priority: task.priority, priority_set_at },
-        cfg,
-        now,
-      );
-      if (!result) continue;
-      const { nextPriority, newPrioritySetAt } = result;
-      const { error } = await supabase
-        .from('tasks')
-        .update({ priority: nextPriority, priority_set_at: newPrioritySetAt })
-        .eq('id', task.id);
-      if (error) {
-        set({ error: error.message });
-        continue;
-      }
-      set({
-        tasks: get().tasks.map((t) =>
-          t.id === task.id
-            ? {
-                ...t,
-                priority: nextPriority,
-                priority_set_at: newPrioritySetAt,
-                updated_at: newPrioritySetAt,
-              }
-            : t,
-        ),
-      });
-    }
   },
 
   createTask: async (userId, title, options) => {
     const trimmed = title.trim();
     if (!trimmed) return null;
 
-    let { priority, label } = parsePriorityPrefix(trimmed);
+    const parsed = parsePriorityPrefix(trimmed);
+    let priority = parsed.priority;
+    const { label } = parsed;
     if (options?.priority) priority = options.priority;
     const cleanTitle = label.trim();
     if (!cleanTitle) return null;
 
     const now = new Date().toISOString();
-    let due_date =
-      options?.dueDate !== undefined ? options.dueDate : dueDateForPriority(priority);
-    let due_time =
+    const due_date = options?.dueDate ?? null;
+    const review_date = options?.reviewDate ?? null;
+    const due_time =
       due_date && options?.dueTime ? normalizeDueTime(options.dueTime) : null;
-    if (due_date && isPriorityLocked(due_date)) {
-      priority = 'critical';
-    }
 
     const tags = normalizeTags(options?.tags ?? []);
 
@@ -164,6 +91,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       priority,
       priority_set_at: now,
       due_date,
+      review_date,
       due_time,
       reminder_sent_at: null,
       linked_event_id: options?.linkedEventId ?? null,
@@ -188,6 +116,7 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         priority,
         priority_set_at: now,
         due_date,
+        review_date,
         due_time,
         waiting_on: null,
         linked_event_id: options?.linkedEventId ?? null,
@@ -212,29 +141,22 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
 
   setTaskPriority: async (id, priority) => {
-    const task = get().tasks.find((t) => t.id === id);
-    if (task && !task.done && isPriorityLocked(task.due_date)) return;
-
     const now = new Date().toISOString();
-    const due_date = dueDateForPriority(priority);
     set({
       tasks: get().tasks.map((t) =>
-        t.id === id ? { ...t, priority, priority_set_at: now, due_date, updated_at: now } : t,
+        t.id === id ? { ...t, priority, priority_set_at: now, updated_at: now } : t,
       ),
     });
     if (id.startsWith('tmp-')) return;
     const { error } = await supabase
       .from('tasks')
-      .update({ priority, priority_set_at: now, due_date })
+      .update({ priority, priority_set_at: now })
       .eq('id', id);
     if (error) set({ error: error.message });
   },
 
   setDueDate: async (id, dueDate) => {
-    const locked = isPriorityLocked(dueDate);
-    const now = new Date().toISOString();
     const task = get().tasks.find((t) => t.id === id);
-    const promote = locked && task && !task.done && task.priority !== 'critical';
     // Only count as a reschedule when moving an existing due date (not initial assignment)
     const isReschedule = !id.startsWith('tmp-') && task?.due_date != null && task.due_date !== dueDate;
     const clearingDate = !dueDate;
@@ -249,11 +171,6 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         if (clearingDate) {
           updates.due_time = null;
           updates.linked_event_id = null;
-        }
-        if (promote) {
-          updates.priority = 'critical';
-          updates.priority_set_at = now;
-          updates.updated_at = now;
         }
         if (isReschedule) {
           updates.reschedule_count = (t.reschedule_count ?? 0) + 1;
@@ -271,13 +188,24 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       dbPatch.due_time = null;
       dbPatch.linked_event_id = null;
     }
-    if (promote) {
-      dbPatch.priority = 'critical';
-      dbPatch.priority_set_at = now;
-    }
     const { error } = await supabase
       .from('tasks')
       .update(dbPatch)
+      .eq('id', id);
+    if (error) set({ error: error.message });
+  },
+
+  setReviewDate: async (id, reviewDate) => {
+    const now = new Date().toISOString();
+    set({
+      tasks: get().tasks.map((t) =>
+        t.id === id ? { ...t, review_date: reviewDate, updated_at: now } : t,
+      ),
+    });
+    if (id.startsWith('tmp-')) return;
+    const { error } = await supabase
+      .from('tasks')
+      .update({ review_date: reviewDate })
       .eq('id', id);
     if (error) set({ error: error.message });
   },
@@ -345,16 +273,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
     const currentP = (task.priority as TaskPriority) ?? 'normal';
-    const locked = !task.done && isPriorityLocked(task.due_date);
     const parsed = parsePriorityInTitle(rawTitle, currentP);
     const trimmed = parsed.title.trim();
     if (!trimmed) return;
 
-    const priority = locked ? currentP : parsed.priority;
+    const priority = parsed.priority;
     const priorityChanged = priority !== currentP;
     const now = new Date().toISOString();
     const priority_set_at = priorityChanged ? now : task.priority_set_at;
-    const due_date = priorityChanged ? dueDateForPriority(priority) : task.due_date;
 
     set({
       tasks: get().tasks.map((t) =>
@@ -364,7 +290,6 @@ export const useTasksStore = create<TasksState>((set, get) => ({
               title: trimmed,
               priority,
               priority_set_at,
-              due_date,
               updated_at: now,
             }
           : t,
@@ -378,7 +303,6 @@ export const useTasksStore = create<TasksState>((set, get) => ({
         title: trimmed,
         priority,
         priority_set_at,
-        due_date,
       })
       .eq('id', id);
     if (error) set({ error: error.message });
