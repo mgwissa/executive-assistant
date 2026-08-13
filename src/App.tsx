@@ -4,7 +4,6 @@ import { Auth } from './components/Auth';
 import { AgentDeskPage } from './components/AgentDeskPage';
 import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
-import { Dashboard } from './components/Dashboard';
 import { MemoryPage } from './components/MemoryPage';
 import { OwedToMePage } from './components/OwedToMePage';
 import { Profile } from './components/Profile';
@@ -17,6 +16,7 @@ import { BookIcon, ChevronRightIcon } from './components/icons';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
+import { TodayPage } from './components/TodayPage';
 import { TopBar } from './components/TopBar';
 import { WorkNudgeHost } from './components/WorkNudgeHost';
 import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
@@ -282,9 +282,9 @@ function Shell() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar />
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1">
           <Outlet />
         </div>
       </div>
@@ -330,7 +330,7 @@ export default function App() {
       <Route path="reset-password" element={<ResetPassword />} />
       <Route element={<Shell />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<TodayPage />} />
         <Route
           path="assistant"
           element={

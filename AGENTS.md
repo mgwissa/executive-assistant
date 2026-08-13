@@ -39,7 +39,8 @@ src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
   components/          UI components (one file per concern)
-    TaskQuickAddForm.tsx  Shared task create form (Tasks, Dashboard, Assistant)
+    TodayPage.tsx       Routed home view: actual schedule, linked note context, focus windows, advisory concerns
+    TaskQuickAddForm.tsx  Shared task create form (Tasks, Today, legacy Dashboard/Assistant)
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
     ui/                Generic primitives: Card, Badge, EmptyState, SectionHeader, ...
@@ -50,7 +51,7 @@ src/
   types/               database.ts (generated/maintained) + index.ts (re-exports)
   editor-test/         Scratch fixtures (not shipped to users)
 agent/
-  runner.mjs           Scheduled agent runtime (GitHub Actions; see Agent Desk)
+  runner.mjs           Dormant legacy Claude runner retained for reference
 supabase/
   config.toml          Edge Function deploy config (verify_jwt = false where intentional)
   functions/           Deno Edge Functions
@@ -69,7 +70,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `Dashboard` | Daily command center; **assistant** on → executive HUD + directive + action-items list (checkbox complete); **assistant** off → `CriticalBlocker` + action-items grid |
+| `/dashboard` | `TodayPage` | Primary daily view: chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/tasks` | `Tasks` | Standalone tasks + extracted action items from notes |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -78,7 +79,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | `/profile` | `Profile` | Settings: name, timezone, addons, notifications, calendar URL |
 | `/assistant` | `AssistantPage` | **Optional addon** — executive command center (NOW / gaps / timeline) + briefing depth |
 | `/memory` | `MemoryPage` | **Optional addon** — RAG Q&A over notes, tasks, debriefs (OpenAI) |
-| `/agent` | `AgentDeskPage` | **Optional addon** — audit log of everything the scheduled agent changed, each entry undoable; plus brief, memory, and playbook tabs |
+| `/agent` | `AgentDeskPage` | **Hidden legacy addon** — retained audit log, brief, memory, and playbook UI; no active runner or schedule |
 | `/time` | `TimeTrackingPage` | **Optional addon** — timers, projects, day grouping |
 | `/routine` | `WeeklyRoutinePage` | **Optional addon** — weekly product-leader rhythm |
 
@@ -170,18 +171,12 @@ Legacy notation in notes still parsed: `[P0]`–`[P4]` (and `(P2)`) before the t
 
 **Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → B meeting lifecycle ✅ → C delegation (slice 1 ✅) → **D capacity** ✅ → **E focus stack** ✅ → **E decisions** ✅ (dashboard `ExecutiveDecisionQueue`) → **F evening close-out** ✅ (dashboard `ExecutiveEveningCloseout`, active after 5pm) → F capture → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
 
-## Agent Desk (Claude as a contributor)
+## Agent Desk (dormant legacy Claude implementation)
 
-A scheduled agent **acts directly on the workspace** — creating tasks, adjusting
-priorities, reordering focus, logging chases. There is no approval queue. Trust
-comes from the audit trail instead, so the rules below are load-bearing rather
-than stylistic.
-
-**The runtime is GitHub Actions** (`.github/workflows/agent.yml` →
-`agent/runner.mjs`), not a Cowork scheduled session. This is not a preference:
-Cowork sessions run behind an egress allowlist that does not include
-`*.supabase.co`, so they cannot reach this workspace over HTTP at all. Actions
-runners have unrestricted network. See Gotchas.
+The Claude runner and Agent Desk were the previous automation direction. The
+scheduled GitHub Actions workflow has been removed, its secrets were deleted,
+and this addon is hidden. Keep the runner, API, tables, and audit UI intact for
+reference until the Codex bridge has a concrete replacement and migration plan.
 
 ### The undo contract
 
@@ -207,8 +202,7 @@ deleting a task, since the row itself is the only way back.
 | Store | `store/useAgentStore.ts` | Reads the log; executes undo client-side via the user's own RLS |
 | Page | `components/AgentDeskPage.tsx` | `/agent` — Activity / Brief / What I remember / Playbook |
 | Shared logic | `lib/agentDesk.ts`, `lib/agentPlaybook.ts` | Undo planning + narrowing; default standing instructions |
-| Runner | `agent/runner.mjs` | Node 22, zero deps. Anthropic tool-use loop: `context` → think → `act` → `finish_run` |
-| Schedule | `.github/workflows/agent.yml` | Four crons (morning / midday / evening / Monday chase) + manual dispatch with a dry-run flag |
+| Runner | `agent/runner.mjs` | Dormant Node 22 Anthropic tool-use loop retained for reference; nothing invokes it |
 
 ### agent-api
 
@@ -298,8 +292,8 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
-- `assistant` — AssistantPage + **Executive Command Center** on Dashboard when enabled. Pure-TS engines: `lib/executiveDirective.ts` (NOW / NEXT / GAPS / timeline) and `lib/meetingTemperament.ts` (per-event flags + profile `meeting_rules` title patterns). Dashboard shows directive above the shared **Action items** card (`DashboardActionItemsSection` — quick-add + checkbox complete); reference schedule/notes in collapsible panel.
-- `agent` — AgentDeskPage (`/agent`). Scheduled agent that acts directly on the workspace; see **Agent Desk** below.
+- `assistant` — Hidden optional `AssistantPage` + legacy **Executive Command Center**. The routed `/dashboard` now uses `TodayPage` regardless of this addon, reusing the pure directive/capacity engines only for advisory evidence.
+- `agent` — Hidden legacy AgentDeskPage (`/agent`). The former Claude schedule is removed; see **Agent Desk** below.
 - `memory` — MemoryPage (`/memory`). RAG over `memory_chunks` via `memory-sync` + `memory-ask` Edge Functions. OpenAI embeddings + chat; cited answers link back to notes/tasks/calendar.
 
 ## Conventions
@@ -335,7 +329,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 ## Gotchas (already learned)
 
-- **Cowork/Claude sandbox sessions cannot reach `*.supabase.co`.** Egress is allowlisted — `registry.npmjs.org`, `pypi.org` and `api.github.com` resolve; `supabase.com` and the project domain return `000` (proxy 403 on CONNECT). Anything that needs to talk to this Supabase project on a schedule must run somewhere with real network, which is why the agent runtime is GitHub Actions. Verify with `curl -o /dev/null -w "%{http_code}"` before designing against any external host.
+- **The legacy Claude runner is dormant.** Its GitHub Actions schedule and secrets were removed during the Today/Codex reorientation. Do not re-enable it as part of unrelated work.
 - **This checkout has CRLF on disk but LF in the index**, so `git status` reports every tracked file as modified even when untouched. Use `git diff --ignore-cr-at-eol` to see real changes. When patching an existing file programmatically, read it, work in LF, and write it back as CRLF — otherwise you turn a phantom diff into a real 200-file one.
 - **`node_modules` holds Windows native binaries.** `npx vite build` fails with `MODULE_NOT_FOUND` on rolldown's native binding when run from a Linux shell against the same folder. `tsc -b` and `eslint` are pure JS and do work there, so use those for agent-side verification and run `npm run build` on Windows.
 - **Agent writes must be logged or rolled back.** `agent-api` reverses the data change when the `agent_actions` insert fails, and logs *before* deleting a task. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
@@ -384,7 +378,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 ## CI
 
-`.github/workflows/agent.yml` runs the scheduled agent (see **Agent Desk**). `.github/workflows/deploy-edge-functions.yml` auto-deploys Edge Functions on push to `main` (manual trigger also available).
+`.github/workflows/deploy-edge-functions.yml` auto-deploys Edge Functions on push to `main` (manual trigger also available). There is no scheduled agent workflow.
 
 ## When you (the agent) start working
 

@@ -3,7 +3,7 @@ import { useShellLayoutStore } from '../store/useShellLayoutStore';
 import { MenuIcon } from './icons';
 
 const titles: Record<string, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Today',
   links: 'Links',
   calendar: 'Calendar',
   owed: 'Owed to me',
@@ -15,7 +15,7 @@ const titles: Record<string, string> = {
 };
 
 const subtitles: Record<string, string> = {
-  dashboard: 'Your daily command center.',
+  dashboard: 'Your schedule, context, and concerns for the day.',
   notes: 'Browse notebooks in the sidebar; search filters the notes list there.',
   tasks: 'Your open work, sorted by priority.',
   calendar: 'Today, this week, and beyond.',

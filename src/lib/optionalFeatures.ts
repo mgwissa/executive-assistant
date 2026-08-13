@@ -90,7 +90,7 @@ export const OPTIONAL_FEATURE_NAV: Record<
 };
 
 const CORE_NAV_ORDER: NavItemDef[] = [
-  { id: 'dashboard', label: 'Dashboard', Icon: HomeIcon, accent: 'purple' },
+  { id: 'dashboard', label: 'Today', Icon: HomeIcon, accent: 'purple' },
   { id: 'links', label: 'Links', Icon: LinkIcon, accent: 'brand' },
   { id: 'calendar', label: 'Calendar', Icon: CalendarIcon, accent: 'blue' },
   { id: 'tasks', label: 'Tasks', Icon: CheckSquareIcon, accent: 'amber' },
