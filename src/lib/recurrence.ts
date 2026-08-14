@@ -1,3 +1,5 @@
+import { addDays, addMonths, set, startOfWeek } from 'date-fns';
+import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz';
 import type { Event } from '../types';
 
 export type Occurrence = {
@@ -13,30 +15,21 @@ function addMinutes(d: Date, minutes: number) {
   return new Date(d.getTime() + minutes * 60_000);
 }
 
-function addDays(d: Date, days: number) {
-  const next = new Date(d);
-  next.setDate(next.getDate() + days);
-  return next;
+function addZonedDays(d: Date, days: number, timezone: string) {
+  return fromZonedTime(addDays(toZonedTime(d, timezone), days), timezone);
 }
 
-function addMonthsKeepDay(d: Date, months: number) {
-  const next = new Date(d);
-  const day = next.getDate();
-  next.setMonth(next.getMonth() + months);
-  // JS Date will roll into next month if the day doesn't exist; clamp back.
-  if (next.getDate() !== day) {
-    next.setDate(0);
-  }
-  return next;
+function addZonedMonths(d: Date, months: number, timezone: string) {
+  return fromZonedTime(addMonths(toZonedTime(d, timezone), months), timezone);
 }
 
-function isWeekday(d: Date) {
-  const wd = d.getDay();
-  return wd !== 0 && wd !== 6;
+function isWeekday(d: Date, timezone: string) {
+  const isoWeekday = Number(formatInTimeZone(d, timezone, 'i'));
+  return isoWeekday >= 1 && isoWeekday <= 5;
 }
 
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+function weekdayInTimeZone(d: Date, timezone: string) {
+  return Number(formatInTimeZone(d, timezone, 'i')) % 7;
 }
 
 export function generateOccurrences(
@@ -47,12 +40,18 @@ export function generateOccurrences(
 ): Occurrence[] {
   const out: Occurrence[] = [];
   const start = new Date(event.start_at);
+  const timezone = event.timezone || 'UTC';
+  const zonedStart = toZonedTime(start, timezone);
   const duration = event.duration_minutes ?? 30;
   const until = event.until_at ? new Date(event.until_at) : null;
   const maxCount = event.count ?? null;
 
   const recurrence = (event.recurrence ?? 'none') as string;
   const interval = Math.max(1, event.interval ?? 1);
+  const weeklyDays =
+    event.by_weekday && event.by_weekday.length > 0
+      ? event.by_weekday
+      : [weekdayInTimeZone(start, timezone)];
 
   const pushIfInRange = (occStart: Date) => {
     const occEnd = addMinutes(occStart, duration);
@@ -82,7 +81,7 @@ export function generateOccurrences(
     const daysDiff = Math.floor((rangeStart.getTime() - cursor.getTime()) / 86_400_000);
     if (daysDiff <= 0) return;
     const jumps = Math.floor(daysDiff / interval);
-    if (jumps > 0) cursor = addDays(cursor, jumps * interval);
+    if (jumps > 0) cursor = addZonedDays(cursor, jumps * interval, timezone);
   };
 
   if (recurrence === 'daily') fastForwardDays();
@@ -93,7 +92,7 @@ export function generateOccurrences(
       const daysDiff = Math.floor((rangeStart.getTime() - cursor.getTime()) / 86_400_000);
       const weeks = Math.floor(daysDiff / 7);
       const jumps = Math.floor(weeks / interval);
-      if (jumps > 0) cursor = addDays(cursor, jumps * interval * 7);
+      if (jumps > 0) cursor = addZonedDays(cursor, jumps * interval * 7, timezone);
     }
   }
   if (recurrence === 'monthly') {
@@ -103,7 +102,7 @@ export function generateOccurrences(
         (rangeStart.getFullYear() - cursor.getFullYear()) * 12 +
         (rangeStart.getMonth() - cursor.getMonth());
       const jumps = Math.floor(monthsDiff / interval);
-      if (jumps > 0) cursor = addMonthsKeepDay(cursor, jumps * interval);
+      if (jumps > 0) cursor = addZonedMonths(cursor, jumps * interval, timezone);
     }
   }
 
@@ -113,23 +112,28 @@ export function generateOccurrences(
     if (cursor >= rangeEnd) break;
 
     if (recurrence === 'weekdays') {
-      if (isWeekday(cursor)) {
+      if (isWeekday(cursor, timezone)) {
         pushIfInRange(cursor);
         produced++;
       }
-      cursor = addDays(cursor, 1);
+      cursor = addZonedDays(cursor, 1, timezone);
       continue;
     }
 
     if (recurrence === 'weekly') {
-      const by = event.by_weekday && event.by_weekday.length > 0 ? event.by_weekday : [cursor.getDay()];
       // Generate occurrences for the week anchored at cursor's week.
-      const anchor = startOfDay(cursor);
-      const weekStart = addDays(anchor, -anchor.getDay()); // Sunday start
-      for (const wd of by) {
+      const weekStart = startOfWeek(toZonedTime(cursor, timezone), { weekStartsOn: 0 });
+      for (const wd of weeklyDays) {
         const candidateDay = addDays(weekStart, wd);
-        const candidate = new Date(candidateDay);
-        candidate.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), start.getMilliseconds());
+        const candidate = fromZonedTime(
+          set(candidateDay, {
+            hours: zonedStart.getHours(),
+            minutes: zonedStart.getMinutes(),
+            seconds: zonedStart.getSeconds(),
+            milliseconds: zonedStart.getMilliseconds(),
+          }),
+          timezone,
+        );
         if (candidate < cursor) continue;
         if (until && candidate > until) continue;
         if (maxCount != null && produced >= maxCount) break;
@@ -137,8 +141,15 @@ export function generateOccurrences(
         pushIfInRange(candidate);
         produced++;
       }
-      cursor = addDays(weekStart, interval * 7);
-      cursor.setHours(start.getHours(), start.getMinutes(), start.getSeconds(), start.getMilliseconds());
+      cursor = fromZonedTime(
+        set(addDays(weekStart, interval * 7), {
+          hours: zonedStart.getHours(),
+          minutes: zonedStart.getMinutes(),
+          seconds: zonedStart.getSeconds(),
+          milliseconds: zonedStart.getMilliseconds(),
+        }),
+        timezone,
+      );
       continue;
     }
 
@@ -147,9 +158,9 @@ export function generateOccurrences(
     produced++;
 
     if (recurrence === 'monthly') {
-      cursor = addMonthsKeepDay(cursor, interval);
+      cursor = addZonedMonths(cursor, interval, timezone);
     } else {
-      cursor = addDays(cursor, interval);
+      cursor = addZonedDays(cursor, interval, timezone);
     }
   }
 

@@ -1,6 +1,7 @@
 import { formatInTimeZone } from 'date-fns-tz';
 import { useEffect, useMemo, useState } from 'react';
 import type { Event } from '../types';
+import { zonedDateTimeIso, zonedEndOfDayIso } from '../lib/eventTime';
 import { generateOccurrences } from '../lib/recurrence';
 import { DEFAULT_ALLOW_BACK_TO_BACK, DEFAULT_DEBRIEF_REQUIRED, DEFAULT_PREP_REQUIRED } from '../lib/meetingTemperament';
 import { EventLinkedTasks } from './EventLinkedTasks';
@@ -21,9 +22,9 @@ export type ComposerValue = {
   debrief_required: boolean;
 };
 
-function defaultComposerValue(now: Date): ComposerValue {
-  const today = now.toISOString().slice(0, 10);
-  const timeNow = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+function defaultComposerValue(now: Date, timezone: string): ComposerValue {
+  const today = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+  const timeNow = formatInTimeZone(now, timezone, 'HH:mm');
   return {
     title: '',
     date: today,
@@ -80,17 +81,20 @@ export function EventComposer({
   const isEdit = !!initialEvent;
   const flagsOnly = initialEvent?.source === 'outlook_ics';
 
-  const [v, setV] = useState<ComposerValue>(() => defaultComposerValue(new Date()));
+  const [v, setV] = useState<ComposerValue>(() => defaultComposerValue(new Date(), timezone));
 
   useEffect(() => {
     if (!open) return;
-    setV(initialEvent ? valueFromEvent(initialEvent, timezone) : defaultComposerValue(new Date()));
+    setV(
+      initialEvent
+        ? valueFromEvent(initialEvent, timezone)
+        : defaultComposerValue(new Date(), timezone),
+    );
   }, [open, initialEvent, timezone]);
 
   const startAtIso = useMemo(() => {
-    const d = new Date(`${v.date}T${v.time}:00`);
-    return d.toISOString();
-  }, [v.date, v.time]);
+    return zonedDateTimeIso(v.date, v.time, timezone);
+  }, [v.date, v.time, timezone]);
 
   const previewOccurrences = useMemo(() => {
     const fake: Event = {
@@ -105,7 +109,7 @@ export function EventComposer({
       by_weekday: null,
       until_at:
         v.endMode === 'until' && v.untilDate
-          ? new Date(`${v.untilDate}T23:59:59`).toISOString()
+          ? zonedEndOfDayIso(v.untilDate, timezone)
           : null,
       count: v.endMode === 'count' ? v.count : null,
       source: 'manual',
@@ -185,7 +189,7 @@ export function EventComposer({
                   by_weekday: null,
                   until_at:
                     v.endMode === 'until' && v.untilDate
-                      ? new Date(`${v.untilDate}T23:59:59`).toISOString()
+                      ? zonedEndOfDayIso(v.untilDate, timezone)
                       : null,
                   count: v.endMode === 'count' ? Math.max(1, v.count) : null,
                   prep_required: v.prep_required,
@@ -204,7 +208,7 @@ export function EventComposer({
                 by_weekday: null,
                 until_at:
                   v.endMode === 'until' && v.untilDate
-                    ? new Date(`${v.untilDate}T23:59:59`).toISOString()
+                    ? zonedEndOfDayIso(v.untilDate, timezone)
                     : null,
                 count: v.endMode === 'count' ? Math.max(1, v.count) : null,
                 prep_required: v.prep_required,
@@ -378,13 +382,7 @@ export function EventComposer({
                       <li key={o.start.toISOString()} className="flex items-center justify-between gap-3">
                         <span className="truncate">{o.title}</span>
                         <span className="shrink-0 text-xs text-text-muted">
-                          {o.start.toLocaleString(undefined, {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
+                          {formatInTimeZone(o.start, timezone, 'EEE, MMM d, h:mm a')}
                         </span>
                       </li>
                     ))

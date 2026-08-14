@@ -28,6 +28,7 @@ Production URL: `https://executive-assistant-chi.vercel.app/dashboard`
 - **BlockNote (mantine)** — the notes editor (rich block-based; stores canonical JSON in `notes.content_blocks` plus exported markdown in `notes.content`)
 - **Resend** — transactional email (daily digest + critical-task escalation)
 - **date-fns / date-fns-tz** — date math, never roll our own
+- Event composer date/time fields are wall-clock values in the profile timezone, not the browser timezone. Convert them with `fromZonedTime`, format them with `formatInTimeZone`, and keep a weekly recurrence's fallback weekday anchored to the original event rather than the moving recurrence cursor.
 - **Vercel** — frontend hosting
 
 ## Top-level layout
