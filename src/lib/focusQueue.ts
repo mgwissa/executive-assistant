@@ -5,11 +5,21 @@ import type { Task } from '../types';
 
 export const FOCUS_STACK_LIMIT = 6;
 
+export type FocusWorkMode = 'deep_work' | 'quick_follow_up' | 'waiting';
+
+export type FocusQueueEntry = WorkItemRef & {
+  reason?: string;
+  nextAction?: string;
+  mode?: FocusWorkMode;
+};
+
 export type FocusQueuePrefs = {
   /** User-preferred order (top first). Front of the merged focus stack. */
-  stack: WorkItemRef[];
+  stack: FocusQueueEntry[];
   /** refKey → yyyy-mm-dd — hide from focus stack until this date (inclusive re-show). */
   snoozedUntil: Record<string, string>;
+  managedBy?: 'codex' | 'user';
+  updatedAt?: string;
 };
 
 export function emptyFocusQueuePrefs(): FocusQueuePrefs {
@@ -30,24 +40,38 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function parseWorkItemRef(raw: unknown): WorkItemRef | null {
+function optionalText(raw: Record<string, unknown>, key: string): string | undefined {
+  const value = raw[key];
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+}
+
+function parseWorkItemRef(raw: unknown): FocusQueueEntry | null {
   if (!isRecord(raw) || typeof raw.kind !== 'string') return null;
+  const mode: FocusWorkMode | undefined =
+    raw.mode === 'deep_work' || raw.mode === 'quick_follow_up' || raw.mode === 'waiting'
+      ? raw.mode
+      : undefined;
+  const metadata = {
+    reason: optionalText(raw, 'reason'),
+    nextAction: optionalText(raw, 'nextAction'),
+    mode,
+  };
   if (raw.kind === 'task' && typeof raw.taskId === 'string') {
-    return { kind: 'task', taskId: raw.taskId };
+    return { kind: 'task', taskId: raw.taskId, ...metadata };
   }
   if (
     raw.kind === 'action' &&
     typeof raw.noteId === 'string' &&
     typeof raw.line === 'number'
   ) {
-    return { kind: 'action', noteId: raw.noteId, line: raw.line };
+    return { kind: 'action', noteId: raw.noteId, line: raw.line, ...metadata };
   }
   return null;
 }
 
 export function parseFocusQueue(raw: unknown): FocusQueuePrefs {
   if (!isRecord(raw)) return emptyFocusQueuePrefs();
-  const stack: WorkItemRef[] = [];
+  const stack: FocusQueueEntry[] = [];
   if (Array.isArray(raw.stack)) {
     for (const entry of raw.stack) {
       const ref = parseWorkItemRef(entry);
@@ -70,7 +94,25 @@ export function parseFocusQueue(raw: unknown): FocusQueuePrefs {
       }
     }
   }
-  return { stack, snoozedUntil };
+  const managedBy = raw.managedBy === 'codex' || raw.managedBy === 'user'
+    ? raw.managedBy
+    : undefined;
+  const updatedAt = typeof raw.updatedAt === 'string' && !Number.isNaN(Date.parse(raw.updatedAt))
+    ? raw.updatedAt
+    : undefined;
+  return { stack, snoozedUntil, managedBy, updatedAt };
+}
+
+export function markFocusQueueManaged(
+  prefs: FocusQueuePrefs,
+  managedBy: 'codex' | 'user',
+  updatedAt = new Date().toISOString(),
+): FocusQueuePrefs {
+  return { ...prefs, managedBy, updatedAt };
+}
+
+function entryForRef(prefs: FocusQueuePrefs, ref: WorkItemRef): FocusQueueEntry {
+  return prefs.stack.find((entry) => refsEqual(entry, ref)) ?? ref;
 }
 
 export function refKey(ref: WorkItemRef): string {
@@ -135,9 +177,9 @@ export function reorderFocusStack(
   if (idx < 0) return prefs;
   const swap = direction === 'up' ? idx - 1 : idx + 1;
   if (swap < 0 || swap >= refs.length) return prefs;
-  const next = [...refs];
+  const next = refs.map((candidate) => entryForRef(prefs, candidate));
   [next[idx], next[swap]] = [next[swap]!, next[idx]!];
-  return { ...prefs, stack: next };
+  return markFocusQueueManaged({ ...prefs, stack: next }, 'user');
 }
 
 export function pinToTopOfFocusStack(
@@ -148,10 +190,10 @@ export function pinToTopOfFocusStack(
   const refs = items.map(workItemToRef);
   const idx = refs.findIndex((r) => refsEqual(r, ref));
   if (idx <= 0) return prefs;
-  const next = [...refs];
+  const next = refs.map((candidate) => entryForRef(prefs, candidate));
   const [removed] = next.splice(idx, 1);
   next.unshift(removed!);
-  return { ...prefs, stack: next };
+  return markFocusQueueManaged({ ...prefs, stack: next }, 'user');
 }
 
 export function scheduleFocusForTomorrow(
@@ -161,10 +203,11 @@ export function scheduleFocusForTomorrow(
 ): FocusQueuePrefs {
   const key = refKey(ref);
   const tomorrow = tomorrowIsoFrom(todayIso);
-  return {
+  return markFocusQueueManaged({
+    ...prefs,
     stack: prefs.stack.filter((r) => refKey(r) !== key),
     snoozedUntil: { ...prefs.snoozedUntil, [key]: tomorrow },
-  };
+  }, 'user');
 }
 
 /** Pin to #1 and clear any snooze — commit to doing it today. */
@@ -172,8 +215,9 @@ export function commitRefToFocusToday(prefs: FocusQueuePrefs, ref: WorkItemRef):
   const key = refKey(ref);
   const snoozedUntil = { ...prefs.snoozedUntil };
   delete snoozedUntil[key];
-  const stack = [ref, ...prefs.stack.filter((r) => refKey(r) !== key)];
-  return { stack, snoozedUntil };
+  const entry = entryForRef(prefs, ref);
+  const stack = [entry, ...prefs.stack.filter((r) => refKey(r) !== key)];
+  return markFocusQueueManaged({ ...prefs, stack, snoozedUntil }, 'user');
 }
 
 /** @deprecated Use scheduleFocusForTomorrow */

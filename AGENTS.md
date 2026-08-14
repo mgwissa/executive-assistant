@@ -154,6 +154,17 @@ review dates mean “bring this back for a decision.” Today ranks an explicit
 arrived, and explains “why now” for each item. Future review dates stay quiet.
 `WorkPage` is the full operational inventory and lets the owner manually
 override `focus_queue`; Codex can manage the same queue through the bridge.
+Codex-authored stack entries may include `reason`, `nextAction`, and `mode`
+(`deep_work`, `quick_follow_up`, or `waiting`), while the root records
+`managedBy` and `updatedAt`. Today renders this as the explanation of the plan.
+Information-gathering/confidence modes are intentionally YAGNI; do not add one
+until real usage shows a recurring failure that the simpler plan cannot handle.
+Use `waiting_on` only when another person or team truly owns the next action.
+When the owner still needs to initiate, coordinate, or decide, keep the task
+active and record participants and decision context in the task notes instead.
+The owner is Mike (Product Owner). Nick is the application/software architect;
+Brian is the data architect. Use these roles when reasoning, but do not append
+role labels to their names in the personal app unless ambiguity makes it useful.
 
 The five-level priority field remains for legacy screens, note syntax, and data
 compatibility, but quick capture and task details no longer ask the owner to

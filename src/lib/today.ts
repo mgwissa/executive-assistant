@@ -8,11 +8,14 @@ import { executiveDayBounds, findFreeGaps } from './scheduleAvailability';
 import { normalizeDueTime } from './taskSchedule';
 import { workMinutesForItem } from './taskCapacity';
 import type { Event, Note, Task } from '../types';
+import type { FocusQueueEntry, FocusWorkMode } from './focusQueue';
 
 export type TodayFocusItem = {
   taskId: string;
   title: string;
   whyNow: string;
+  nextAction: string | null;
+  mode: FocusWorkMode | null;
   timingLabel: string | null;
 };
 
@@ -69,7 +72,7 @@ type TodayViewInput = {
   tasks: Task[];
   notes: Note[];
   directive: DirectiveReport;
-  focusTaskIds?: string[];
+  focusEntries?: FocusQueueEntry[];
 };
 
 const SEVERITY_RANK: Record<TodayConcern['severity'], number> = {
@@ -126,7 +129,7 @@ function nextIsoDate(isoDate: string): string {
 }
 
 export function buildTodayViewModel(input: TodayViewInput): TodayViewModel {
-  const { now, timezone, events, tasks, notes, directive, focusTaskIds = [] } = input;
+  const { now, timezone, events, tasks, notes, directive, focusEntries = [] } = input;
   const { start: dayStart, end: workdayEnd, todayIso } = executiveDayBounds(now, timezone);
   const meetings = dedupeOccurrences(
     events.flatMap((event) =>
@@ -205,37 +208,50 @@ export function buildTodayViewModel(input: TodayViewInput): TodayViewModel {
     (task) => !task.done && task.due_date != null && task.due_date <= todayIso,
   ).length;
 
-  const focusOrder = new Map(focusTaskIds.map((id, index) => [id, index]));
+  const focusOrder = new Map(
+    (focusEntries ?? [])
+      .filter((entry) => entry.kind === 'task')
+      .map((entry, index) => [entry.taskId, { index, entry }]),
+  );
   const focus = tasks
     .filter((task) => {
-      if (task.done || task.waiting_on) return false;
+      if (task.done) return false;
       if (focusOrder.has(task.id)) return true;
+      if (task.waiting_on) return false;
       if (task.due_date) return true;
       if (task.review_date) return task.review_date <= todayIso;
       return false;
     })
     .map((task) => {
-      const explicitIndex = focusOrder.get(task.id);
-      if (explicitIndex != null) {
-        return { task, rank: explicitIndex, whyNow: 'Chosen for the active focus queue.' };
+      const explicit = focusOrder.get(task.id);
+      if (explicit != null) {
+        return {
+          task,
+          rank: explicit.index,
+          whyNow: explicit.entry.reason ?? 'Chosen for the active focus queue.',
+          nextAction: explicit.entry.nextAction ?? null,
+          mode: explicit.entry.mode ?? null,
+        };
       }
       if (task.due_date && task.due_date < todayIso) {
-        return { task, rank: 100, whyNow: 'A real deadline has passed; decide whether to finish, renegotiate, or close it.' };
+        return { task, rank: 100, whyNow: 'A real deadline has passed; decide whether to finish, renegotiate, or close it.', nextAction: null, mode: null };
       }
       if (task.due_date === todayIso) {
-        return { task, rank: 110, whyNow: 'A real deadline lands today.' };
+        return { task, rank: 110, whyNow: 'A real deadline lands today.', nextAction: null, mode: null };
       }
       if (task.due_date) {
-        return { task, rank: 120, whyNow: 'A real deadline is approaching.' };
+        return { task, rank: 120, whyNow: 'A real deadline is approaching.', nextAction: null, mode: null };
       }
-      return { task, rank: 200, whyNow: 'Its review date has arrived; decide whether to activate, defer, or close it.' };
+      return { task, rank: 200, whyNow: 'Its review date has arrived; decide whether to activate, defer, or close it.', nextAction: null, mode: null };
     })
     .sort((a, b) => a.rank - b.rank || (a.task.due_date ?? a.task.review_date ?? '').localeCompare(b.task.due_date ?? b.task.review_date ?? ''))
     .slice(0, 5)
-    .map(({ task, whyNow }) => ({
+    .map(({ task, whyNow, nextAction, mode }) => ({
       taskId: task.id,
       title: task.title,
       whyNow,
+      nextAction,
+      mode,
       timingLabel: task.due_date
         ? `Deadline ${task.due_date}`
         : task.review_date

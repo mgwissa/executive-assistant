@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   commitRefToFocusToday,
+  markFocusQueueManaged,
   parseFocusQueue,
   refKey,
   type FocusQueuePrefs,
@@ -55,10 +56,11 @@ function taskTiming(task: Task, todayIso: string): { label: string; variant: 're
 
 function withoutTask(prefs: FocusQueuePrefs, taskId: string): FocusQueuePrefs {
   const key = `task:${taskId}`;
-  return {
+  return markFocusQueueManaged({
+    ...prefs,
     stack: prefs.stack.filter((ref) => refKey(ref) !== key),
     snoozedUntil: prefs.snoozedUntil,
-  };
+  }, 'user');
 }
 
 export function WorkPage() {

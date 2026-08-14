@@ -8,7 +8,7 @@ import { extractActionItems } from '../lib/format';
 import { parseMeetingRules } from '../lib/meetingTemperament';
 import { viewPath } from '../lib/routes';
 import { filterActionItemsDeduped } from '../lib/taskActionMatch';
-import { parseFocusQueue } from '../lib/focusQueue';
+import { parseFocusQueue, type FocusWorkMode } from '../lib/focusQueue';
 import { toCreateTaskOptions, type TaskQuickAddPayload } from '../lib/taskQuickAdd';
 import {
   buildTodayViewModel,
@@ -43,6 +43,12 @@ const CONCERN_STYLE: Record<TodayConcern['severity'], string> = {
   critical: 'border-red-500/30 bg-red-500/[0.06]',
   warning: 'border-amber-500/30 bg-amber-500/[0.06]',
   info: 'border-blue-500/30 bg-blue-500/[0.06]',
+};
+
+const FOCUS_MODE_META: Record<FocusWorkMode, { label: string; variant: 'purple' | 'blue' | 'amber' }> = {
+  deep_work: { label: 'Deep work', variant: 'purple' },
+  quick_follow_up: { label: 'Quick follow-up', variant: 'blue' },
+  waiting: { label: 'Waiting', variant: 'amber' },
 };
 
 function greetingFor(now: Date, timezone: string): string {
@@ -193,14 +199,21 @@ export function TodayPage() {
       }),
     [tasks, actionItems, events, timezone, now, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates],
   );
+  const focusPrefs = useMemo(
+    () => parseFocusQueue(profile?.focus_queue),
+    [profile?.focus_queue],
+  );
   const today = useMemo(
-    () => {
-      const focusTaskIds = parseFocusQueue(profile?.focus_queue).stack
-        .filter((ref) => ref.kind === 'task')
-        .map((ref) => ref.taskId);
-      return buildTodayViewModel({ now, timezone, events, tasks, notes, directive, focusTaskIds });
-    },
-    [now, timezone, events, tasks, notes, directive, profile?.focus_queue],
+    () => buildTodayViewModel({
+      now,
+      timezone,
+      events,
+      tasks,
+      notes,
+      directive,
+      focusEntries: focusPrefs.stack,
+    }),
+    [now, timezone, events, tasks, notes, directive, focusPrefs.stack],
   );
 
   const selectedTask = selectedTaskId
@@ -216,6 +229,9 @@ export function TodayPage() {
     (brief) => brief.kind === 'evening' && brief.brief_date === todayIso,
   ) ?? null;
   const showEveningCloseout = !!eveningBrief || Number(formatInTimeZone(now, timezone, 'H')) >= 16;
+  const focusPlanUpdatedLabel = focusPrefs.updatedAt
+    ? formatInTimeZone(new Date(focusPrefs.updatedAt), timezone, 'h:mm a')
+    : null;
 
   const openNote = (noteId: string) => {
     setActiveNote(noteId);
@@ -406,6 +422,13 @@ export function TodayPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">Commitments</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Focus queue</h2>
+              {focusPrefs.managedBy || focusPlanUpdatedLabel ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {focusPrefs.managedBy === 'codex' ? <Badge variant="purple">Codex plan</Badge> : null}
+                  {focusPrefs.managedBy === 'user' ? <Badge variant="subtle">Your plan</Badge> : null}
+                  {focusPlanUpdatedLabel ? <span className="text-xs text-text-subtle">Updated {focusPlanUpdatedLabel}</span> : null}
+                </div>
+              ) : null}
             </div>
             <button type="button" className="btn-ghost" onClick={() => navigate(viewPath('tasks'))}>
               All work <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -444,7 +467,19 @@ export function TodayPage() {
                     <button type="button" onClick={() => setSelectedTaskId(item.taskId)} className="min-w-0 flex-1 text-left">
                       <p className="truncate text-sm font-medium text-text hover:text-brand-600 dark:hover:text-brand-300">{item.title}</p>
                       <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.whyNow}</p>
-                      {item.timingLabel ? <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-text-subtle">{item.timingLabel}</p> : null}
+                      {item.nextAction ? (
+                        <p className="mt-1.5 text-xs leading-relaxed text-text">
+                          <span className="font-semibold">Next:</span> {item.nextAction}
+                        </p>
+                      ) : null}
+                      {item.mode || item.timingLabel ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {item.mode ? (
+                            <Badge variant={FOCUS_MODE_META[item.mode].variant}>{FOCUS_MODE_META[item.mode].label}</Badge>
+                          ) : null}
+                          {item.timingLabel ? <span className="text-[11px] font-medium uppercase tracking-wide text-text-subtle">{item.timingLabel}</span> : null}
+                        </div>
+                      ) : null}
                     </button>
                   </li>
                 ))}

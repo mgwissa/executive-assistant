@@ -39,6 +39,7 @@ type MutationInput = {
   task?: unknown;
   patch?: unknown;
   taskIds?: unknown;
+  focusItems?: unknown;
   sectionId?: unknown;
   content?: unknown;
   linkedEventId?: unknown;
@@ -274,10 +275,49 @@ async function mutate(
   }
 
   if (kind === 'focus_reorder') {
-    if (!Array.isArray(input.taskIds) || !input.taskIds.every((id) => typeof id === 'string')) {
-      return { ok: false, kind, error: 'taskIds must be a string array' };
+    const focusItems: Array<{
+      kind: 'task';
+      taskId: string;
+      reason?: string;
+      nextAction?: string;
+      mode?: 'deep_work' | 'quick_follow_up' | 'waiting';
+    }> = [];
+
+    if (Array.isArray(input.focusItems)) {
+      for (const raw of input.focusItems) {
+        if (!isRecord(raw)) return { ok: false, kind, error: 'each focus item must be an object' };
+        const taskId = str(raw.taskId);
+        if (!taskId) return { ok: false, kind, error: 'each focus item requires taskId' };
+        if (raw.reason != null && typeof raw.reason !== 'string') {
+          return { ok: false, kind, error: 'focus reason must be text' };
+        }
+        if (raw.nextAction != null && typeof raw.nextAction !== 'string') {
+          return { ok: false, kind, error: 'focus nextAction must be text' };
+        }
+        const reason = str(raw.reason);
+        const nextAction = str(raw.nextAction);
+        if (reason && reason.length > 280) return { ok: false, kind, error: 'focus reason is too long' };
+        if (nextAction && nextAction.length > 240) return { ok: false, kind, error: 'focus nextAction is too long' };
+        const mode = raw.mode;
+        if (mode != null && mode !== 'deep_work' && mode !== 'quick_follow_up' && mode !== 'waiting') {
+          return { ok: false, kind, error: 'focus mode must be deep_work, quick_follow_up, or waiting' };
+        }
+        focusItems.push({
+          kind: 'task',
+          taskId,
+          ...(reason ? { reason } : {}),
+          ...(nextAction ? { nextAction } : {}),
+          ...(mode ? { mode } : {}),
+        });
+      }
+    } else if (Array.isArray(input.taskIds) && input.taskIds.every((id) => typeof id === 'string')) {
+      focusItems.push(...input.taskIds.map((taskId) => ({ kind: 'task' as const, taskId })));
+    } else {
+      return { ok: false, kind, error: 'focusItems or taskIds must be an array' };
     }
-    const taskIds = [...new Set(input.taskIds)].slice(0, 6);
+
+    const uniqueFocusItems = [...new Map(focusItems.map((item) => [item.taskId, item])).values()].slice(0, 6);
+    const taskIds = uniqueFocusItems.map((item) => item.taskId);
     if (taskIds.length > 0) {
       const { data: owned, error } = await admin
         .from('tasks')
@@ -296,8 +336,10 @@ async function mutate(
     if (readError) return { ok: false, kind, error: readError.message };
     const existing = isRecord(profile?.focus_queue) ? profile.focus_queue : {};
     const focusQueue = {
-      stack: taskIds.map((taskId) => ({ kind: 'task', taskId })),
+      stack: uniqueFocusItems,
       snoozedUntil: isRecord(existing.snoozedUntil) ? existing.snoozedUntil : {},
+      managedBy: 'codex',
+      updatedAt: new Date().toISOString(),
     };
     const before = { focus_queue: profile?.focus_queue ?? null };
     const { error: updateError } = await admin

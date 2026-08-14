@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatInTimeZone } from 'date-fns-tz';
 import { normalizeDueTime } from '../lib/taskSchedule';
 import { ESTIMATE_PRESETS, formatEstimateMinutes, resolveTaskMinutes } from '../lib/taskCapacity';
@@ -29,8 +29,17 @@ function TaskDetailModalBody({
   task: Task;
   onClose: () => void;
 }) {
-  const { setDueDate, setReviewDate, setDueTime, setLinkedEvent, setWaitingOn, setEstimatedMinutes, setTags, updateDescription, renameTask, toggleDone, deleteTask } =
-    useTasksStore();
+  const setDueDate = useTasksStore((state) => state.setDueDate);
+  const setReviewDate = useTasksStore((state) => state.setReviewDate);
+  const setDueTime = useTasksStore((state) => state.setDueTime);
+  const setLinkedEvent = useTasksStore((state) => state.setLinkedEvent);
+  const setWaitingOn = useTasksStore((state) => state.setWaitingOn);
+  const setEstimatedMinutes = useTasksStore((state) => state.setEstimatedMinutes);
+  const setTags = useTasksStore((state) => state.setTags);
+  const updateDescription = useTasksStore((state) => state.updateDescription);
+  const renameTask = useTasksStore((state) => state.renameTask);
+  const toggleDone = useTasksStore((state) => state.toggleDone);
+  const deleteTask = useTasksStore((state) => state.deleteTask);
   const events = useEventsStore((s) => s.events);
   const profileTz = useProfileStore((s) => s.profile?.timezone);
 
@@ -39,19 +48,39 @@ function TaskDetailModalBody({
 
   const [mode, setMode] = useState<Mode>('write');
   const [titleDraft, setTitleDraft] = useState(t.title);
+  const [notesDraft, setNotesDraft] = useState(t.description);
+  const notesDraftRef = useRef(t.description);
+  const publishedNotesRef = useRef(t.description);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
   const [waitingEnabled, setWaitingEnabled] = useState(() => (t.waiting_on ?? '').trim().length > 0);
   const [waitingDraft, setWaitingDraft] = useState(t.waiting_on ?? '');
 
+  const publishNotes = useCallback((value = notesDraftRef.current) => {
+    if (value === publishedNotesRef.current) return;
+    publishedNotesRef.current = value;
+    updateDescription(t.id, value);
+  }, [t.id, updateDescription]);
+
+  const closeModal = useCallback(() => {
+    publishNotes();
+    onClose();
+  }, [onClose, publishNotes]);
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeModal();
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [closeModal]);
+
+  useEffect(() => {
+    if (notesDraft === publishedNotesRef.current) return;
+    const timer = window.setTimeout(() => publishNotes(notesDraft), 400);
+    return () => window.clearTimeout(timer);
+  }, [notesDraft, publishNotes]);
 
   const commitTitle = () => {
     const trimmed = titleDraft.trim();
@@ -60,7 +89,7 @@ function TaskDetailModalBody({
     }
   };
 
-  const hasNotes = t.description.length > 0;
+  const hasNotes = notesDraft.length > 0;
 
   const eventOptions = useMemo(() => {
     const tz = profileTz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -77,7 +106,7 @@ function TaskDetailModalBody({
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-12 backdrop-blur-sm sm:py-16"
       onClick={(e) => {
-        if (e.target === backdropRef.current) onClose();
+        if (e.target === backdropRef.current) closeModal();
       }}
       role="dialog"
       aria-modal="true"
@@ -90,7 +119,7 @@ function TaskDetailModalBody({
             type="button"
             onClick={() => {
               void toggleDone(t.id, !t.done);
-              if (!t.done) onClose();
+              if (!t.done) closeModal();
             }}
             className="mt-1 shrink-0 text-text-subtle hover:text-brand-700 dark:hover:text-brand-400"
             aria-label={t.done ? 'Mark not done' : 'Mark done'}
@@ -124,7 +153,7 @@ function TaskDetailModalBody({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeModal}
             className="shrink-0 rounded-md px-2 py-1 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
             aria-label="Close"
           >
@@ -338,16 +367,20 @@ function TaskDetailModalBody({
           {mode === 'write' ? (
             <textarea
               ref={textareaRef}
-              value={t.description}
-              onChange={(e) => updateDescription(t.id, e.target.value)}
+              value={notesDraft}
+              onChange={(e) => {
+                notesDraftRef.current = e.target.value;
+                setNotesDraft(e.target.value);
+              }}
+              onBlur={() => publishNotes()}
               placeholder="Add notes, context, links…"
               className="min-h-[10rem] w-full resize-y rounded-lg border border-border bg-surface-raised p-4 font-sans text-sm leading-relaxed text-text outline-none ring-brand-500/40 placeholder:text-text-subtle focus:ring-2"
               rows={6}
             />
           ) : (
             <div className="min-h-[10rem] rounded-lg border border-border bg-surface-raised p-4">
-              {t.description ? (
-                <MarkdownPreview content={t.description} />
+              {notesDraft ? (
+                <MarkdownPreview content={notesDraft} />
               ) : (
                 <p className="text-sm text-text-subtle">No notes yet.</p>
               )}

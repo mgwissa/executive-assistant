@@ -33,7 +33,20 @@ Mutation request files use this shape:
       "title": "Set today's focus",
       "rationale": "These are the three outcomes we agreed matter today.",
       "effects": ["Focus queue: 3 tasks"],
-      "taskIds": ["uuid-1", "uuid-2", "uuid-3"]
+      "focusItems": [
+        {
+          "taskId": "uuid-1",
+          "reason": "This is the best use of the open morning block.",
+          "nextAction": "Draft the decision and send it to Steve.",
+          "mode": "deep_work"
+        },
+        {
+          "taskId": "uuid-2",
+          "reason": "The investigation is complete; only the external confirmation remains.",
+          "nextAction": "Send the data architect a concise confirmation request.",
+          "mode": "quick_follow_up"
+        }
+      ]
     }
   ]
 }
@@ -45,7 +58,10 @@ Supported mutations:
   waiting-on, estimate, tags, and linked event.
 - `task_update`: `taskId` + a patch using those same fields.
 - `task_complete`: `taskId`.
-- `focus_reorder`: ordered `taskIds` (maximum six).
+- `focus_reorder`: ordered `focusItems` (maximum six) with `taskId` plus optional
+  `reason`, `nextAction`, and `mode` (`deep_work`, `quick_follow_up`, or
+  `waiting`). Legacy `taskIds` remains accepted. The bridge records the plan as
+  Codex-managed with a server timestamp.
 - `note_create`: `sectionId`, title, content, and optional meeting link fields.
 - `brief_write`: `brief` with `kind` (`morning` or `evening`), `brief_date`,
   markdown `body`, and optional `stats`. Rewriting the same kind/date replaces
