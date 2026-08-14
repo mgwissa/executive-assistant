@@ -39,7 +39,7 @@ src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
   components/          UI components (one file per concern)
-    TodayPage.tsx       Routed home view: actual schedule, linked note context, focus windows, advisory concerns
+    TodayPage.tsx       Routed home view: saved Codex brief, actual schedule, linked note context, focus windows, advisory concerns
     WorkPage.tsx        Routed commitments view: focus, deadlines, reviews, waiting, unscheduled, note items
     TaskQuickAddForm.tsx  Shared task create form (Tasks, Today, legacy Dashboard/Assistant)
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
@@ -75,10 +75,10 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `TodayPage` | Primary daily view: chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
+| `/dashboard` | `TodayPage` | Primary daily view: the persisted Codex morning brief, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
-| `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, and note action items. Legacy `Tasks` remains in code but is not routed. |
+| `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
 | `/calendar` | `Calendar` | Today/Week view; sources: manual events + Outlook ICS |
 | `/links` | `UsefulLinksPage` | User-curated bookmarks |
@@ -110,7 +110,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `notebook_members`, `notebook_invites` | Notebook sharing | shared notebooks expose notes to other auth users via RLS |
 
 | `agent_runs` | One row per scheduled agent invocation | `kind`, `status`, `summary`, `stats`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
+| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create` and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 

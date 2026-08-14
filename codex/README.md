@@ -47,8 +47,10 @@ Supported mutations:
 - `task_complete`: `taskId`.
 - `focus_reorder`: ordered `taskIds` (maximum six).
 - `note_create`: `sectionId`, title, content, and optional meeting link fields.
+- `brief_write`: `brief` with `kind` (`morning` or `evening`), `brief_date`,
+  markdown `body`, and optional `stats`. Rewriting the same kind/date replaces
+  the visible brief while preserving the previous row in the audit action.
 
 Every mutation creates a manual `agent_runs` row and one reversible
 `agent_actions` row per applied change. The endpoint cannot delete tasks or
 change the legacy priority field.
-

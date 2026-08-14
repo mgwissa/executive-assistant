@@ -4,6 +4,7 @@ import { isUndoRefusal, planUndo, type UndoPlan } from '../lib/agentDesk';
 import type {
   AgentAction,
   AgentBrief,
+  AgentBriefInsert,
   AgentMemory,
   AgentRun,
   ProfileUpdate,
@@ -55,6 +56,10 @@ function asProfileUpdate(patch: Record<string, unknown>): ProfileUpdate {
   return patch as unknown as ProfileUpdate;
 }
 
+function asBriefInsert(row: Record<string, unknown>): AgentBriefInsert {
+  return row as unknown as AgentBriefInsert;
+}
+
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {
   switch (plan.op) {
     case 'delete_task': {
@@ -97,6 +102,16 @@ async function executeUndo(userId: string, plan: UndoPlan): Promise<string | nul
     }
     case 'delete_note': {
       const { error } = await supabase.from('notes').delete().eq('id', plan.noteId);
+      return error?.message ?? null;
+    }
+    case 'delete_brief': {
+      const { error } = await supabase.from('agent_briefs').delete().eq('id', plan.briefId);
+      return error?.message ?? null;
+    }
+    case 'restore_brief': {
+      const { error } = await supabase
+        .from('agent_briefs')
+        .upsert(asBriefInsert(plan.row), { onConflict: 'user_id,kind,brief_date' });
       return error?.message ?? null;
     }
     default:
@@ -213,6 +228,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
     if (plan.op === 'delete_note') {
       await useNotesStore.getState().fetchAll(userId);
+    }
+    if (plan.op === 'delete_brief' || plan.op === 'restore_brief') {
+      await get().fetchAll(userId);
     }
     return !markErr;
   },

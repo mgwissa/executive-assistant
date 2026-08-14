@@ -43,6 +43,7 @@ type MutationInput = {
   content?: unknown;
   linkedEventId?: unknown;
   linkedOccurrenceStartAt?: unknown;
+  brief?: unknown;
 };
 
 type MutationResult = {
@@ -362,6 +363,56 @@ async function mutate(
     return { ok: true, kind, actionId: logged.id, targetId: data.id };
   }
 
+  if (kind === 'brief_write') {
+    const source = isRecord(input.brief) ? input.brief : {};
+    const briefKind = str(source.kind);
+    const briefDate = dateOrNull(source.brief_date);
+    const body = str(source.body);
+    if (briefKind !== 'morning' && briefKind !== 'evening') {
+      return { ok: false, kind, error: 'brief.kind must be morning or evening' };
+    }
+    if (!briefDate) return { ok: false, kind, error: 'brief.brief_date must be YYYY-MM-DD' };
+    if (!body || body.length > 20_000) return { ok: false, kind, error: 'brief.body must be 1–20,000 characters' };
+    const stats = isRecord(source.stats) ? source.stats : {};
+    const { data: existing, error: readError } = await admin
+      .from('agent_briefs')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('kind', briefKind)
+      .eq('brief_date', briefDate)
+      .maybeSingle();
+    if (readError) return { ok: false, kind, error: readError.message };
+    const payload = {
+      user_id: userId,
+      run_id: runId,
+      kind: briefKind,
+      brief_date: briefDate,
+      body,
+      stats,
+      read_at: null,
+    };
+    const { data, error } = await admin
+      .from('agent_briefs')
+      .upsert(payload, { onConflict: 'user_id,kind,brief_date' })
+      .select('*')
+      .single();
+    if (error || !data) return { ok: false, kind, error: error?.message ?? 'Brief write failed' };
+    const logged = await logAction(admin, userId, runId, input, {
+      target: { type: 'brief', id: data.id },
+      before: existing ? existing as JsonRecord : null,
+      after: data as JsonRecord,
+    });
+    if ('error' in logged) {
+      if (existing) {
+        await admin.from('agent_briefs').upsert(existing, { onConflict: 'user_id,kind,brief_date' });
+      } else {
+        await admin.from('agent_briefs').delete().eq('id', data.id).eq('user_id', userId);
+      }
+      return { ok: false, kind, error: logged.error };
+    }
+    return { ok: true, kind, actionId: logged.id, targetId: data.id };
+  }
+
   return { ok: false, kind, error: `unsupported mutation kind "${kind}"` };
 }
 
@@ -373,13 +424,14 @@ async function buildContext(admin: SupabaseClient, userId: string) {
   const windowEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
   const doneSince = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, actionsRes] = await Promise.all([
+  const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, actionsRes, briefsRes] = await Promise.all([
     admin.from('tasks').select('*').eq('user_id', userId).or(`done.eq.false,updated_at.gte.${doneSince}`).order('updated_at', { ascending: false }).limit(400),
     admin.from('events').select('*').eq('user_id', userId).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(250),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
     admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
     admin.from('agent_actions').select('id,kind,title,rationale,effects,status,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
+    admin.from('agent_briefs').select('id,kind,brief_date,body,stats,created_at').eq('user_id', userId).order('brief_date', { ascending: false }).limit(14),
   ]);
 
   const events = eventsRes.data ?? [];
@@ -403,6 +455,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     notebooks: notebooksRes.data ?? [],
     sections: sectionsRes.data ?? [],
     notes,
+    recentBriefs: briefsRes.data ?? [],
     recentCodexActions: actionsRes.data ?? [],
   };
 }

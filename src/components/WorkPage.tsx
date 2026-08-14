@@ -19,7 +19,7 @@ import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import type { Json } from '../types/database';
 import type { Task } from '../types';
-import { NoteIcon, SquareIcon } from './icons';
+import { CheckSquareIcon, NoteIcon, SquareIcon } from './icons';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskQuickAddForm } from './TaskQuickAddForm';
 import { Badge } from './ui/Badge';
@@ -85,6 +85,12 @@ export function WorkPage() {
   );
   const focusSet = useMemo(() => new Set(focusTaskIds), [focusTaskIds]);
   const openTasks = useMemo(() => tasks.filter((task) => !task.done), [tasks]);
+  const completedTasks = useMemo(
+    () => tasks
+      .filter((task) => task.done)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    [tasks],
+  );
 
   const buckets = useMemo<WorkBucket[]>(() => {
     const byFocus = new Map(focusTaskIds.map((id, index) => [id, index]));
@@ -218,11 +224,82 @@ export function WorkPage() {
               )}
             </Card>
           </section>
+
+          <CompletedWorkSection
+            tasks={completedTasks}
+            loading={tasksLoading}
+            onOpen={setSelectedTaskId}
+            onReopen={(id) => void toggleDone(id, false)}
+          />
         </div>
       </div>
 
       {selectedTask ? <TaskDetailModal task={selectedTask} onClose={() => setSelectedTaskId(null)} /> : null}
     </div>
+  );
+}
+
+function CompletedWorkSection({
+  tasks,
+  loading,
+  onOpen,
+  onReopen,
+}: {
+  tasks: Task[];
+  loading: boolean;
+  onOpen: (id: string) => void;
+  onReopen: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="mb-3 flex w-full items-end justify-between gap-3 text-left"
+        aria-expanded={expanded}
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-text">Completed work</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Closed loops stay available as a searchable record with their context intact.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="green">{tasks.length}</Badge>
+          <span className="text-xs font-medium text-text-muted">{expanded ? 'Hide' : 'Show'}</span>
+        </div>
+      </button>
+
+      {expanded ? (
+        <Card padded="none">
+          {loading && tasks.length === 0 ? (
+            <EmptyState icon={<CheckSquareIcon className="h-5 w-5" />} title="Loading completed work" message="Gathering closed loops." />
+          ) : tasks.length === 0 ? (
+            <EmptyState icon={<CheckSquareIcon className="h-5 w-5" />} title="Nothing completed yet" message="Work appears here after its loop is fully closed." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {tasks.map((task) => (
+                <li key={task.id} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+                  <CheckSquareIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  <button type="button" onClick={() => onOpen(task.id)} className="min-w-0 flex-1 text-left">
+                    <p className="text-sm font-medium text-text-muted hover:text-brand-600 dark:hover:text-brand-300">{task.title}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-text-subtle">Closed {format(parseISO(task.updated_at), 'MMM d')}</span>
+                      {task.description ? <span className="inline-flex items-center gap-1 text-xs text-text-subtle"><NoteIcon className="h-3.5 w-3.5" /> Context preserved</span> : null}
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => onReopen(task.id)} className="btn-secondary shrink-0 text-xs">
+                    Reopen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
+    </section>
   );
 }
 

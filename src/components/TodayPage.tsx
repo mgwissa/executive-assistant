@@ -1,5 +1,5 @@
 import { formatInTimeZone } from 'date-fns-tz';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDirectiveClock } from '../hooks/useDirectiveClock';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
@@ -17,6 +17,7 @@ import {
   type TodayConcern,
 } from '../lib/today';
 import { useAuthStore } from '../store/useAuthStore';
+import { useAgentStore } from '../store/useAgentStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
@@ -32,6 +33,7 @@ import {
 } from './icons';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskQuickAddForm } from './TaskQuickAddForm';
+import { MarkdownPreview } from './MarkdownPreview';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
@@ -70,6 +72,9 @@ function SummaryMetric({ label, value, detail }: { label: string; value: string;
 export function TodayPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const briefs = useAgentStore((state) => state.briefs);
+  const briefsLoading = useAgentStore((state) => state.loading);
+  const fetchAgentData = useAgentStore((state) => state.fetchAll);
   const profile = useProfileStore((state) => state.profile);
   const notes = useNotesStore((state) => state.notes);
   const notesLoading = useNotesStore((state) => state.loading);
@@ -83,6 +88,10 @@ export function TodayPage() {
   const debriefStates = useMeetingDebriefStore((state) => state.states);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const clock = useDirectiveClock(true);
+
+  useEffect(() => {
+    if (user) void fetchAgentData(user.id);
+  }, [user, fetchAgentData]);
 
   const timezone = resolveCalendarTimeZone(profile?.timezone);
   const now = useMemo(() => {
@@ -122,6 +131,10 @@ export function TodayPage() {
     : null;
   const loading = notesLoading || tasksLoading || eventsLoading;
   const dateLabel = formatInTimeZone(now, timezone, 'EEEE, MMMM d');
+  const todayIso = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+  const morningBrief = briefs.find(
+    (brief) => brief.kind === 'morning' && brief.brief_date === todayIso,
+  ) ?? null;
 
   const openNote = (noteId: string) => {
     setActiveNote(noteId);
@@ -153,6 +166,33 @@ export function TodayPage() {
             Live in {timezone}
           </div>
         </header>
+
+        <section className="mb-6" aria-labelledby="morning-brief-heading">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">From Codex</p>
+              <h2 id="morning-brief-heading" className="mt-1 text-xl font-semibold tracking-tight text-text">Morning brief</h2>
+            </div>
+            {morningBrief ? <Badge variant="purple">Saved today</Badge> : null}
+          </div>
+          <Card className={morningBrief ? 'border-brand-500/20 bg-brand-500/[0.04]' : undefined}>
+            {briefsLoading && !morningBrief ? (
+              <p className="text-sm text-text-muted">Checking for today’s briefing…</p>
+            ) : morningBrief ? (
+              <MarkdownPreview content={morningBrief.body} />
+            ) : (
+              <div className="flex items-start gap-3">
+                <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
+                <div>
+                  <p className="text-sm font-semibold text-text">No briefing saved yet</p>
+                  <p className="mt-1 text-sm leading-relaxed text-text-muted">
+                    Ask Codex to “brief me” in the desktop conversation. It will read the live workspace, save the briefing here, and record the write in Codex activity.
+                  </p>
+                </div>
+              </div>
+            )}
+          </Card>
+        </section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
           <SummaryMetric

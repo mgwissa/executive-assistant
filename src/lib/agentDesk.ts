@@ -27,6 +27,7 @@ export const AGENT_ACTION_KINDS = [
   'chase_logged',
   'memory_write',
   'note_create',
+  'brief_write',
 ] as const;
 
 export type AgentActionKind = (typeof AGENT_ACTION_KINDS)[number];
@@ -73,6 +74,7 @@ export type AgentTarget =
   | { type: 'profile' }
   | { type: 'memory'; key: string }
   | { type: 'note'; id: string }
+  | { type: 'brief'; id: string }
   | { type: 'unknown' };
 
 export function parseTarget(raw: unknown): AgentTarget {
@@ -86,6 +88,10 @@ export function parseTarget(raw: unknown): AgentTarget {
   if (type === 'note') {
     const id = str(raw.id);
     return id ? { type: 'note', id } : { type: 'unknown' };
+  }
+  if (type === 'brief') {
+    const id = str(raw.id);
+    return id ? { type: 'brief', id } : { type: 'unknown' };
   }
   if (type === 'memory') {
     const key = str(raw.key);
@@ -117,7 +123,9 @@ export type UndoPlan =
   | { op: 'patch_profile'; patch: ColumnPatch }
   | { op: 'delete_memory'; key: string }
   | { op: 'restore_memory'; key: string; row: ColumnPatch }
-  | { op: 'delete_note'; noteId: string };
+  | { op: 'delete_note'; noteId: string }
+  | { op: 'delete_brief'; briefId: string }
+  | { op: 'restore_brief'; row: ColumnPatch };
 
 export type UndoRefusal = { reason: string };
 
@@ -206,6 +214,16 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'delete_note', noteId: target.id };
     }
 
+    case 'brief_write': {
+      if (target.type !== 'brief') {
+        return { reason: 'Missing the brief reference needed to undo this' };
+      }
+      if (!before || Object.keys(before).length === 0) {
+        return { op: 'delete_brief', briefId: target.id };
+      }
+      return { op: 'restore_brief', row: before };
+    }
+
     default:
       return { reason: `Unrecognised action type "${action.kind}"` };
   }
@@ -229,6 +247,7 @@ export const ACTION_KIND_META: Record<
   chase_logged: { label: 'Chase drafted', accent: 'blue' },
   memory_write: { label: 'Learned', accent: 'purple' },
   note_create: { label: 'Captured note', accent: 'blue' },
+  brief_write: { label: 'Briefed', accent: 'purple' },
 };
 
 export const RUN_KIND_LABEL: Record<AgentRunKind, string> = {
