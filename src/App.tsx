@@ -20,6 +20,7 @@ import { TodayPage } from './components/TodayPage';
 import { TopBar } from './components/TopBar';
 import { WorkNudgeHost } from './components/WorkNudgeHost';
 import { WeeklyRoutinePage } from './components/WeeklyRoutinePage';
+import { useCodexSync } from './hooks/useCodexSync';
 import { useNotebookRealtime } from './hooks/useNotebookRealtime';
 import { eventsFetchIsoRange } from './lib/eventQueries';
 import { debriefFetchRangeForDay } from './lib/meetingDebrief';
@@ -95,6 +96,7 @@ function NotesView() {
 function Shell() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  useCodexSync(user?.id);
   const mobileNavOpen = useShellLayoutStore((s) => s.mobileNavOpen);
   const closeMobileNav = useShellLayoutStore((s) => s.closeMobileNav);
 

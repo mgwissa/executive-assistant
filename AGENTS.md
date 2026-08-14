@@ -39,13 +39,13 @@ src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
   components/          UI components (one file per concern)
-    TodayPage.tsx       Routed home view: saved Codex brief, actual schedule, linked note context, focus windows, advisory concerns
+    TodayPage.tsx       Routed home view: compact morning/evening Codex briefs, actual schedule, linked note context, focus windows, advisory concerns
     WorkPage.tsx        Routed commitments view: focus, deadlines, reviews, waiting, unscheduled, note items
     TaskQuickAddForm.tsx  Shared task create form (Tasks, Today, legacy Dashboard/Assistant)
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
     notes/             Notes-editor-specific sub-pieces (toolbar, etc.)
     ui/                Generic primitives: Card, Badge, EmptyState, SectionHeader, ...
-  hooks/               useNotebookRealtime
+  hooks/               useNotebookRealtime + audited Codex-change polling (`useCodexSync`)
   lib/                 Pure utilities, supabase client, business logic
   store/               Zustand stores (one file each)
   styles/              CSS (notesEditor.css for BlockNote overrides)
@@ -75,7 +75,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `TodayPage` | Primary daily view: the persisted Codex morning brief, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
+| `/dashboard` | `TodayPage` | Primary daily view: compact persisted Codex morning brief, after-4pm evening closeout, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
 | `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
@@ -192,6 +192,10 @@ Today path.
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
 **Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → B meeting lifecycle ✅ → C delegation (slice 1 ✅) → **D capacity** ✅ → **E focus stack** ✅ → **E decisions** ✅ (dashboard `ExecutiveDecisionQueue`) → **F evening close-out** ✅ (dashboard `ExecutiveEveningCloseout`, active after 5pm) → F capture → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
+
+**Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
+
+**Desktop Codex sync:** `useCodexSync` checks the newest `agent_actions` row every 30 seconds while the app is visible and immediately when the tab regains focus. New audited writes refresh `useAgentStore` plus only the operational stores implicated by the action kind (tasks, notes, or profile focus queue). The first check seeds a cursor and does not reload existing data; overlapping focus/visibility checks are deduped.
 
 ## Agent audit trail and legacy Claude implementation
 

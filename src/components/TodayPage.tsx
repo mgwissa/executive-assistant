@@ -23,6 +23,7 @@ import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import type { AgentBrief } from '../types';
 import {
   ArrowRightIcon,
   CalendarIcon,
@@ -59,6 +60,80 @@ function displayName(firstName: string | null | undefined, email: string | null 
   return email?.split('@')[0]?.split(/[._-]/)[0] || 'there';
 }
 
+function briefSummary(body: string): string {
+  const firstParagraph = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line !== '' && !line.startsWith('#') && !/^(?:[-*]|\d+\.)\s/.test(line));
+  return (firstParagraph ?? 'A briefing is ready for today.')
+    .replace(/\*\*/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+
+function SavedBriefCard({
+  brief,
+  loading,
+  eyebrow,
+  title,
+  emptyMessage,
+  expanded,
+  onToggle,
+  bodyId,
+  openLabel,
+}: {
+  brief: AgentBrief | null;
+  loading: boolean;
+  eyebrow: string;
+  title: string;
+  emptyMessage: string;
+  expanded: boolean;
+  onToggle: () => void;
+  bodyId: string;
+  openLabel: string;
+}) {
+  const summary = brief ? briefSummary(brief.body) : null;
+
+  return (
+    <Card padded="sm" className={brief ? 'border-brand-500/20 bg-brand-500/[0.04]' : undefined}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-300">
+          <SparklesIcon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">{eyebrow}</p>
+            {brief ? <Badge variant="purple">Saved today</Badge> : null}
+          </div>
+          <h2 className="mt-0.5 text-base font-semibold text-text">{title}</h2>
+          {loading && !brief ? (
+            <p className="mt-1 text-sm text-text-muted">Checking for today's entry...</p>
+          ) : summary ? (
+            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-muted">{summary}</p>
+          ) : (
+            <p className="mt-1 text-sm leading-relaxed text-text-muted">{emptyMessage}</p>
+          )}
+        </div>
+        {brief ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="btn-secondary shrink-0 self-start text-xs"
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+          >
+            {expanded ? 'Collapse' : openLabel}
+          </button>
+        ) : null}
+      </div>
+      {brief && expanded ? (
+        <div id={bodyId} className="mt-4 border-t border-border pt-4">
+          <MarkdownPreview content={brief.body} />
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function SummaryMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-border bg-surface-raised px-4 py-3">
@@ -87,6 +162,8 @@ export function TodayPage() {
   const eventsLoading = useEventsStore((state) => state.loading);
   const debriefStates = useMeetingDebriefStore((state) => state.states);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [morningBriefExpanded, setMorningBriefExpanded] = useState(false);
+  const [eveningBriefExpanded, setEveningBriefExpanded] = useState(false);
   const clock = useDirectiveClock(true);
 
   useEffect(() => {
@@ -135,6 +212,10 @@ export function TodayPage() {
   const morningBrief = briefs.find(
     (brief) => brief.kind === 'morning' && brief.brief_date === todayIso,
   ) ?? null;
+  const eveningBrief = briefs.find(
+    (brief) => brief.kind === 'evening' && brief.brief_date === todayIso,
+  ) ?? null;
+  const showEveningCloseout = !!eveningBrief || Number(formatInTimeZone(now, timezone, 'H')) >= 16;
 
   const openNote = (noteId: string) => {
     setActiveNote(noteId);
@@ -167,31 +248,19 @@ export function TodayPage() {
           </div>
         </header>
 
-        <section className="mb-6" aria-labelledby="morning-brief-heading">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">From Codex</p>
-              <h2 id="morning-brief-heading" className="mt-1 text-xl font-semibold tracking-tight text-text">Morning brief</h2>
-            </div>
-            {morningBrief ? <Badge variant="purple">Saved today</Badge> : null}
-          </div>
-          <Card className={morningBrief ? 'border-brand-500/20 bg-brand-500/[0.04]' : undefined}>
-            {briefsLoading && !morningBrief ? (
-              <p className="text-sm text-text-muted">Checking for today’s briefing…</p>
-            ) : morningBrief ? (
-              <MarkdownPreview content={morningBrief.body} />
-            ) : (
-              <div className="flex items-start gap-3">
-                <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                <div>
-                  <p className="text-sm font-semibold text-text">No briefing saved yet</p>
-                  <p className="mt-1 text-sm leading-relaxed text-text-muted">
-                    Ask Codex to “brief me” in the desktop conversation. It will read the live workspace, save the briefing here, and record the write in Codex activity.
-                  </p>
-                </div>
-              </div>
-            )}
-          </Card>
+        <section className="mb-4" aria-labelledby="morning-brief-heading">
+          <span id="morning-brief-heading" className="sr-only">Morning brief</span>
+          <SavedBriefCard
+            brief={morningBrief}
+            loading={briefsLoading}
+            eyebrow="From Codex"
+            title="Morning brief"
+            emptyMessage={'Ask Codex to "brief me" in the desktop conversation. The saved result will appear here.'}
+            expanded={morningBriefExpanded}
+            onToggle={() => setMorningBriefExpanded((expanded) => !expanded)}
+            bodyId="morning-brief-body"
+            openLabel="Read full brief"
+          />
         </section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
@@ -383,6 +452,23 @@ export function TodayPage() {
             )}
           </Card>
         </section>
+
+        {showEveningCloseout ? (
+          <section className="mt-6" aria-labelledby="evening-closeout-heading">
+            <span id="evening-closeout-heading" className="sr-only">Evening closeout</span>
+            <SavedBriefCard
+              brief={eveningBrief}
+              loading={briefsLoading}
+              eyebrow="End of day"
+              title="Evening closeout"
+              emptyMessage={'Ask Codex to "close out my day" in the desktop conversation. We\'ll capture wins, open loops, and tomorrow\'s starting point here.'}
+              expanded={eveningBriefExpanded}
+              onToggle={() => setEveningBriefExpanded((expanded) => !expanded)}
+              bodyId="evening-closeout-body"
+              openLabel="Read full closeout"
+            />
+          </section>
+        ) : null}
       </div>
 
       {selectedTask ? <TaskDetailModal task={selectedTask} onClose={() => setSelectedTaskId(null)} /> : null}
