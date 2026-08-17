@@ -31,6 +31,12 @@ verify_jwt = false
 [functions.agent-api]
 verify_jwt = false
 
-# Explicit Codex desktop bridge. Own secret auth + server-pinned user id.
+# Audited workspace API used behind the OAuth-authenticated MCP endpoint.
 [functions.codex-api]
+verify_jwt = false
+
+[functions.executive-assistant-mcp]
+verify_jwt = false
+
+[functions.agent-connections]
 verify_jwt = false

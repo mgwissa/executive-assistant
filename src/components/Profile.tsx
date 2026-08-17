@@ -29,6 +29,7 @@ import {
 import { BellIcon, BrainIcon, CalendarIcon, CheckSquareIcon, SparklesIcon, UserIcon } from './icons';
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
+import { AgentConnectionsSection } from './AgentConnectionsSection';
 
 export function Profile() {
   const user = useAuthStore((s) => s.user);
@@ -65,6 +66,8 @@ export function Profile() {
               await updateProfile(user.id, { first_name: next === '' ? null : next });
             }}
           />
+
+          {user && <AgentConnectionsSection />}
 
           {user && profile && (
             <PriorityEscalationSection

@@ -447,7 +447,7 @@ export function TodayPage() {
             </div>
             {today.focus.length === 0 ? (
               <div className="px-4 py-5 text-sm text-text-muted sm:px-5">
-                Nothing is being pushed right now. Real deadlines and arrived review dates appear automatically; Work can set a temporary starting point until the Codex bridge manages this queue.
+                Nothing is being pushed right now. Real deadlines and arrived review dates appear automatically; Work can set a temporary starting point until your connected agent manages this queue.
               </div>
             ) : (
               <ul className="divide-y divide-border">

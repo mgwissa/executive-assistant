@@ -579,10 +579,56 @@ export type Database = {
           revoked_at?: string | null;
         };
       };
+      agent_connections: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          token_prefix: string | null;
+          token_hash: string | null;
+          oauth_client_id: string | null;
+          auth_kind: string;
+          scopes: string[];
+          created_at: string;
+          last_used_at: string | null;
+          expires_at: string | null;
+          revoked_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          token_prefix?: string | null;
+          token_hash?: string | null;
+          oauth_client_id?: string | null;
+          auth_kind?: string;
+          scopes?: string[];
+          created_at?: string;
+          last_used_at?: string | null;
+          expires_at?: string | null;
+          revoked_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          token_prefix?: string | null;
+          token_hash?: string | null;
+          oauth_client_id?: string | null;
+          auth_kind?: string;
+          scopes?: string[];
+          created_at?: string;
+          last_used_at?: string | null;
+          expires_at?: string | null;
+          revoked_at?: string | null;
+        };
+      };
       agent_runs: {
         Row: {
           id: string;
           user_id: string;
+          agent_connection_id: string | null;
+          actor_name: string;
           kind: string;
           status: string;
           trigger_source: string;
@@ -595,6 +641,8 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
+          agent_connection_id?: string | null;
+          actor_name?: string;
           kind?: string;
           status?: string;
           trigger_source?: string;
@@ -607,6 +655,8 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
+          agent_connection_id?: string | null;
+          actor_name?: string;
           kind?: string;
           status?: string;
           trigger_source?: string;
@@ -622,6 +672,8 @@ export type Database = {
           id: string;
           user_id: string;
           run_id: string | null;
+          agent_connection_id: string | null;
+          actor_name: string;
           kind: string;
           title: string;
           rationale: string | null;
@@ -644,6 +696,8 @@ export type Database = {
           id?: string;
           user_id: string;
           run_id?: string | null;
+          agent_connection_id?: string | null;
+          actor_name?: string;
           kind: string;
           title: string;
           rationale?: string | null;
@@ -663,6 +717,8 @@ export type Database = {
           id?: string;
           user_id?: string;
           run_id?: string | null;
+          agent_connection_id?: string | null;
+          actor_name?: string;
           kind?: string;
           title?: string;
           rationale?: string | null;

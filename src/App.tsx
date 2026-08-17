@@ -6,6 +6,7 @@ import { AssistantPage } from './components/AssistantPage';
 import { Calendar } from './components/Calendar';
 import { MemoryPage } from './components/MemoryPage';
 import { OwedToMePage } from './components/OwedToMePage';
+import { OAuthConsentPage } from './components/OAuthConsentPage';
 import { Profile } from './components/Profile';
 import { RequireOptionalFeature } from './components/RequireOptionalFeature';
 import { ResetPassword } from './components/ResetPassword';
@@ -324,6 +325,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="reset-password" element={<ResetPassword />} />
+      <Route path="oauth/consent" element={<OAuthConsentPage />} />
       <Route element={<Shell />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<TodayPage />} />

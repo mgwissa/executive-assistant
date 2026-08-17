@@ -129,6 +129,8 @@ function ActionRow({
           <p className="mt-1.5 text-xs leading-relaxed text-text-subtle">{action.rationale}</p>
         ) : null}
 
+        <p className="mt-1 text-[11px] text-text-subtle">By {action.actor_name}</p>
+
         {action.undo_error ? (
           <p className="mt-1.5 text-xs text-red-600 dark:text-red-400" role="alert">
             Undo failed: {action.undo_error}

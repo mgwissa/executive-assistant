@@ -1,72 +1,52 @@
-# Codex bridge
+# Hosted agent connection
 
-The bridge is an explicit, audited connection from Codex desktop to this
-workspace. It does not poll or call a model. Codex uses the local helper only
-when the owner asks it to read or change workspace state.
+The app exposes a hosted, per-user MCP server. Codex connects to the deployed
+Supabase endpoint with OAuth; users do not clone this repository, run a local
+bridge, or copy long-lived API tokens.
 
-## One-time setup
+## Project setup
 
-1. Apply `supabase/migrations/2026-08-13_043_codex_bridge_actions.sql`.
-2. Set Supabase Function secrets `CODEX_BRIDGE_SECRET` (long random value) and
-   `CODEX_USER_ID` (the owner's `auth.users.id`).
-3. Deploy `codex-api`.
-4. Copy `.env.codex-bridge.example` to `.env.codex-bridge` and put the same
-   secret there. The real file is gitignored.
+1. Apply migrations through `2026-08-17_046_oauth_agent_connections.sql`.
+2. In Supabase Dashboard, open **Authentication -> OAuth Server**:
+   - enable the OAuth server;
+   - set the authorization path to `/oauth/consent`;
+   - enable dynamic client registration for MCP clients.
+3. Confirm the Auth site URL points to the deployed web app and that
+   `/oauth/consent` is handled by the SPA host.
+4. Deploy `agent-connections`, `codex-api`, and
+   `executive-assistant-mcp`.
 
-## Local helper
+Use an asymmetric JWT signing key for the Supabase project. The MCP endpoint
+validates every access token with Supabase Auth and requires the OAuth
+`client_id` to match an explicitly approved, non-revoked connection owned by
+that user.
 
-```powershell
-node codex/bridge.mjs context
-node codex/bridge.mjs search "refinement notes"
-node codex/bridge.mjs request C:\path\to\request.json
-```
+## User setup
 
-Mutation request files use this shape:
+1. Open **Profile -> Agent connections** in the deployed app.
+2. Copy the MCP address.
+3. In Codex, add it as a Streamable HTTP MCP server using OAuth.
+4. Save the server and restart the ChatGPT desktop app or Codex extension.
+5. Select **Authenticate**, sign into the app, verify the client identity and
+   redirect destination, review the requested capabilities, and approve access.
 
-```json
-{
-  "action": "mutate",
-  "summary": "Updated the focus queue from our planning conversation.",
-  "actions": [
-    {
-      "kind": "focus_reorder",
-      "title": "Set today's focus",
-      "rationale": "These are the three outcomes we agreed matter today.",
-      "effects": ["Focus queue: 3 tasks"],
-      "focusItems": [
-        {
-          "taskId": "uuid-1",
-          "reason": "This is the best use of the open morning block.",
-          "nextAction": "Draft the decision and send it to Steve.",
-          "mode": "deep_work"
-        },
-        {
-          "taskId": "uuid-2",
-          "reason": "The investigation is complete; only the external confirmation remains.",
-          "nextAction": "Send the data architect a concise confirmation request.",
-          "mode": "quick_follow_up"
-        }
-      ]
-    }
-  ]
-}
-```
+The Profile page lists approved clients and can revoke them. Revocation first
+blocks the client in the app's own connection table and then revokes the
+Supabase OAuth grant.
 
-Supported mutations:
+## Exposed tools
 
-- `task_create`: `task` may contain title, deadline/review fields, description,
-  waiting-on, estimate, tags, and linked event.
-- `task_update`: `taskId` + a patch using those same fields.
-- `task_complete`: `taskId`.
-- `focus_reorder`: ordered `focusItems` (maximum six) with `taskId` plus optional
-  `reason`, `nextAction`, and `mode` (`deep_work`, `quick_follow_up`, or
-  `waiting`). Legacy `taskIds` remains accepted. The bridge records the plan as
-  Codex-managed with a server timestamp.
-- `note_create`: `sectionId`, title, content, and optional meeting link fields.
-- `brief_write`: `brief` with `kind` (`morning` or `evening`), `brief_date`,
-  markdown `body`, and optional `stats`. Rewriting the same kind/date replaces
-  the visible brief while preserving the previous row in the audit action.
+- `get_workspace_context`: reads the schedule, open/recent work, focus queue,
+  note index and linked excerpts, briefings, and recent audited activity.
+- `search_notes`: performs a bounded search when the normal context does not
+  contain enough detail.
+- `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
+  queue, creates notes, and writes briefings through the existing audited
+  mutation engine.
 
-Every mutation creates a manual `agent_runs` row and one reversible
-`agent_actions` row per applied change. The endpoint cannot delete tasks or
-change the legacy priority field.
+Every mutation creates an `agent_runs` row and a reversible `agent_actions` row
+per applied change. The endpoint cannot delete tasks, change legacy priority,
+or arbitrarily rewrite existing BlockNote documents.
+
+This integration does not poll and does not call a model. The connected MCP
+client decides when to read context or request an agreed workspace change.

@@ -55,8 +55,7 @@ src/
 agent/
   runner.mjs           Dormant legacy Claude runner retained for reference
 codex/
-  bridge.mjs           Local secret-loading HTTP client for the Codex bridge
-  README.md            One-time setup + request contract
+  README.md            Hosted MCP/OAuth setup and tool contract
 supabase/
   config.toml          Edge Function deploy config (verify_jwt = false where intentional)
   functions/           Deno Edge Functions
@@ -64,7 +63,9 @@ supabase/
     send-daily-digest/
     send-task-escalation/
     sync-outlook-calendar/
-    codex-api/          Explicit secret-protected context + audited mutations
+    agent-connections/  Consent-time local authorization and revocation
+    codex-api/          OAuth-scoped context + audited mutations
+    executive-assistant-mcp/  Hosted Streamable HTTP MCP facade
   migrations/          Apply in filename order via SQL editor
 README.md              Human setup guide (Resend, cron, secrets, etc.)
 AGENTS.md              ← you are here
@@ -110,8 +111,9 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `routine_item_states` | Weekly routine progress | `routine_date`, `item_id`, `status`, `template_version` (isolates progress when user saves a custom routine) |
 | `notebook_members`, `notebook_invites` | Notebook sharing | shared notebooks expose notes to other auth users via RLS |
 
-| `agent_runs` | One row per scheduled agent invocation | `kind`, `status`, `summary`, `stats`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create` and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `dedupe_key`, `status` |
+| `agent_connections` | Local authorization and attribution for per-user OAuth clients | `name`, `oauth_client_id`, `auth_kind`, `scopes`, `last_used_at`, `revoked_at` |
+| `agent_runs` | One row per agent invocation | `kind`, `status`, `summary`, `stats`, `agent_connection_id`, `actor_name`, `started_at` |
+| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create` and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
@@ -213,7 +215,7 @@ Today path.
 
 The Claude runner was the previous automation direction. Its schedule and
 secrets are removed. The hidden Agent Desk, audit tables, and undo machinery are
-retained because the explicit Codex bridge reuses that trust layer.
+retained because the hosted MCP connection reuses that trust layer.
 
 ### The undo contract
 
@@ -240,17 +242,23 @@ roll the data change back if the audit insert fails.
 | Shared logic | `lib/agentDesk.ts`, `lib/agentPlaybook.ts` | Undo planning + narrowing; default standing instructions |
 | Runner | `agent/runner.mjs` | Dormant Node 22 Anthropic tool-use loop retained for reference; nothing invokes it |
 
-## Codex bridge (explicit desktop access)
+## Hosted MCP connection (explicit agent access)
 
-`supabase/functions/codex-api` is the active agent-first integration. It does
-not call a model or poll. Codex invokes it from this repository only when the
-owner asks for workspace context or a change.
+`supabase/functions/executive-assistant-mcp` is the active agent-first
+integration. It exposes Streamable HTTP MCP tools and delegates data operations
+to `codex-api`; neither function calls a model or polls.
 
-- Auth: `x-codex-secret` matched against `CODEX_BRIDGE_SECRET`.
-- Scope: `CODEX_USER_ID` pins every read/write to one user; request payloads
-  never choose the user.
-- Client: `codex/bridge.mjs` reads `.env.codex-bridge` (gitignored). Never print
-  or commit the secret.
+- Auth: Supabase Auth acts as an OAuth 2.1 server. Each user signs in through
+  `/oauth/consent` and explicitly approves the requesting MCP client.
+- Scope: the verified access token supplies both the user and OAuth
+  `client_id`. The client id must also match an active `agent_connections` row;
+  request payloads never choose the user.
+- Management: the Profile page shows Supabase OAuth grants and revokes the
+  local connection before revoking the upstream grant. `agent-connections`
+  creates or reactivates local authorization only during explicit consent.
+- Client: Codex connects directly to the deployed MCP URL. No repository clone,
+  local Node process, bridge env file, shared secret, or manually copied token
+  is part of the supported flow.
 - Reads: two-week calendar window, open/recent tasks, focus state, notebook and
   section ids, recent/linked-note excerpts, recent audit actions; plus bounded
   note search.
@@ -258,12 +266,14 @@ owner asks for workspace context or a change.
   a legacy-markdown note. No task deletion, priority mutation, or arbitrary
   rewrite of existing BlockNote documents.
 - Audit: each `mutate` request creates a manual `agent_runs` row; each applied
-  mutation creates an undoable `agent_actions` row. `note_create` undo deletes
-  the created note.
+  mutation creates an undoable `agent_actions` row. Both record the connection
+  id and display name. `note_create` undo deletes the created note.
 
-Deployment order: apply `2026-08-13_043_codex_bridge_actions.sql`, set
-`CODEX_BRIDGE_SECRET` + `CODEX_USER_ID`, then deploy `codex-api`. See
-`codex/README.md` for the local configuration and request schema.
+Deployment order: apply migrations through
+`2026-08-17_046_oauth_agent_connections.sql`; enable the Supabase OAuth server,
+set its authorization path to `/oauth/consent`, and enable dynamic client
+registration; then deploy `agent-connections`, `codex-api`, and
+`executive-assistant-mcp`. See `codex/README.md` for setup details.
 
 ### agent-api
 
@@ -394,7 +404,8 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **This checkout has CRLF on disk but LF in the index**, so `git status` reports every tracked file as modified even when untouched. Use `git diff --ignore-cr-at-eol` to see real changes. When patching an existing file programmatically, read it, work in LF, and write it back as CRLF — otherwise you turn a phantom diff into a real 200-file one.
 - **`node_modules` holds Windows native binaries.** `npx vite build` fails with `MODULE_NOT_FOUND` on rolldown's native binding when run from a Linux shell against the same folder. `tsc -b` and `eslint` are pure JS and do work there, so use those for agent-side verification and run `npm run build` on Windows.
 - **Agent writes must be logged or rolled back.** `agent-api` reverses the data change when the `agent_actions` insert fails, and logs *before* deleting a task. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
-- **Codex bridge note responses strip embedded image data.** Keep `sanitizeNoteText()` ahead of response truncation in `codex-api`; otherwise markdown data-URI images can inflate a context response by megabytes.
+- **OAuth access is two-gated.** A valid Supabase OAuth token is necessary but not sufficient: its `client_id` must match a non-revoked `agent_connections` row for the verified user. Only the explicit consent flow may create or reactivate that row. Never log authorization headers or accept a target user id from an MCP request.
+- **Agent note responses strip embedded image data.** Keep `sanitizeNoteText()` ahead of response truncation in `codex-api`; otherwise markdown data-URI images can inflate a context response by megabytes.
 - **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
 - **`AGENT_USER_ID` pins the agent to one user.** Never read the target user from the request body; a leaked `AGENT_SECRET` would then be aimable at anyone.
 

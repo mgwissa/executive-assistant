@@ -46,6 +46,8 @@ export type UsefulLinkUpdate = Database['public']['Tables']['useful_links']['Upd
 export type AgentRun = Database['public']['Tables']['agent_runs']['Row'];
 export type AgentRunInsert = Database['public']['Tables']['agent_runs']['Insert'];
 
+export type AgentConnection = Database['public']['Tables']['agent_connections']['Row'];
+
 export type AgentAction = Database['public']['Tables']['agent_actions']['Row'];
 export type AgentActionInsert = Database['public']['Tables']['agent_actions']['Insert'];
 export type AgentActionUpdate = Database['public']['Tables']['agent_actions']['Update'];

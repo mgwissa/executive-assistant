@@ -1,9 +1,11 @@
 /**
- * codex-api — explicit, audited bridge between Codex desktop and the workspace.
+ * codex-api — explicit, audited workspace operations behind the hosted MCP server.
  *
- * Auth uses x-codex-secret and a server-pinned CODEX_USER_ID. This endpoint is
- * deliberately narrower than the dormant scheduled agent: no polling, task
- * deletion, legacy priority mutation, or arbitrary rich-note rewriting.
+ * Auth uses Supabase OAuth access tokens issued to MCP clients. The token's
+ * verified user and client_id claims identify both the workspace owner and the
+ * agent connection. This endpoint is deliberately narrower than the dormant
+ * scheduled agent: no polling, task deletion, legacy priority mutation, or
+ * arbitrary rich-note rewriting.
  */
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
@@ -12,7 +14,7 @@ import { localDateString } from '../_shared/datetime.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'x-codex-secret, content-type',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
 const TASK_WRITABLE = new Set([
@@ -28,6 +30,13 @@ const TASK_WRITABLE = new Set([
 ]);
 
 type JsonRecord = Record<string, unknown>;
+
+type AgentPrincipal = {
+  userId: string;
+  connectionId: string | null;
+  actorName: string;
+  scopes: string[];
+};
 
 type MutationInput = {
   kind: string;
@@ -159,7 +168,7 @@ function taskPatch(raw: unknown): JsonRecord | { error: string } {
 
 async function logAction(
   admin: SupabaseClient,
-  userId: string,
+  principal: AgentPrincipal,
   runId: string,
   input: MutationInput,
   fields: { target: JsonRecord; before: JsonRecord | null; after: JsonRecord | null },
@@ -170,8 +179,10 @@ async function logAction(
   const { data, error } = await admin
     .from('agent_actions')
     .insert({
-      user_id: userId,
+      user_id: principal.userId,
       run_id: runId,
+      agent_connection_id: principal.connectionId,
+      actor_name: principal.actorName,
       kind: input.kind,
       title: str(input.title) ?? input.kind,
       rationale: str(input.rationale),
@@ -190,10 +201,11 @@ async function logAction(
 
 async function mutate(
   admin: SupabaseClient,
-  userId: string,
+  principal: AgentPrincipal,
   runId: string,
   input: MutationInput,
 ): Promise<MutationResult> {
+  const userId = principal.userId;
   const kind = input.kind;
   const dedupeKey = str(input.dedupeKey);
   if (dedupeKey) {
@@ -226,7 +238,7 @@ async function mutate(
     };
     const { data, error } = await admin.from('tasks').insert(insert).select('*').single();
     if (error || !data) return { ok: false, kind, error: error?.message ?? 'Task insert failed' };
-    const logged = await logAction(admin, userId, runId, input, {
+    const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'task', id: data.id },
       before: null,
       after: data as JsonRecord,
@@ -262,7 +274,7 @@ async function mutate(
       .eq('id', taskId)
       .eq('user_id', userId);
     if (updateError) return { ok: false, kind, error: updateError.message };
-    const logged = await logAction(admin, userId, runId, input, {
+    const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'task', id: taskId },
       before,
       after: patchResult,
@@ -347,7 +359,7 @@ async function mutate(
       .update({ focus_queue: focusQueue })
       .eq('user_id', userId);
     if (updateError) return { ok: false, kind, error: updateError.message };
-    const logged = await logAction(admin, userId, runId, input, {
+    const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'profile' },
       before,
       after: { focus_queue: focusQueue },
@@ -393,7 +405,7 @@ async function mutate(
     };
     const { data, error } = await admin.from('notes').insert(insert).select('*').single();
     if (error || !data) return { ok: false, kind, error: error?.message ?? 'Note insert failed' };
-    const logged = await logAction(admin, userId, runId, input, {
+    const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'note', id: data.id },
       before: null,
       after: data as JsonRecord,
@@ -439,7 +451,7 @@ async function mutate(
       .select('*')
       .single();
     if (error || !data) return { ok: false, kind, error: error?.message ?? 'Brief write failed' };
-    const logged = await logAction(admin, userId, runId, input, {
+    const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'brief', id: data.id },
       before: existing ? existing as JsonRecord : null,
       after: data as JsonRecord,
@@ -472,7 +484,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
     admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
-    admin.from('agent_actions').select('id,kind,title,rationale,effects,status,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
+    admin.from('agent_actions').select('id,kind,title,rationale,effects,status,actor_name,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
     admin.from('agent_briefs').select('id,kind,brief_date,body,stats,created_at').eq('user_id', userId).order('brief_date', { ascending: false }).limit(14),
   ]);
 
@@ -517,19 +529,74 @@ async function searchNotes(admin: SupabaseClient, userId: string, query: string)
     .map((note) => ({ ...note, content: truncate(sanitizeNoteText(note.content), 12_000) }));
 }
 
+function jwtClaims(token: string): JsonRecord | null {
+  try {
+    const encoded = token.split('.')[1];
+    if (!encoded) return null;
+    const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const parsed = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function authenticateAgent(
+  req: Request,
+  admin: SupabaseClient,
+  supabaseUrl: string,
+  anonKey: string,
+): Promise<AgentPrincipal | null> {
+  const authorization = req.headers.get('authorization');
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (!token) return null;
+
+  const auth = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authorization ?? '' } },
+  });
+  const { data: { user }, error } = await auth.auth.getUser(token);
+  const claims = jwtClaims(token);
+  const clientId = claims && typeof claims.client_id === 'string' ? claims.client_id : null;
+  if (error || !user || !clientId) return null;
+
+  const { data: connection } = await admin
+    .from('agent_connections')
+    .select('id,name,scopes,revoked_at')
+    .eq('user_id', user.id)
+    .eq('oauth_client_id', clientId)
+    .eq('auth_kind', 'oauth')
+    .maybeSingle();
+  if (!connection || connection.revoked_at) return null;
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await admin
+    .from('agent_connections')
+    .update({ last_used_at: now })
+    .eq('id', connection.id)
+    .is('revoked_at', null);
+  if (updateError) return null;
+
+  return {
+    userId: user.id,
+    connectionId: connection.id,
+    actorName: connection.name,
+    scopes: Array.isArray(connection.scopes) ? connection.scopes : [],
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
   if (Number(req.headers.get('content-length') ?? 0) > 200_000) return jsonResponse({ error: 'Request too large' }, 413);
 
-  const expectedSecret = Deno.env.get('CODEX_BRIDGE_SECRET');
-  const userId = Deno.env.get('CODEX_USER_ID');
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!expectedSecret || !userId || !supabaseUrl || !serviceKey) {
-    return jsonResponse({ error: 'Server needs CODEX_BRIDGE_SECRET and CODEX_USER_ID' }, 500);
-  }
-  if (req.headers.get('x-codex-secret') !== expectedSecret) return jsonResponse({ error: 'Unauthorized' }, 401);
+  if (!supabaseUrl || !anonKey || !serviceKey) return jsonResponse({ error: 'Server is not configured' }, 500);
+
+  const admin = createClient(supabaseUrl, serviceKey);
+  const principal = await authenticateAgent(req, admin, supabaseUrl, anonKey);
+  if (!principal) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   let body: JsonRecord;
   try {
@@ -539,21 +606,34 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
 
-  const admin = createClient(supabaseUrl, serviceKey);
   const action = str(body.action) ?? 'context';
   try {
-    if (action === 'context') return jsonResponse({ ok: true, context: await buildContext(admin, userId) });
+    if ((action === 'context' || action === 'notes.search') && !principal.scopes.includes('context:read')) {
+      return jsonResponse({ error: 'Connection cannot read workspace context' }, 403);
+    }
+    if (action === 'mutate' && !principal.scopes.includes('workspace:write')) {
+      return jsonResponse({ error: 'Connection cannot change the workspace' }, 403);
+    }
+
+    if (action === 'context') return jsonResponse({ ok: true, context: await buildContext(admin, principal.userId) });
     if (action === 'notes.search') {
       const query = str(body.query);
       if (!query || query.length < 2) return jsonResponse({ error: 'query must contain at least 2 characters' }, 400);
-      return jsonResponse({ ok: true, notes: await searchNotes(admin, userId, query) });
+      return jsonResponse({ ok: true, notes: await searchNotes(admin, principal.userId, query) });
     }
     if (action === 'mutate') {
       const raw = Array.isArray(body.actions) ? body.actions : [];
       if (raw.length === 0 || raw.length > 25) return jsonResponse({ error: 'actions must contain 1–25 entries' }, 400);
       const { data: run, error: runError } = await admin
         .from('agent_runs')
-        .insert({ user_id: userId, kind: 'adhoc', trigger_source: 'manual', status: 'running' })
+        .insert({
+          user_id: principal.userId,
+          agent_connection_id: principal.connectionId,
+          actor_name: principal.actorName,
+          kind: 'adhoc',
+          trigger_source: 'manual',
+          status: 'running',
+        })
         .select('id')
         .single();
       if (runError || !run) return jsonResponse({ error: runError?.message ?? 'Could not start audit run' }, 500);
@@ -563,7 +643,7 @@ Deno.serve(async (req) => {
         if (!isRecord(entry) || typeof entry.kind !== 'string') {
           results.push({ ok: false, kind: 'unknown', error: 'each action needs a kind' });
         } else {
-          results.push(await mutate(admin, userId, run.id, entry as MutationInput));
+          results.push(await mutate(admin, principal, run.id, entry as MutationInput));
         }
       }
       const failures = results.filter((result) => !result.ok).length;
@@ -574,7 +654,7 @@ Deno.serve(async (req) => {
         stats: { requested: raw.length, applied, failures },
         error: failures > 0 ? `${failures} mutation${failures === 1 ? '' : 's'} failed` : null,
         finished_at: new Date().toISOString(),
-      }).eq('id', run.id).eq('user_id', userId);
+      }).eq('id', run.id).eq('user_id', principal.userId);
       return jsonResponse({ ok: failures === 0, runId: run.id, applied, results }, failures > 0 ? 207 : 200);
     }
     return jsonResponse({ error: `Unknown action "${action}"` }, 400);
