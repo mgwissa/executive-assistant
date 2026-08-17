@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { XIcon } from './icons';
 import { useToastStore } from '../store/useToastStore';
 
@@ -12,16 +12,16 @@ function ToastItem({
 }: Omit<import('../store/useToastStore').Toast, 'id'> & { id: string }) {
   const dismiss = useToastStore((s) => s.dismiss);
 
-  const dismissWithCallback = () => {
+  const dismissWithCallback = useCallback(() => {
     onDismiss?.();
     dismiss(id);
-  };
+  }, [dismiss, id, onDismiss]);
 
   useEffect(() => {
     if (durationMs == null || durationMs <= 0) return;
     const timer = window.setTimeout(() => dismissWithCallback(), durationMs);
     return () => window.clearTimeout(timer);
-  }, [id, durationMs, dismiss]);
+  }, [durationMs, dismissWithCallback]);
 
   return (
     <div

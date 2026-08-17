@@ -86,7 +86,7 @@ export function MeetingNotesPanel({
       return;
     }
     void openMeetingNote();
-  }, [open, target?.eventId, target?.occurrenceStartAt, openMeetingNote]);
+  }, [open, target, openMeetingNote]);
 
   const onNoteContentChange = useCallback(
     (payload: { content: string; content_blocks: Json }) => {

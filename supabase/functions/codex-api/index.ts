@@ -105,6 +105,25 @@ function sanitizeNoteText(value: unknown): string {
     .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+/gi, '[embedded image omitted]');
 }
 
+function localClock(now: Date, timezone: string): { weekday: string; hour: number; minute: number; label: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const part = (type: 'weekday' | 'hour' | 'minute') => parts.find((entry) => entry.type === type)?.value ?? '';
+  const hour = Number(part('hour'));
+  const minute = Number(part('minute'));
+  return {
+    weekday: part('weekday'),
+    hour,
+    minute,
+    label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+  };
+}
+
 function priorValues(row: JsonRecord, keys: string[]): JsonRecord {
   return Object.fromEntries(keys.map((key) => [key, row[key] ?? null]));
 }
@@ -498,11 +517,33 @@ async function buildContext(admin: SupabaseClient, userId: string) {
       excerpt: truncate(safeContent, 800),
     };
   });
+  const today = localDateString(now, timezone);
+  const clock = localClock(now, timezone);
+  const isWeekday = !['Sat', 'Sun'].includes(clock.weekday);
+  const morningEligible = isWeekday && (clock.hour > 7 || (clock.hour === 7 && clock.minute >= 30));
+  const morningComplete = (briefsRes.data ?? []).some(
+    (brief) => brief.kind === 'morning' && brief.brief_date === today,
+  );
+  const pendingChecks = morningEligible && !morningComplete
+    ? [{
+      id: `morning_brief:${today}`,
+      kind: 'morning_brief',
+      localDate: today,
+      eligibleAfter: '07:30',
+      timezone,
+      status: 'pending',
+      instruction: 'Create today\'s morning brief and refresh the focus plan before responding to the user.',
+    }]
+    : [];
 
   return {
     now: now.toISOString(),
-    today: localDateString(now, timezone),
+    today,
     timezone,
+    checkIn: {
+      localTime: clock.label,
+      pendingChecks,
+    },
     profile: profile ? { first_name: profile.first_name, timezone, focus_queue: profile.focus_queue, meeting_rules: profile.meeting_rules } : null,
     tasks: tasksRes.data ?? [],
     events,

@@ -60,6 +60,14 @@ function greetingFor(now: Date, timezone: string): string {
   return 'Good night';
 }
 
+function morningCheckState(now: Date, timezone: string): 'waiting' | 'upcoming' | 'weekend' {
+  const weekday = formatInTimeZone(now, timezone, 'EEE');
+  if (weekday === 'Sat' || weekday === 'Sun') return 'weekend';
+  const minutes = Number(formatInTimeZone(now, timezone, 'H')) * 60
+    + Number(formatInTimeZone(now, timezone, 'm'));
+  return minutes >= 7 * 60 + 30 ? 'waiting' : 'upcoming';
+}
+
 function displayName(firstName: string | null | undefined, email: string | null | undefined): string {
   const preferred = firstName?.trim();
   if (preferred) return preferred;
@@ -225,6 +233,12 @@ export function TodayPage() {
   const morningBrief = briefs.find(
     (brief) => brief.kind === 'morning' && brief.brief_date === todayIso,
   ) ?? null;
+  const morningState = morningCheckState(now, timezone);
+  const morningEmptyMessage = morningState === 'waiting'
+    ? 'Morning check is waiting. Say “good morning” to Codex; it will reconcile the workspace before replying.'
+    : morningState === 'upcoming'
+      ? 'The weekday morning check becomes available at 7:30 AM and runs with your first Codex conversation.'
+      : 'Morning catch-up checks run on weekdays. You can still ask Codex for a brief whenever you want one.';
   const eveningBrief = briefs.find(
     (brief) => brief.kind === 'evening' && brief.brief_date === todayIso,
   ) ?? null;
@@ -271,7 +285,7 @@ export function TodayPage() {
             loading={briefsLoading}
             eyebrow="From Codex"
             title="Morning brief"
-            emptyMessage={'Ask Codex to "brief me" in the desktop conversation. The saved result will appear here.'}
+            emptyMessage={morningEmptyMessage}
             expanded={morningBriefExpanded}
             onToggle={() => setMorningBriefExpanded((expanded) => !expanded)}
             bodyId="morning-brief-body"

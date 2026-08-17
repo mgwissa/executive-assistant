@@ -148,8 +148,12 @@ export const useSharingStore = create<SharingState>((set, get) => ({
   },
 
   clearNotebookCache: (notebookId) => {
-    const { [notebookId]: _m, ...restMembers } = get().membersByNotebook;
-    const { [notebookId]: _i, ...restInvites } = get().activeInviteByNotebook;
+    const restMembers = Object.fromEntries(
+      Object.entries(get().membersByNotebook).filter(([key]) => key !== notebookId),
+    );
+    const restInvites = Object.fromEntries(
+      Object.entries(get().activeInviteByNotebook).filter(([key]) => key !== notebookId),
+    );
     set({ membersByNotebook: restMembers, activeInviteByNotebook: restInvites });
   },
 

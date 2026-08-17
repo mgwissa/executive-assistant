@@ -209,7 +209,7 @@ Today path.
 
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
-**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → **scheduled weekday morning refresh** → evening closeout/open-loop capture → note audit for unsurfaced tasks → safe context append. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
+**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → weekday morning catch-up ✅ → evening closeout/open-loop capture → note audit for unsurfaced tasks → safe context append. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
 
 **Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
 
@@ -272,7 +272,10 @@ to `codex-api`; neither function calls a model or polls.
   `refresh-morning-workspace` skill used by cloud scheduled tasks.
 - Reads: two-week calendar window, open/recent tasks, focus state, notebook and
   section ids, recent/linked-note excerpts, recent audit actions; plus bounded
-  note search.
+  note search. Context also includes `checkIn.pendingChecks`: on weekdays after
+  7:30 AM profile-local, a missing morning brief deterministically represents a
+  pending catch-up check. No cron row is needed; writing the dated brief resolves
+  it, and a simple “good morning” tells the agent to process it before replying.
 - Writes: task create/update/complete, ordered focus queue, and safe creation of
   a legacy-markdown note. No task deletion, priority mutation, or arbitrary
   rewrite of existing BlockNote documents.
@@ -367,6 +370,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - DB row types come from `src/types/database.ts`; re-export friendly aliases in `src/types/index.ts`. **Update `database.ts` whenever a migration changes a table.**
 - No `any`. Prefer `unknown` and narrow.
 - Prefer pure functions in `lib/`; keep components small.
+- ESLint keeps `react-hooks/set-state-in-effect` off because record-driven modal/editor draft resets are an intentional pattern here, and keeps `react-refresh/only-export-components` off because some component modules export tightly coupled helpers used by legacy screens. Other hook, type-safety, and unused-value rules remain enforced.
 
 ### Styling
 - Tailwind classes only. No CSS modules except `notesEditor.css` (BlockNote overrides) and `index.css` tokens.

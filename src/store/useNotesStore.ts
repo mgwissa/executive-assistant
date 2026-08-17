@@ -48,7 +48,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   setQuery: (q) => set({ query: q }),
   setActive: (id) => set({ activeId: id }),
 
-  fetchAll: async (_userId) => {
+  fetchAll: async () => {
     set({ loading: true, error: null });
     const { data, error } = await supabase
       .from('notes')

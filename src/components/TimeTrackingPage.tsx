@@ -368,7 +368,7 @@ export function TimeTrackingPage() {
 
   useEffect(() => {
     setRunningStartDraft(running ? isoToDatetimeLocalValue(running.started_at) : '');
-  }, [running?.id, running?.started_at]);
+  }, [running]);
 
   const nowMs = useTickingNow(Boolean(running));
 

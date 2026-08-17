@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Block } from '@blocknote/core';
 import { en } from '@blocknote/core/locales';
 import { filterSuggestionItems } from '@blocknote/core/extensions';
@@ -61,7 +61,6 @@ type NotesEditorProps = {
  * Slash `/` task group + checklist toolbar behave as before.
  */
 export function NotesEditor({
-  noteId: _noteId,
   initialMarkdown,
   initialBlocks,
   onChange,
@@ -82,9 +81,12 @@ export function NotesEditor({
   const lastEmittedSnapshotRef = useRef<string>('');
   const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
 
-  const flushPending = () => {
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  const flushPending = useCallback(() => {
     if (emitTimerRef.current) {
       clearTimeout(emitTimerRef.current);
       emitTimerRef.current = null;
@@ -94,7 +96,7 @@ export function NotesEditor({
     if (snap === lastEmittedSnapshotRef.current) return;
     lastEmittedSnapshotRef.current = snap;
     onChangeRef.current(noteDocumentFromEditor(editor));
-  };
+  }, [editor]);
 
   useEffect(() => {
     if (isPersistedBlockDocument(initialBlocksRef.current)) {
@@ -112,7 +114,7 @@ export function NotesEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => () => flushPending(), [editor]);
+  useEffect(() => () => flushPending(), [flushPending]);
 
   const slashGetItems = useMemo(
     () => async (query: string) =>

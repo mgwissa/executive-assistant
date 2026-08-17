@@ -42,7 +42,7 @@ export const useNotebooksStore = create<NotebooksState>((set, get) => ({
 
   setActiveNotebook: (id) => set({ activeNotebookId: id }),
 
-  fetchAll: async (_userId) => {
+  fetchAll: async () => {
     set({ loading: true, error: null });
     const [nbRes, secRes, memRes] = await Promise.all([
       supabase.from('notebooks').select('*').order('position').order('created_at'),

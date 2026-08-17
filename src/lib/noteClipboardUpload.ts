@@ -1,4 +1,13 @@
-import type { BlockNoteEditor, BlockNoteEditorOptions } from '@blocknote/core';
+import type {
+  BlockNoteEditor,
+  BlockNoteEditorOptions,
+  DefaultBlockSchema,
+  DefaultInlineContentSchema,
+  DefaultStyleSchema,
+} from '@blocknote/core';
+
+type DefaultEditor = BlockNoteEditor<DefaultBlockSchema, DefaultInlineContentSchema, DefaultStyleSchema>;
+type DefaultEditorOptions = BlockNoteEditorOptions<DefaultBlockSchema, DefaultInlineContentSchema, DefaultStyleSchema>;
 
 const MAX_DATA_URL_BYTES = 12 * 1024 * 1024;
 
@@ -31,10 +40,7 @@ function clipboardHasImageFiles(event: ClipboardEvent): boolean {
  * BlockNote calls this for pasted/dropped files. We store data URLs in note JSON so
  * images work without a separate file host.
  */
-export const noteUploadFile: NonNullable<BlockNoteEditorOptions<any, any, any>['uploadFile']> = async (
-  file: File,
-  _blockId?: string,
-) => {
+export const noteUploadFile: NonNullable<DefaultEditorOptions['uploadFile']> = async (file: File) => {
   if (file.size > MAX_DATA_URL_BYTES) {
     throw new Error(`File is too large (max ${Math.round(MAX_DATA_URL_BYTES / 1024 / 1024)} MB).`);
   }
@@ -45,7 +51,7 @@ export const noteUploadFile: NonNullable<BlockNoteEditorOptions<any, any, any>['
  * When the clipboard has both `text/html` and `Files` (common for screenshots), BlockNote's
  * default handler prefers HTML and never reaches file insertion. Intercept image files first.
  */
-export const notePasteHandler: NonNullable<BlockNoteEditorOptions<any, any, any>['pasteHandler']> = ({
+export const notePasteHandler: NonNullable<DefaultEditorOptions['pasteHandler']> = ({
   event,
   editor,
   defaultPasteHandler,
@@ -60,7 +66,7 @@ export const notePasteHandler: NonNullable<BlockNoteEditorOptions<any, any, any>
 
 async function insertClipboardImageFiles(
   event: ClipboardEvent,
-  editor: BlockNoteEditor<any, any, any>,
+  editor: DefaultEditor,
 ): Promise<void> {
   const cd = event.clipboardData;
   if (!cd || !editor.uploadFile) return;

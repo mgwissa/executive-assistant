@@ -154,6 +154,9 @@ export function useWorkNudges() {
       toggleDone,
       dismissToast,
       events,
+      tasks,
+      profile?.timezone,
+      profile?.meeting_rules,
     ],
   );
 

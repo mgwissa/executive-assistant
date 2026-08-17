@@ -19,13 +19,14 @@ export function Editor() {
   const sections = useNotebooksStore((s) => s.sections);
   const theme = useThemeStore((s) => s.theme);
   const [moveOpen, setMoveOpen] = useState(false);
+  const noteId = note?.id ?? null;
 
   const onNoteContentChange = useCallback(
     (payload: { content: string; content_blocks: Json }) => {
-      if (!note) return;
-      void updateNote(note.id, payload);
+      if (!noteId) return;
+      void updateNote(noteId, payload);
     },
-    [note?.id, updateNote],
+    [noteId, updateNote],
   );
 
   const breadcrumb = useMemo(() => {
@@ -34,7 +35,7 @@ export function Editor() {
     if (!section) return null;
     const notebook = notebooks.find((n) => n.id === section.notebook_id);
     return { notebookName: notebook?.name ?? '', sectionName: section.name };
-  }, [note?.section_id, sections, notebooks]);
+  }, [note, sections, notebooks]);
 
   const updatedAt = note?.updated_at ?? null;
   const savedLabel = useMemo(

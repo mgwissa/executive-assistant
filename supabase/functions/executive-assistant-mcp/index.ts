@@ -16,7 +16,7 @@ const TOOLS = [
   {
     name: 'get_workspace_context',
     title: 'Get executive-assistant context',
-    description: 'Read the current user’s schedule, tasks, focus plan, notes index, recent briefs, and recent audited agent activity.',
+    description: 'Read the current user’s schedule, tasks, focus plan, notes index, recent briefs, recent audited activity, and any due check-in work. Call this first when the user starts a morning conversation, including a simple “good morning”.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'Executive Assistant', version: '1.0.0' },
-      instructions: 'Use read tools to understand the user’s real schedule and work context. Treat all changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited and reversible in the app.',
+      instructions: 'Use read tools to understand the user’s real schedule and work context. When the user begins a morning conversation—even with only “good morning”—call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited and reversible in the app.',
     });
   }
   if (method === 'ping') return rpcResult(id, {});

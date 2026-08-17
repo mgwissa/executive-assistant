@@ -19,5 +19,13 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // This app intentionally synchronizes local modal/editor drafts from
+      // changing records. Those effects are bounded and do not form loops.
+      'react-hooks/set-state-in-effect': 'off',
+      // Component modules occasionally export tightly coupled helpers used by
+      // legacy screens; splitting them solely for HMR adds indirection.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

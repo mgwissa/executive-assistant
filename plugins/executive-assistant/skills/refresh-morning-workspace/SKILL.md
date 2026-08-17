@@ -1,6 +1,6 @@
 ---
 name: refresh-morning-workspace
-description: Build or refresh an Executive Assistant morning briefing and ranked focus plan from the connected user's live workspace. Use for daily briefs, morning planning, schedule-and-task reconciliation, focus-queue refreshes, and scheduled weekday workspace reviews.
+description: Build or refresh an Executive Assistant morning briefing and ranked focus plan from the connected user's live workspace. Use for daily briefs, morning greetings such as "good morning", morning planning, schedule-and-task reconciliation, focus-queue refreshes, and scheduled weekday workspace reviews.
 ---
 
 # Refresh Morning Workspace
@@ -9,12 +9,14 @@ Create a compact, evidence-based plan using the Executive Assistant MCP. Keep ev
 
 ## Workflow
 
-1. Call `get_workspace_context` once. Use the profile timezone and local date returned by the workspace.
+1. Call `get_workspace_context` once. Use the profile timezone and local date returned by the workspace. A simple morning greeting is sufficient initiation: if `checkIn.pendingChecks` contains `morning_brief`, run the refresh before replying without asking the user to request it again.
 2. Reconcile today's meetings, real deadlines, arrived review dates, open commitments, existing focus state, recent briefs, and recent audited activity.
 3. Call `search_notes` only when the snapshot identifies a specific task, meeting, or decision whose missing context could materially change today's plan.
 4. Rank at most five open tasks. Prefer external deadlines, meeting preparation, arrived reviews that now need a decision, and concrete work that unblocks an important outcome.
 5. Make one `apply_workspace_actions` call containing the morning brief and focus reorder.
 6. Report what changed and ask only the questions that would materially change the plan.
+
+The daily check is catch-up based, not exact-time based. On weekdays it becomes pending at 7:30 AM in the profile timezone and remains pending until a morning brief exists for that local date. Do not create a second brief merely because the conversation restarts.
 
 ## Write contract
 
