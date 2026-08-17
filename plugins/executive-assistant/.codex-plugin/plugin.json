@@ -1,0 +1,31 @@
+{
+  "name": "executive-assistant",
+  "version": "0.1.0",
+  "description": "A private, audited command center for schedules, tasks, notes, briefings, and focus plans.",
+  "author": {
+    "name": "Mike Wissa",
+    "url": "https://github.com/mgwissa"
+  },
+  "homepage": "https://executive-assistant-chi.vercel.app/",
+  "repository": "https://github.com/mgwissa/executive-assistant",
+  "keywords": ["executive-assistant", "productivity", "briefing", "tasks", "calendar"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Executive Assistant",
+    "shortDescription": "Turn your workspace into a grounded daily plan.",
+    "longDescription": "Read your schedule, commitments, notes, and recent activity; then create audited briefings and focus plans for your own account.",
+    "developerName": "Mike Wissa",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write", "Automation"],
+    "websiteURL": "https://executive-assistant-chi.vercel.app/",
+    "privacyPolicyURL": "https://executive-assistant-chi.vercel.app/privacy.html",
+    "termsOfServiceURL": "https://executive-assistant-chi.vercel.app/terms.html",
+    "defaultPrompt": [
+      "Refresh my morning brief and focus plan.",
+      "Review my day and flag the decisions that need me.",
+      "Search my notes for context on this commitment."
+    ],
+    "brandColor": "#6D5CE7"
+  },
+  "mcpServers": "./.mcp.json"
+}

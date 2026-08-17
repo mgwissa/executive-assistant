@@ -4,6 +4,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 type JsonRecord = Record<string, unknown>;
 type RpcId = string | number | null;
 
+const OAUTH_SCOPES = ['openid', 'email', 'profile'] as const;
+
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id',
@@ -16,6 +18,7 @@ const TOOLS = [
     title: 'Get executive-assistant context',
     description: 'Read the current user’s schedule, tasks, focus plan, notes index, recent briefs, and recent audited agent activity.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
@@ -28,6 +31,7 @@ const TOOLS = [
       required: ['query'],
       additionalProperties: false,
     },
+    securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
@@ -48,6 +52,7 @@ const TOOLS = [
       required: ['actions'],
       additionalProperties: false,
     },
+    securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
 ] as const;
@@ -93,7 +98,8 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Server is not configured' }, 500);
 
-  const resource = `${supabaseUrl}/functions/v1/executive-assistant-mcp`;
+  const configuredResource = Deno.env.get('MCP_PUBLIC_URL')?.trim().replace(/\/+$/, '');
+  const resource = configuredResource || `${supabaseUrl}/functions/v1/executive-assistant-mcp`;
   const metadataUrl = `${resource}?metadata=oauth-protected-resource`;
   const challenge = `Bearer resource_metadata="${metadataUrl}", scope="openid email profile"`;
 
@@ -101,7 +107,7 @@ Deno.serve(async (req) => {
     return json({
       resource,
       authorization_servers: [`${supabaseUrl}/auth/v1`],
-      scopes_supported: ['openid', 'email', 'profile'],
+      scopes_supported: OAUTH_SCOPES,
       resource_documentation: resource,
     });
   }

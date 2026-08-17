@@ -212,90 +212,76 @@ Requires migration `2026-05-22_038_memory_chunks.sql` (enables `pgvector`).
 
   Logs are visible under **Edge Functions → send-daily-digest → Invocations**.
 
-### Agent Desk (optional addon)
+### Hosted agent connection
 
-A scheduled agent that works your queue between check-ins — triaging tasks,
-drafting chases, prepping meetings — and **acts directly** rather than filing
-suggestions. Every change it makes is written to an audit log at `/agent` with
-one-tap undo.
+The active agent integration is a hosted, per-user MCP server secured by
+Supabase Auth OAuth. Each person approves their own agent from **Profile → Agent
+connections**. No repository clone, local bridge process, shared secret, GitHub
+Actions workflow, or separate model API key is required.
 
-Requires migration `2026-08-10_041_agent_desk.sql`.
+Project setup:
 
-1. **Run the migration** in the Supabase SQL Editor.
+1. Apply migrations through `2026-08-17_046_oauth_agent_connections.sql`.
+2. Enable the Supabase OAuth server, set its authorization path to
+   `/oauth/consent`, enable dynamic client registration, and use an asymmetric
+   JWT signing key.
+3. Configure the stable public MCP resource URL, then deploy the Edge
+   Functions:
 
-2. **Generate an agent secret** (authenticates the scheduled session to the
-   Edge Function):
-
-   ```powershell
-   openssl rand -hex 32
+   ```bash
+   supabase secrets set MCP_PUBLIC_URL=https://executive-assistant-chi.vercel.app/mcp
+   supabase functions deploy agent-connections
+   supabase functions deploy codex-api
+   supabase functions deploy executive-assistant-mcp
    ```
 
-3. **Find your user id** — run this in the SQL Editor:
+4. Deploy the web app. Vercel rewrites `/mcp` to the Supabase MCP function while
+   keeping one stable public URL for OAuth and plugin distribution.
+5. During development, add
+   `https://executive-assistant-chi.vercel.app/mcp` as a Streamable HTTP MCP
+   server in ChatGPT/Codex developer mode. Authenticate, review the requested
+   access, and approve the connection.
 
-   ```sql
-   select user_id, first_name from public.profiles;
-   ```
+See [`codex/README.md`](codex/README.md) for the full setup and trust model.
 
-4. **Set the Edge Function secrets:**
+#### Plugin and scheduled morning refresh
 
-   ```powershell
-   supabase secrets set AGENT_SECRET=<the random string from step 2>
-   supabase secrets set AGENT_USER_ID=<your user_id from step 3>
-   ```
+The reusable package lives in `plugins/executive-assistant`. It includes the
+hosted MCP configuration and a `refresh-morning-workspace` skill with the
+ranking, safety, and idempotency rules for the morning plan. Once the plugin is
+published, another user installs it and approves their own account; they do not
+clone this repository or run a bridge.
 
-   `AGENT_USER_ID` pins the agent to a single account. The target user is never
-   read from the request, so the secret cannot be pointed at anyone else's data.
+Before directory submission:
 
-5. **Deploy** — CI deploys every function on push to `main`, or manually:
+1. Deploy the app and confirm `/mcp`, `/privacy.html`, and `/terms.html` are
+   public over HTTPS.
+2. Test the package in ChatGPT developer mode with a separate user account.
+3. Add the verification token supplied by the submission flow at
+   `public/.well-known/openai-apps-challenge`, redeploy, then complete domain
+   verification and review.
 
-   ```powershell
-   supabase functions deploy agent-api
-   ```
+After the plugin is installed in ChatGPT web, create a weekday 7:30 AM scheduled
+task that invokes the bundled morning-refresh skill. That cloud task can run
+while the local computer is off. The existing Codex desktop automation remains
+a local fallback and only runs when that computer and app are available.
 
-6. **Turn it on in the app**: **Profile → Optional features → Agent**, then open
-   **Agent** in the nav. The **Playbook** tab holds the standing instructions
-   each run reads — edit there to change behaviour without redeploying.
+The refresh should:
 
-**Smoke test** — confirms auth, context, and the log end to end:
+1. Read the latest workspace context through the approved MCP connection.
+2. Reconcile today's meetings, real deadlines, arrived review dates, waiting
+   work, recent notes, and previous audited actions.
+3. Save one concise morning brief for the local date.
+4. Refresh the ordered focus queue with no more than five outcomes, each with a
+   short reason and concrete next action.
+5. Avoid speculative task creation or completion. Missing context becomes a
+   question for the conversation, not an invented fact.
 
-```powershell
-$body = '{"action":"context"}'
-curl -X POST "https://jfvwpxykktyehqeliwnx.supabase.co/functions/v1/agent-api" `
-  -H "x-agent-secret: <your AGENT_SECRET>" `
-  -H "Content-Type: application/json" `
-  -d $body
-```
-
-A 200 with a `context` object means the agent can see your workspace. A 401
-means the secret does not match; a 500 mentioning misconfiguration means one of
-the two env vars is missing.
-
-7. **Set up the scheduled runs** (GitHub Actions is the runtime — Cowork
-   sessions are behind an egress allowlist that blocks `*.supabase.co`, so they
-   cannot reach the function).
-
-   In **GitHub → Settings → Secrets and variables → Actions**, add two secrets:
-
-   | Secret | Value |
-   | --- | --- |
-   | `ANTHROPIC_API_KEY` | from console.anthropic.com |
-   | `AGENT_SECRET` | the same value you set in Supabase |
-
-   Optionally add a **variable** `AGENT_MODEL` to override the default
-   (`claude-sonnet-5`).
-
-   Then push. `.github/workflows/agent.yml` runs four crons — morning brief,
-   midday triage, evening close-out, and a Monday chase sweep. Times are UTC and
-   do **not** follow daylight saving; they are tuned for EDT.
-
-   Test it before trusting it: **Actions → Executive assistant agent → Run
-   workflow**, pick a run kind, and tick **dry run** to see what it would do
-   without changing anything.
-
-**How a run works**: `run.start` → `context` → do the thinking → `act` with a
-batch of changes → `brief.write` → `run.finish`. Each `act` entry carries a
-`dedupeKey` so reruns do not duplicate work, and the function refuses to make a
-change it cannot log.
+Reruns update the same day's briefing and focus plan instead of creating
+duplicates. All workspace mutations flow through `apply_workspace_actions`, so
+they remain attributed, audited, and undoable in **Codex activity**. Local Codex
+automations require the computer to be awake and the Codex app available at the
+scheduled time.
 
 ## Scripts
 

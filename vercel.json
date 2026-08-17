@@ -1,3 +1,9 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/mcp",
+      "destination": "https://jfvwpxykktyehqeliwnx.supabase.co/functions/v1/executive-assistant-mcp"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

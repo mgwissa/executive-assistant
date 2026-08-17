@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refresh Morning Workspace"
+  short_description: "Build a grounded daily brief and focus plan."
+  default_prompt: "Refresh my morning brief and focus plan from the latest workspace context."

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "executive-assistant": {
+      "type": "http",
+      "url": "https://executive-assistant-chi.vercel.app/mcp"
+    }
+  }
+}

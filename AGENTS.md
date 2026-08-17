@@ -36,6 +36,10 @@ Production URL: `https://executive-assistant-chi.vercel.app/dashboard`
 ```
 .cursor/rules/         Cursor rules (project-context.mdc references this file)
 public/                Static assets
+  privacy.html         Public privacy policy required by the published plugin
+  terms.html           Public terms required by the published plugin
+plugins/
+  executive-assistant/ Publishable Codex/ChatGPT plugin package + morning-refresh skill
 src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
@@ -53,7 +57,7 @@ src/
   types/               database.ts (generated/maintained) + index.ts (re-exports)
   editor-test/         Scratch fixtures (not shipped to users)
 agent/
-  runner.mjs           Dormant legacy Claude runner retained for reference
+  runner.mjs           Dormant pre-MCP runner retained for reference
 codex/
   README.md            Hosted MCP/OAuth setup and tool contract
 supabase/
@@ -113,7 +117,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | `agent_connections` | Local authorization and attribution for per-user OAuth clients | `name`, `oauth_client_id`, `auth_kind`, `scopes`, `last_used_at`, `revoked_at` |
 | `agent_runs` | One row per agent invocation | `kind`, `status`, `summary`, `stats`, `agent_connection_id`, `actor_name`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per Claude/Codex write | `kind` (including `note_create` and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
+| `agent_actions` | **The audit trail.** One row per connected-agent write | `kind` (including `note_create` and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
@@ -205,17 +209,19 @@ Today path.
 
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
-**Assistant roadmap (owner reprioritized 2026-05):** B0 temperament ✅ → B meeting lifecycle ✅ → C delegation (slice 1 ✅) → **D capacity** ✅ → **E focus stack** ✅ → **E decisions** ✅ (dashboard `ExecutiveDecisionQueue`) → **F evening close-out** ✅ (dashboard `ExecutiveEveningCloseout`, active after 5pm) → F capture → A proactive email **deferred** (owner keeps app open). Document shifts here when order changes.
+**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → **scheduled weekday morning refresh** → evening closeout/open-loop capture → note audit for unsurfaced tasks → safe context append. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
 
 **Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
 
 **Desktop Codex sync:** `useCodexSync` checks the newest `agent_actions` row every 30 seconds while the app is visible and immediately when the tab regains focus. New audited writes refresh `useAgentStore` plus only the operational stores implicated by the action kind (tasks, notes, or profile focus queue). The first check seeds a cursor and does not reload existing data; overlapping focus/visibility checks are deduped.
 
-## Agent audit trail and legacy Claude implementation
+## Agent audit trail and legacy implementation
 
-The Claude runner was the previous automation direction. Its schedule and
-secrets are removed. The hidden Agent Desk, audit tables, and undo machinery are
-retained because the hosted MCP connection reuses that trust layer.
+The pre-MCP runner was the previous automation direction. Its schedule and
+shared-secret setup are removed. The hidden Agent Desk, audit tables, and undo
+machinery are retained because the hosted MCP connection reuses that trust
+layer. `agent/runner.mjs` and `agent-api` are dormant compatibility references;
+the supported path is the OAuth MCP integration below.
 
 ### The undo contract
 
@@ -236,11 +242,9 @@ roll the data change back if the audit insert fails.
 | Piece | Where | Notes |
 |-------|-------|-------|
 | Migration | `2026-08-10_041_agent_desk.sql` | `agent_runs`, `agent_actions`, `agent_memory`, `agent_briefs` + `profiles.agent_playbook` / `agent_last_run_at` / `agent_log_seen_at` |
-| Edge Function | `supabase/functions/agent-api` | The agent's eyes (`context`) and hands (`act`). `verify_jwt = false` |
 | Store | `store/useAgentStore.ts` | Reads the log; executes undo client-side via the user's own RLS |
 | Page | `components/AgentDeskPage.tsx` | `/agent` — Activity / Brief / What I remember / Playbook |
 | Shared logic | `lib/agentDesk.ts`, `lib/agentPlaybook.ts` | Undo planning + narrowing; default standing instructions |
-| Runner | `agent/runner.mjs` | Dormant Node 22 Anthropic tool-use loop retained for reference; nothing invokes it |
 
 ## Hosted MCP connection (explicit agent access)
 
@@ -259,6 +263,13 @@ to `codex-api`; neither function calls a model or polls.
 - Client: Codex connects directly to the deployed MCP URL. No repository clone,
   local Node process, bridge env file, shared secret, or manually copied token
   is part of the supported flow.
+- Public endpoint: the plugin uses the stable Vercel URL `/mcp`, which rewrites
+  to the Supabase Edge Function. Set `MCP_PUBLIC_URL` on the Edge Function to
+  that exact URL so OAuth protected-resource metadata uses the same canonical
+  resource identifier the client connected to.
+- Discovery: each MCP tool declares its OAuth security scheme. The publishable
+  package in `plugins/executive-assistant` points at `/mcp` and bundles the
+  `refresh-morning-workspace` skill used by cloud scheduled tasks.
 - Reads: two-week calendar window, open/recent tasks, focus state, notebook and
   section ids, recent/linked-note excerpts, recent audit actions; plus bounded
   note search.
@@ -272,26 +283,9 @@ to `codex-api`; neither function calls a model or polls.
 Deployment order: apply migrations through
 `2026-08-17_046_oauth_agent_connections.sql`; enable the Supabase OAuth server,
 set its authorization path to `/oauth/consent`, and enable dynamic client
-registration; then deploy `agent-connections`, `codex-api`, and
-`executive-assistant-mcp`. See `codex/README.md` for setup details.
-
-### agent-api
-
-Auth is an `x-agent-secret` header matched against the `AGENT_SECRET` env var
-(same shape as the cron functions). The target user is pinned by the
-`AGENT_USER_ID` env var and **never taken from the request**, so a leaked
-secret cannot be aimed at another user's data.
-
-Actions: `context`, `run.start`, `run.finish`, `act`, `brief.write`.
-Action kinds for `act`: `task_create`, `task_update`, `task_complete`,
-`task_delete`, `focus_reorder`, `chase_logged`, `memory_write`.
-
-Writes to `tasks` are filtered through the `TASK_WRITABLE` allowlist — unknown
-keys are dropped rather than rejected, so a slightly-wrong payload still does
-the useful part of its job.
-
-`act` runs its batch **sequentially on purpose**: dedupe checks and
-before-state reads must observe the effects of earlier actions in the batch.
+registration; set `MCP_PUBLIC_URL` to the deployed Vercel `/mcp` URL; then
+deploy `agent-connections`, `codex-api`, `executive-assistant-mcp`, and the web
+app. See `codex/README.md` for setup and plugin publication details.
 
 ### Dedupe
 
@@ -364,7 +358,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
 - `assistant` — Hidden optional `AssistantPage` + legacy **Executive Command Center**. The routed `/dashboard` now uses `TodayPage` regardless of this addon, reusing the pure directive/capacity engines only for advisory evidence.
-- `agent` — Hidden legacy AgentDeskPage (`/agent`). The former Claude schedule is removed; see **Agent Desk** below.
+- `agent` — Hidden legacy AgentDeskPage (`/agent`). The former pre-MCP schedule is removed; see **Agent audit trail** below.
 - `memory` — MemoryPage (`/memory`). RAG over `memory_chunks` via `memory-sync` + `memory-ask` Edge Functions. OpenAI embeddings + chat; cited answers link back to notes/tasks/calendar.
 
 ## Conventions
@@ -400,14 +394,15 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 ## Gotchas (already learned)
 
-- **The legacy Claude runner is dormant.** Its GitHub Actions schedule and secrets were removed during the Today/Codex reorientation. Do not re-enable it as part of unrelated work.
+- **The pre-MCP runner is dormant.** Its GitHub Actions schedule and shared secrets were removed during the Today/Codex reorientation. Do not re-enable it as part of unrelated work.
 - **This checkout has CRLF on disk but LF in the index**, so `git status` reports every tracked file as modified even when untouched. Use `git diff --ignore-cr-at-eol` to see real changes. When patching an existing file programmatically, read it, work in LF, and write it back as CRLF — otherwise you turn a phantom diff into a real 200-file one.
 - **`node_modules` holds Windows native binaries.** `npx vite build` fails with `MODULE_NOT_FOUND` on rolldown's native binding when run from a Linux shell against the same folder. `tsc -b` and `eslint` are pure JS and do work there, so use those for agent-side verification and run `npm run build` on Windows.
-- **Agent writes must be logged or rolled back.** `agent-api` reverses the data change when the `agent_actions` insert fails, and logs *before* deleting a task. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
+- **Agent writes must be logged or rolled back.** The mutation layer reverses a data change when the `agent_actions` insert fails. An unlogged change is an un-undoable change, which is the one thing this design cannot tolerate.
 - **OAuth access is two-gated.** A valid Supabase OAuth token is necessary but not sufficient: its `client_id` must match a non-revoked `agent_connections` row for the verified user. Only the explicit consent flow may create or reactivate that row. Never log authorization headers or accept a target user id from an MCP request.
 - **Agent note responses strip embedded image data.** Keep `sanitizeNoteText()` ahead of response truncation in `codex-api`; otherwise markdown data-URI images can inflate a context response by megabytes.
 - **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
-- **`AGENT_USER_ID` pins the agent to one user.** Never read the target user from the request body; a leaked `AGENT_SECRET` would then be aimable at anyone.
+- **OAuth identity owns agent scope.** `codex-api` derives both the user and OAuth client from the verified access token, then requires an active matching `agent_connections` row. Never accept a target user from an MCP request body.
+- **The public MCP resource URL is canonical.** Plugin clients connect to the Vercel `/mcp` proxy, so production must set `MCP_PUBLIC_URL=https://executive-assistant-chi.vercel.app/mcp`. A mismatch between that value and the client URL can break OAuth resource validation even when the underlying Supabase function is healthy. Every user still signs in and approves a separate OAuth grant.
 
 - **`auth.uid()` is NULL in the Supabase SQL Editor** (it runs as superuser). Filter by an explicit `user_id` when testing queries that reference RLS-sensitive policies.
 - **`pg_net` schema:** call `net.http_post`, **not** `extensions.http_post`. We had a trigger bug from this once.
