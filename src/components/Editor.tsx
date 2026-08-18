@@ -4,6 +4,7 @@ import { useNotesStore } from '../store/useNotesStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { formatRelative } from '../lib/format';
 import { MoveNoteModal } from './MoveNoteModal';
+import { NoteWorkstreamPicker } from './NoteWorkstreamPicker';
 import { NotesEditor } from './NotesEditor';
 import { BookIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
 import type { Json } from '../types/database';
@@ -106,6 +107,7 @@ export function Editor() {
                 {savedLabel}
               </span>
             ) : null}
+            <NoteWorkstreamPicker noteId={note.id} noteOwnerId={note.user_id} />
             <button
               onClick={() => setMoveOpen(true)}
               className="btn-ghost h-9 w-9 rounded-lg p-0"

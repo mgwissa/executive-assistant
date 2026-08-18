@@ -43,6 +43,7 @@ import { useTimeEntriesStore } from './store/useTimeEntriesStore';
 import { useTimeProjectsStore } from './store/useTimeProjectsStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
 import { useWeeklyRoutineStore } from './store/useWeeklyRoutineStore';
+import { useWorkstreamsStore } from './store/useWorkstreamsStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -141,11 +142,14 @@ function Shell() {
   const clearDebrief = useMeetingDebriefStore((s) => s.clear);
   const clearToasts = useToastStore((s) => s.clear);
   const clearAgent = useAgentStore((s) => s.clear);
+  const fetchWorkstreams = useWorkstreamsStore((s) => s.fetchAll);
+  const clearWorkstreams = useWorkstreamsStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
       void fetchNotebooks(user.id).then(() => ensureDefaultNotebook(user.id));
       fetchNotes(user.id);
+      fetchWorkstreams(user.id);
       fetchProfile(user.id);
       fetchTasks(user.id);
       fetchUsefulLinks(user.id);
@@ -159,6 +163,7 @@ function Shell() {
     } else {
       clearNotebooks();
       clearNotes();
+      clearWorkstreams();
       clearSharing();
       clearProfile();
       clearTasks();
@@ -179,6 +184,8 @@ function Shell() {
     clearNotebooks,
     fetchNotes,
     clearNotes,
+    fetchWorkstreams,
+    clearWorkstreams,
     clearSharing,
     fetchProfile,
     clearProfile,

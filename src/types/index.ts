@@ -10,6 +10,11 @@ export type Note = Database['public']['Tables']['notes']['Row'];
 export type NoteInsert = Database['public']['Tables']['notes']['Insert'];
 export type NoteUpdate = Database['public']['Tables']['notes']['Update'];
 
+export type Workstream = Database['public']['Tables']['workstreams']['Row'];
+export type WorkstreamInsert = Database['public']['Tables']['workstreams']['Insert'];
+export type WorkstreamUpdate = Database['public']['Tables']['workstreams']['Update'];
+export type NoteWorkstream = Database['public']['Tables']['note_workstreams']['Row'];
+
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
 

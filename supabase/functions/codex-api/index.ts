@@ -497,12 +497,14 @@ async function buildContext(admin: SupabaseClient, userId: string) {
   const windowEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
   const doneSince = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, actionsRes, briefsRes] = await Promise.all([
+  const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, workstreamsRes, noteWorkstreamsRes, actionsRes, briefsRes] = await Promise.all([
     admin.from('tasks').select('*').eq('user_id', userId).or(`done.eq.false,updated_at.gte.${doneSince}`).order('updated_at', { ascending: false }).limit(400),
     admin.from('events').select('*').eq('user_id', userId).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(250),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
     admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
+    admin.from('workstreams').select('id,name,description,status,position').eq('user_id', userId).order('position'),
+    admin.from('note_workstreams').select('workstream_id,note_id').eq('user_id', userId),
     admin.from('agent_actions').select('id,kind,title,rationale,effects,status,actor_name,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
     admin.from('agent_briefs').select('id,kind,brief_date,body,stats,created_at').eq('user_id', userId).order('brief_date', { ascending: false }).limit(14),
   ]);
@@ -550,6 +552,8 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     notebooks: notebooksRes.data ?? [],
     sections: sectionsRes.data ?? [],
     notes,
+    workstreams: workstreamsRes.data ?? [],
+    noteWorkstreams: noteWorkstreamsRes.data ?? [],
     recentBriefs: briefsRes.data ?? [],
     recentCodexActions: actionsRes.data ?? [],
   };

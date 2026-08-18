@@ -82,7 +82,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | Path | View | Notes |
 |------|------|-------|
 | `/dashboard` | `TodayPage` | Primary daily view: compact persisted Codex morning brief, after-4pm evening closeout, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
-| `/notes` | `NotesView` (Sidebar + Editor) | Notebook→Section→Note hierarchy; live filter via `useNotesStore.query` |
+| `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds a workstream lens over the preserved Notebook→Section→Note library. Notes can appear in multiple workstreams without being moved; unassigned notes form the migration inbox. |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
 | `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -107,6 +107,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
 | `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel) |
+| `workstreams`, `note_workstreams` | Notes 2.0 operational context | Per-user active/paused/closed workstreams plus a many-to-many note lens. Existing notebook/section storage remains authoritative and untouched. |
 | `tasks` | Standalone tasks | `due_date` (real external deadline), `review_date` (resurface/reconsider; never escalates), `due_time` (optional; requires `due_date`), legacy `priority` (retained for compatibility), `tags text[]` (filter on `/tasks`), `reminder_sent_at`, `linked_event_id` (FK → `events`), `waiting_on`, `chase_snoozed_until`, `last_chased_at`, `estimated_minutes`, `description`, `priority_set_at`, `reschedule_count`, `done` |
 | `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required`, `allow_back_to_back`, `debrief_required` (assistant temperament; Outlook rows flags-only on edit) |
 | `meeting_debrief_states` | Per-occurrence post-meeting debrief progress | `event_id`, `occurrence_start_at`, `status` ('done' \| 'skipped' \| 'snoozed'), `snoozed_until`, `notes` |
@@ -141,6 +142,7 @@ Conventions:
 | `useProfileStore` | profile row; `updateProfile(userId, patch)` |
 | `useNotebooksStore` | notebooks + sections + member counts + `activeNotebookId` |
 | `useNotesStore` | notes + `activeId` + free-text `query` (consumed only by notes Sidebar) |
+| `useWorkstreamsStore` | Notes 2.0 workstreams, note relationships, active workstream, and optimistic assignment |
 | `useTasksStore` | tasks; `createTask(userId, title, options?)` accepts optional `priority` (legacy) / `dueDate` / `reviewDate` / `dueTime` / `tags`; `setReviewDate`; `setTags`; `setDueTime`, `setLinkedEvent`; `deleteTask` prompts via `window.confirm` (returns `boolean`). Fetching tasks does not mutate priority. |
 | `useEventsStore` | events; range-based fetch via `eventsFetchIsoRange(timezone)` |
 | `useMeetingDebriefStore` | per-occurrence debrief dismiss/snooze/done (`meeting_debrief_states`) |
@@ -209,7 +211,7 @@ Today path.
 
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
-**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → weekday morning catch-up ✅ → evening closeout/open-loop capture → note audit for unsurfaced tasks → safe context append. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
+**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → weekday morning catch-up ✅ → evening closeout/open-loop capture → **Notes 2.0 (in progress: workstream lens, iterative migration, note audit, safe context append)** → richer Today context. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
 
 **Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
 

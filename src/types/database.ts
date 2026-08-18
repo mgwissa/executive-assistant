@@ -102,6 +102,58 @@ export type Database = {
           updated_at?: string;
         };
       };
+      workstreams: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string;
+          status: 'active' | 'paused' | 'closed';
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string;
+          status?: 'active' | 'paused' | 'closed';
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string;
+          status?: 'active' | 'paused' | 'closed';
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      note_workstreams: {
+        Row: {
+          user_id: string;
+          workstream_id: string;
+          note_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          workstream_id: string;
+          note_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          workstream_id?: string;
+          note_id?: string;
+          created_at?: string;
+        };
+      };
       profiles: {
         Row: {
           user_id: string;

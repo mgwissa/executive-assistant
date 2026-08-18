@@ -6,7 +6,8 @@ import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useSharingStore } from '../store/useSharingStore';
 import { useShellLayoutStore } from '../store/useShellLayoutStore';
-import type { Notebook, Section } from '../types';
+import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
+import type { Note, Notebook, Section, Workstream } from '../types';
 import { ShareNotebookModal } from './ShareNotebookModal';
 import {
   BookIcon,
@@ -14,8 +15,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   FolderIcon,
+  InboxIcon,
   NoteIcon,
   PlusIcon,
+  TargetIcon,
   TrashIcon,
 } from './icons';
 import { SearchBar } from './SearchBar';
@@ -71,8 +74,14 @@ export function Sidebar() {
   } = useNotebooksStore();
   const fetchNotes = useNotesStore((s) => s.fetchAll);
   const fetchSharing = useSharingStore((s) => s.fetchSharing);
+  const workstreams = useWorkstreamsStore((s) => s.workstreams);
+  const noteLinks = useWorkstreamsStore((s) => s.noteLinks);
+  const activeWorkstreamId = useWorkstreamsStore((s) => s.activeWorkstreamId);
+  const setActiveWorkstream = useWorkstreamsStore((s) => s.setActiveWorkstream);
+  const createWorkstream = useWorkstreamsStore((s) => s.createWorkstream);
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [navigationMode, setNavigationMode] = useState<'workstreams' | 'library'>('workstreams');
 
   useEffect(() => {
     setShareOpen(false);
@@ -117,6 +126,20 @@ export function Sidebar() {
     return map;
   }, [filtered, notebookSections]);
 
+  const workstreamNotes = useMemo(() => {
+    const linkedIds = new Set(
+      noteLinks
+        .filter((link) =>
+          activeWorkstreamId
+            ? link.workstream_id === activeWorkstreamId
+            : true,
+        )
+        .map((link) => link.note_id),
+    );
+    if (activeWorkstreamId) return filtered.filter((note) => linkedIds.has(note.id));
+    return filtered.filter((note) => !linkedIds.has(note.id));
+  }, [activeWorkstreamId, filtered, noteLinks]);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapsed = (sectionId: string) => {
     setCollapsed((prev) => {
@@ -127,9 +150,12 @@ export function Sidebar() {
     });
   };
 
-  const handleNewNote = (sectionId: string) => {
+  const handleNewNote = async (sectionId: string, workstreamId?: string | null) => {
     if (!user) return;
-    void createNote(user.id, sectionId);
+    const note = await createNote(user.id, sectionId);
+    if (note && workstreamId) {
+      await useWorkstreamsStore.getState().toggleNote(user.id, note.id, workstreamId);
+    }
   };
 
   const firstSection = notebookSections[0];
@@ -189,28 +215,75 @@ export function Sidebar() {
 
       {/* Search + new section */}
       <div className="relative space-y-2 border-b border-border-strong bg-gradient-to-b from-brand-50/20 to-transparent px-3 py-3 dark:from-brand-950/12">
+        <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
+          <button
+            type="button"
+            onClick={() => setNavigationMode('workstreams')}
+            className={[
+              'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              navigationMode === 'workstreams'
+                ? 'bg-surface-raised text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            Workstreams
+          </button>
+          <button
+            type="button"
+            onClick={() => setNavigationMode('library')}
+            className={[
+              'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              navigationMode === 'library'
+                ? 'bg-surface-raised text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            Library
+          </button>
+        </div>
         <SearchBar />
         <div className="flex gap-2">
           <button
             className="btn-primary flex-1"
             disabled={!firstSection}
-            onClick={() => firstSection && handleNewNote(firstSection.id)}
+            onClick={() =>
+              firstSection &&
+              void handleNewNote(
+                firstSection.id,
+                navigationMode === 'workstreams' ? activeWorkstreamId : null,
+              )
+            }
           >
             <PlusIcon className="h-4 w-4" />
             New note
           </button>
-          <button
-            className="btn-ghost shrink-0 px-2"
-            title="New section"
-            onClick={() => {
-              if (!user || !activeNotebookId) return;
-              const name = window.prompt('Section name:');
-              if (name?.trim()) void createSection(activeNotebookId, user.id, name.trim());
-            }}
-          >
-            <FolderIcon className="h-4 w-4" />
-            <PlusIcon className="h-3 w-3" />
-          </button>
+          {navigationMode === 'library' ? (
+            <button
+              className="btn-ghost shrink-0 px-2"
+              title="New section"
+              onClick={() => {
+                if (!user || !activeNotebookId) return;
+                const name = window.prompt('Section name:');
+                if (name?.trim()) void createSection(activeNotebookId, user.id, name.trim());
+              }}
+            >
+              <FolderIcon className="h-4 w-4" />
+              <PlusIcon className="h-3 w-3" />
+            </button>
+          ) : (
+            <button
+              className="btn-ghost shrink-0 px-2"
+              title="New workstream"
+              onClick={() => {
+                if (!user) return;
+                const name = window.prompt('Workstream name:');
+                if (name?.trim()) void createWorkstream(user.id, name.trim());
+              }}
+            >
+              <TargetIcon className="h-4 w-4" />
+              <PlusIcon className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -220,6 +293,23 @@ export function Sidebar() {
           <div className="px-3 py-10 text-center text-xs text-text-muted">
             No notebook selected.
           </div>
+        ) : navigationMode === 'workstreams' ? (
+          <WorkstreamNavigation
+            workstreams={workstreams}
+            activeWorkstreamId={activeWorkstreamId}
+            noteLinks={noteLinks}
+            notes={workstreamNotes}
+            allNotes={filtered}
+            sections={notebookSections}
+            activeNoteId={activeId}
+            onSelectWorkstream={setActiveWorkstream}
+            onSelectNote={setActive}
+            onCreateWorkstream={() => {
+              if (!user) return;
+              const name = window.prompt('Workstream name:');
+              if (name?.trim()) void createWorkstream(user.id, name.trim());
+            }}
+          />
         ) : notebookSections.length === 0 ? (
           <div className="px-3 py-10 text-center text-xs text-text-muted">
             No sections yet. Create one to start adding notes.
@@ -244,7 +334,7 @@ export function Sidebar() {
                     isCollapsed={collapsed.has(section.id)}
                     onToggleCollapsed={() => toggleCollapsed(section.id)}
                     onSelectNote={setActive}
-                    onNewNote={() => handleNewNote(section.id)}
+                    onNewNote={() => void handleNewNote(section.id)}
                     onRenameSection={renameSection}
                     onDeleteSection={deleteSection}
                   />
@@ -255,6 +345,143 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+  );
+}
+
+function WorkstreamNavigation({
+  workstreams,
+  activeWorkstreamId,
+  noteLinks,
+  notes,
+  allNotes,
+  sections,
+  activeNoteId,
+  onSelectWorkstream,
+  onSelectNote,
+  onCreateWorkstream,
+}: {
+  workstreams: Workstream[];
+  activeWorkstreamId: string | null;
+  noteLinks: { note_id: string; workstream_id: string }[];
+  notes: Note[];
+  allNotes: Note[];
+  sections: Section[];
+  activeNoteId: string | null;
+  onSelectWorkstream: (id: string | null) => void;
+  onSelectNote: (id: string) => void;
+  onCreateWorkstream: () => void;
+}) {
+  const activeWorkstreams = workstreams.filter((workstream) => workstream.status === 'active');
+  const visibleNoteIds = new Set(allNotes.map((note) => note.id));
+  const linkedNoteIds = new Set(noteLinks.map((link) => link.note_id));
+  const unassignedCount = allNotes.filter((note) => !linkedNoteIds.has(note.id)).length;
+  const selected = workstreams.find((workstream) => workstream.id === activeWorkstreamId) ?? null;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center justify-between px-2 pb-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">Active workstreams</p>
+          <button type="button" className="btn-ghost h-6 px-1.5 text-[11px]" onClick={onCreateWorkstream}>
+            <PlusIcon className="h-3 w-3" />
+            New
+          </button>
+        </div>
+        {activeWorkstreams.length === 0 ? (
+          <button
+            type="button"
+            className="w-full rounded-xl border border-dashed border-border-strong bg-surface-raised/50 px-4 py-5 text-left"
+            onClick={onCreateWorkstream}
+          >
+            <p className="text-sm font-medium text-text">Create your first workstream</p>
+            <p className="mt-1 text-xs leading-relaxed text-text-muted">
+              Start with an active product or investigation. Existing notes stay where they are.
+            </p>
+          </button>
+        ) : (
+          <div className="space-y-1">
+            {activeWorkstreams.map((workstream) => {
+              const count = noteLinks.filter(
+                (link) =>
+                  link.workstream_id === workstream.id && visibleNoteIds.has(link.note_id),
+              ).length;
+              const active = workstream.id === activeWorkstreamId;
+              return (
+                <button
+                  key={workstream.id}
+                  type="button"
+                  onClick={() => onSelectWorkstream(workstream.id)}
+                  className={[
+                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                    active
+                      ? 'bg-brand-50 font-medium text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/35 dark:text-brand-300 dark:ring-brand-500/25'
+                      : 'text-text hover:bg-surface-raised',
+                  ].join(' ')}
+                >
+                  <TargetIcon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{workstream.name}</span>
+                  <span className="text-[10px] text-text-subtle">{count}</span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => onSelectWorkstream(null)}
+              className={[
+                'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                activeWorkstreamId === null
+                  ? 'bg-surface-raised font-medium text-text ring-1 ring-border-strong'
+                  : 'text-text-muted hover:bg-surface-raised hover:text-text',
+              ].join(' ')}
+            >
+              <InboxIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">Unassigned</span>
+              <span className="text-[10px] text-text-subtle">{unassignedCount}</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border pt-3">
+        <div className="px-2 pb-2">
+          <p className="text-xs font-semibold text-text">{selected?.name ?? 'Unassigned notes'}</p>
+          <p className="mt-0.5 text-[11px] text-text-muted">
+            {selected ? 'Context collected across the existing library.' : 'Use this as the migration inbox.'}
+          </p>
+        </div>
+        {notes.length === 0 ? (
+          <p className="rounded-lg bg-surface-raised/60 px-3 py-4 text-xs text-text-muted ring-1 ring-border">
+            {selected ? 'No notes have been added yet.' : 'Every visible note is assigned.'}
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {notes.map((note) => {
+              const active = note.id === activeNoteId;
+              const section = sections.find((item) => item.id === note.section_id);
+              return (
+                <li key={note.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectNote(note.id)}
+                    className={[
+                      'w-full rounded-lg px-3 py-2 text-left transition-colors',
+                      active
+                        ? 'bg-brand-50 text-brand-800 ring-1 ring-brand-200 dark:bg-brand-950/35 dark:text-brand-200 dark:ring-brand-500/25'
+                        : 'text-text hover:bg-surface-raised',
+                    ].join(' ')}
+                  >
+                    <p className="truncate text-sm font-medium">{note.title || 'Untitled'}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-text-muted">
+                      {section?.name ?? 'Library'} · {formatRelative(note.updated_at)}
+                    </p>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
