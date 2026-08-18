@@ -80,7 +80,7 @@ export function useCodexSync(userId: string | undefined) {
       if (missedCursor || [...changedKinds].some((kind) => TASK_ACTIONS.has(kind))) {
         refreshes.push(useTasksStore.getState().fetchAll(userId));
       }
-      if (missedCursor || changedKinds.has('note_create')) {
+      if (missedCursor || changedKinds.has('note_create') || changedKinds.has('note_append')) {
         refreshes.push(useNotesStore.getState().fetchAll(userId));
       }
       if (missedCursor || changedKinds.has('focus_reorder')) {

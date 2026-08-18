@@ -60,6 +60,13 @@ function asBriefInsert(row: Record<string, unknown>): AgentBriefInsert {
   return row as unknown as AgentBriefInsert;
 }
 
+function asNoteUpdate(patch: Record<string, unknown>): {
+  content?: string;
+  content_blocks?: unknown;
+} {
+  return patch as { content?: string; content_blocks?: unknown };
+}
+
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {
   switch (plan.op) {
     case 'delete_task': {
@@ -103,6 +110,18 @@ async function executeUndo(userId: string, plan: UndoPlan): Promise<string | nul
     case 'delete_note': {
       const { error } = await supabase.from('notes').delete().eq('id', plan.noteId);
       return error?.message ?? null;
+    }
+    case 'patch_note': {
+      const { data, error } = await supabase
+        .from('notes')
+        .update(asNoteUpdate(plan.patch) as never)
+        .eq('id', plan.noteId)
+        .eq('user_id', userId)
+        .eq('updated_at', plan.expectedUpdatedAt)
+        .select('id')
+        .maybeSingle();
+      if (error) return error.message;
+      return data ? null : 'The note changed after this append, so undo was stopped to protect newer edits';
     }
     case 'delete_brief': {
       const { error } = await supabase.from('agent_briefs').delete().eq('id', plan.briefId);
@@ -226,7 +245,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     if (plan.op === 'patch_profile') {
       await useProfileStore.getState().fetchProfile(userId);
     }
-    if (plan.op === 'delete_note') {
+    if (plan.op === 'delete_note' || plan.op === 'patch_note') {
       await useNotesStore.getState().fetchAll(userId);
     }
     if (plan.op === 'delete_brief' || plan.op === 'restore_brief') {

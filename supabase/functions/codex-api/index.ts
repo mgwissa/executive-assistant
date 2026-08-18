@@ -49,6 +49,7 @@ type MutationInput = {
   patch?: unknown;
   taskIds?: unknown;
   focusItems?: unknown;
+  noteId?: unknown;
   sectionId?: unknown;
   content?: unknown;
   linkedEventId?: unknown;
@@ -103,6 +104,58 @@ function sanitizeNoteText(value: unknown): string {
     .replace(/!\[[^\]]*\]\(data:image\/[^)]+\)/gi, '[embedded image omitted]')
     .replace(/<img\b[^>]*\bsrc=["']data:image\/[^"']+["'][^>]*>/gi, '[embedded image omitted]')
     .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+/gi, '[embedded image omitted]');
+}
+
+function noteTextBlock(type: string, text: string, extraProps: JsonRecord = {}): JsonRecord {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    props: {
+      textColor: 'default',
+      backgroundColor: 'default',
+      textAlignment: 'left',
+      ...extraProps,
+    },
+    content: text ? [{ type: 'text', text, styles: {} }] : [],
+    children: [],
+  };
+}
+
+/**
+ * Convert the deliberately small Markdown surface accepted by note_append to
+ * BlockNote-compatible blocks. Existing canonical blocks are never parsed or
+ * rewritten; these blocks are added to the end of the stored document.
+ */
+function appendMarkdownBlocks(markdown: string): JsonRecord[] | { error: string } {
+  const blocks: JsonRecord[] = [];
+  for (const rawLine of markdown.replace(/\r\n?/g, '\n').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading) {
+      blocks.push(noteTextBlock('heading', heading[2], { level: Math.min(heading[1].length, 3) }));
+      continue;
+    }
+
+    const bullet = /^[-*+]\s+(.+)$/.exec(line);
+    if (bullet) {
+      blocks.push(noteTextBlock('bulletListItem', bullet[1]));
+      continue;
+    }
+
+    const numbered = /^\d+[.)]\s+(.+)$/.exec(line);
+    if (numbered) {
+      blocks.push(noteTextBlock('numberedListItem', numbered[1]));
+      continue;
+    }
+
+    blocks.push(noteTextBlock('paragraph', line));
+  }
+
+  if (blocks.length === 0) return { error: 'content must contain visible text' };
+  if (blocks.length > 500) return { error: 'content contains too many blocks' };
+  return blocks;
 }
 
 function localClock(now: Date, timezone: string): { weekday: string; hour: number; minute: number; label: string } {
@@ -434,6 +487,76 @@ async function mutate(
       return { ok: false, kind, error: logged.error };
     }
     return { ok: true, kind, actionId: logged.id, targetId: data.id };
+  }
+
+  if (kind === 'note_append') {
+    const noteId = str(input.noteId);
+    const content = str(input.content);
+    if (!noteId || !content) return { ok: false, kind, error: 'noteId and content are required' };
+    if (content.length > 20_000) return { ok: false, kind, error: 'append content is too large' };
+    if (sanitizeNoteText(content) !== content) {
+      return { ok: false, kind, error: 'embedded image data is not supported in note appends' };
+    }
+
+    const appendedBlocks = appendMarkdownBlocks(content);
+    if ('error' in appendedBlocks) return { ok: false, kind, error: appendedBlocks.error };
+
+    const { data: existing, error: readError } = await admin
+      .from('notes')
+      .select('id,content,content_blocks,updated_at')
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) return { ok: false, kind, error: readError.message };
+    if (!existing) return { ok: false, kind, error: 'note not found' };
+
+    const currentContent = typeof existing.content === 'string' ? existing.content.trimEnd() : '';
+    const nextContent = currentContent ? `${currentContent}\n\n${content}` : content;
+    if (nextContent.length > 50_000) return { ok: false, kind, error: 'resulting note is too large' };
+
+    const currentBlocks = Array.isArray(existing.content_blocks) ? existing.content_blocks : null;
+    const nextBlocks = currentBlocks && currentBlocks.length > 0
+      ? [...currentBlocks, ...appendedBlocks]
+      : existing.content_blocks;
+    const before = {
+      content: existing.content,
+      content_blocks: existing.content_blocks,
+    };
+    const patch = { content: nextContent, content_blocks: nextBlocks };
+    const { data, error } = await admin
+      .from('notes')
+      .update(patch)
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .eq('updated_at', existing.updated_at)
+      .select('content,content_blocks,updated_at')
+      .maybeSingle();
+    if (error) return { ok: false, kind, error: error.message };
+    if (!data) {
+      return { ok: false, kind, error: 'note changed while context was being appended; reload it and try again' };
+    }
+
+    const after = {
+      content: data.content,
+      content_blocks: data.content_blocks,
+      updated_at: data.updated_at,
+    };
+    const logged = await logAction(admin, principal, runId, input, {
+      target: { type: 'note', id: noteId },
+      before,
+      after,
+    });
+    if ('error' in logged) {
+      const { error: rollbackError } = await admin
+        .from('notes')
+        .update(before)
+        .eq('id', noteId)
+        .eq('user_id', userId)
+        .eq('updated_at', data.updated_at);
+      const suffix = rollbackError ? `; rollback also failed: ${rollbackError.message}` : '';
+      return { ok: false, kind, error: `${logged.error}${suffix}` };
+    }
+    return { ok: true, kind, actionId: logged.id, targetId: noteId };
   }
 
   if (kind === 'brief_write') {

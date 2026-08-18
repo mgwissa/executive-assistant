@@ -27,6 +27,7 @@ export const AGENT_ACTION_KINDS = [
   'chase_logged',
   'memory_write',
   'note_create',
+  'note_append',
   'brief_write',
 ] as const;
 
@@ -124,6 +125,7 @@ export type UndoPlan =
   | { op: 'delete_memory'; key: string }
   | { op: 'restore_memory'; key: string; row: ColumnPatch }
   | { op: 'delete_note'; noteId: string }
+  | { op: 'patch_note'; noteId: string; patch: ColumnPatch; expectedUpdatedAt: string }
   | { op: 'delete_brief'; briefId: string }
   | { op: 'restore_brief'; row: ColumnPatch };
 
@@ -158,6 +160,7 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
 
   const target = parseTarget(action.target);
   const before = parseColumnPatch(action.before);
+  const after = parseColumnPatch(action.after);
 
   switch (action.kind) {
     // The task did not exist beforehand, so reversing means removing it.
@@ -214,6 +217,20 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'delete_note', noteId: target.id };
     }
 
+    case 'note_append': {
+      if (target.type !== 'note') {
+        return { reason: 'Missing the note reference needed to undo this' };
+      }
+      if (!before || !('content' in before) || !('content_blocks' in before)) {
+        return { reason: 'No prior note content was recorded for this append' };
+      }
+      const expectedUpdatedAt = after ? str(after.updated_at) : null;
+      if (!expectedUpdatedAt) {
+        return { reason: 'No note version was recorded for safe undo' };
+      }
+      return { op: 'patch_note', noteId: target.id, patch: before, expectedUpdatedAt };
+    }
+
     case 'brief_write': {
       if (target.type !== 'brief') {
         return { reason: 'Missing the brief reference needed to undo this' };
@@ -247,6 +264,7 @@ export const ACTION_KIND_META: Record<
   chase_logged: { label: 'Chase drafted', accent: 'blue' },
   memory_write: { label: 'Learned', accent: 'purple' },
   note_create: { label: 'Captured note', accent: 'blue' },
+  note_append: { label: 'Added context', accent: 'blue' },
   brief_write: { label: 'Briefed', accent: 'purple' },
 };
 
