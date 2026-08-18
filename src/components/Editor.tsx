@@ -63,7 +63,7 @@ export function Editor() {
     // size to content — for a fresh empty note that's basically zero, which
     // makes the editor look like it "shrinks" until you start typing.
     <div className="flex h-full w-full min-w-0 flex-1 flex-col bg-surface-raised">
-      <header className="border-b border-border bg-surface/90 px-3 py-3 shadow-sm backdrop-blur sm:px-6 sm:py-3.5">
+      <header className="relative z-40 border-b border-border bg-surface/90 px-3 py-3 shadow-sm backdrop-blur sm:px-6 sm:py-3.5">
         {breadcrumb && (
           <nav
             className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-text-muted"
