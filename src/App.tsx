@@ -243,7 +243,7 @@ function Shell() {
   }, [user, profile, updateProfile]);
 
   return (
-    <div className="app-shell flex h-full min-h-0">
+    <div className="app-shell flex h-full min-h-0 overflow-hidden">
       {/* Persistent left rail on tablet/desktop. */}
       <div className="hidden md:flex">
         <SideNav />
@@ -281,7 +281,7 @@ function Shell() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar />
-        <div className="min-h-0 min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Outlet />
         </div>
       </div>
