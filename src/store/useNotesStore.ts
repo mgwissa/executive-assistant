@@ -31,6 +31,7 @@ type NotesState = {
     id: string,
     patch: { title?: string; content?: string; content_blocks?: Json | null },
   ) => Promise<void>;
+  setMeetingTriage: (userId: string, id: string, triaged: boolean) => Promise<boolean>;
   deleteNote: (id: string) => Promise<void>;
   clear: () => void;
 };
@@ -77,6 +78,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       content_blocks: null,
       linked_event_id: null,
       linked_occurrence_start_at: null,
+      triaged_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -121,6 +123,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       content_blocks: null,
       linked_event_id: target.eventId,
       linked_occurrence_start_at: occKey,
+      triaged_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -194,6 +197,45 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         }
       }, DEBOUNCE_MS),
     );
+  },
+
+  setMeetingTriage: async (userId, id, triaged) => {
+    const existing = get().notes.find((note) => note.id === id);
+    if (!existing || existing.user_id !== userId || !existing.linked_event_id) return false;
+
+    const triagedAt = triaged ? new Date().toISOString() : null;
+    const previous = existing;
+    set({
+      notes: get().notes.map((note) =>
+        note.id === id ? { ...note, triaged_at: triagedAt } : note,
+      ),
+      error: null,
+    });
+
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ triaged_at: triagedAt })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id,triaged_at,updated_at')
+      .maybeSingle();
+    if (error || !data) {
+      set({
+        notes: get().notes.map((note) => (note.id === id ? previous : note)),
+        error: error?.message ?? 'Meeting note triage could not be updated',
+      });
+      return false;
+    }
+
+    markNoteSelfPersisted(data.id, data.updated_at);
+    set({
+      notes: get().notes.map((note) =>
+        note.id === id
+          ? { ...note, triaged_at: data.triaged_at, updated_at: data.updated_at }
+          : note,
+      ),
+    });
+    return true;
   },
 
   deleteNote: async (id) => {

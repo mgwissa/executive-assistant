@@ -1,9 +1,11 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { isNotebookShared } from '../lib/notebookSharing';
 import { extractPreview, formatRelative } from '../lib/format';
+import { meetingNoteNeedsTriage } from '../lib/meetingNoteTriage';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
+import { useEventsStore } from '../store/useEventsStore';
 import { useSharingStore } from '../store/useSharingStore';
 import { useShellLayoutStore } from '../store/useShellLayoutStore';
 import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
@@ -53,6 +55,7 @@ const SECTION_TONES = [
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const notes = useNotesStore((s) => s.notes);
+  const events = useEventsStore((s) => s.events);
   const activeId = useNotesStore((s) => s.activeId);
   const query = useNotesStore((s) => s.query);
   const setActive = useNotesStore((s) => s.setActive);
@@ -81,7 +84,7 @@ export function Sidebar() {
   const createWorkstream = useWorkstreamsStore((s) => s.createWorkstream);
 
   const [shareOpen, setShareOpen] = useState(false);
-  const [navigationMode, setNavigationMode] = useState<'workstreams' | 'library'>('workstreams');
+  const [navigationMode, setNavigationMode] = useState<'meetingInbox' | 'workstreams' | 'library'>('workstreams');
 
   useEffect(() => {
     setShareOpen(false);
@@ -139,6 +142,15 @@ export function Sidebar() {
     if (activeWorkstreamId) return filtered.filter((note) => linkedIds.has(note.id));
     return filtered.filter((note) => !linkedIds.has(note.id));
   }, [activeWorkstreamId, filtered, noteLinks]);
+
+  const pendingMeetingNotes = useMemo(
+    () => notesInNotebook.filter((note) => meetingNoteNeedsTriage(note, events)),
+    [events, notesInNotebook],
+  );
+  const visiblePendingMeetingNotes = useMemo(() => {
+    const visibleIds = new Set(filtered.map((note) => note.id));
+    return pendingMeetingNotes.filter((note) => visibleIds.has(note.id));
+  }, [filtered, pendingMeetingNotes]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapsed = (sectionId: string) => {
@@ -215,7 +227,24 @@ export function Sidebar() {
 
       {/* Search + new section */}
       <div className="relative space-y-2 border-b border-border-strong bg-gradient-to-b from-brand-50/20 to-transparent px-3 py-3 dark:from-brand-950/12">
-        <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
+        <div className="grid grid-cols-3 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
+          <button
+            type="button"
+            onClick={() => setNavigationMode('meetingInbox')}
+            className={[
+              'flex items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-xs font-medium transition-colors',
+              navigationMode === 'meetingInbox'
+                ? 'bg-surface-raised text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            Meetings
+            {pendingMeetingNotes.length > 0 ? (
+              <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                {pendingMeetingNotes.length}
+              </span>
+            ) : null}
+          </button>
           <button
             type="button"
             onClick={() => setNavigationMode('workstreams')}
@@ -242,7 +271,7 @@ export function Sidebar() {
           </button>
         </div>
         <SearchBar />
-        <div className="flex gap-2">
+        {navigationMode !== 'meetingInbox' ? <div className="flex gap-2">
           <button
             className="btn-primary flex-1"
             disabled={!firstSection}
@@ -284,7 +313,11 @@ export function Sidebar() {
               <PlusIcon className="h-3 w-3" />
             </button>
           )}
-        </div>
+        </div> : (
+          <p className="px-1 text-[11px] leading-relaxed text-text-muted">
+            Meeting notes appear here after the meeting ends and stay until reviewed.
+          </p>
+        )}
       </div>
 
       {/* Section tree */}
@@ -293,6 +326,13 @@ export function Sidebar() {
           <div className="px-3 py-10 text-center text-xs text-text-muted">
             No notebook selected.
           </div>
+        ) : navigationMode === 'meetingInbox' ? (
+          <MeetingInboxNavigation
+            notes={visiblePendingMeetingNotes}
+            sections={notebookSections}
+            activeNoteId={activeId}
+            onSelectNote={setActive}
+          />
         ) : navigationMode === 'workstreams' ? (
           <WorkstreamNavigation
             workstreams={workstreams}
@@ -345,6 +385,69 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+  );
+}
+
+function MeetingInboxNavigation({
+  notes,
+  sections,
+  activeNoteId,
+  onSelectNote,
+}: {
+  notes: Note[];
+  sections: Section[];
+  activeNoteId: string | null;
+  onSelectNote: (id: string) => void;
+}) {
+  return (
+    <div>
+      <div className="px-2 pb-3">
+        <p className="text-xs font-semibold text-text">Meeting inbox</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted">
+          Review decisions, create any real follow-ups, and preserve durable context before clearing the note.
+        </p>
+      </div>
+      {notes.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border-strong bg-surface-raised/50 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-text">Meeting inbox clear</p>
+          <p className="mt-1 text-xs text-text-muted">No completed meeting notes need review.</p>
+        </div>
+      ) : (
+        <ul className="space-y-1.5">
+          {notes.map((note) => {
+            const active = note.id === activeNoteId;
+            const section = sections.find((item) => item.id === note.section_id);
+            return (
+              <li key={note.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectNote(note.id)}
+                  className={[
+                    'w-full rounded-lg px-3 py-2.5 text-left transition-colors',
+                    active
+                      ? 'bg-brand-50 text-brand-800 ring-1 ring-brand-200 dark:bg-brand-950/35 dark:text-brand-200 dark:ring-brand-500/25'
+                      : 'bg-surface-raised/55 text-text ring-1 ring-border hover:bg-surface-raised',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start gap-2">
+                    <InboxIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{note.title || 'Untitled meeting'}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-text-muted">
+                        {extractPreview(note.content) || 'Open to review this meeting note.'}
+                      </p>
+                      <p className="mt-1 truncate text-[10px] text-text-subtle">
+                        {section?.name ?? 'Library'} · {formatRelative(note.linked_occurrence_start_at ?? note.updated_at)}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

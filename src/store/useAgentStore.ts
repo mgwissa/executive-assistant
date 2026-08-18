@@ -63,8 +63,9 @@ function asBriefInsert(row: Record<string, unknown>): AgentBriefInsert {
 function asNoteUpdate(patch: Record<string, unknown>): {
   content?: string;
   content_blocks?: unknown;
+  triaged_at?: string | null;
 } {
-  return patch as { content?: string; content_blocks?: unknown };
+  return patch as { content?: string; content_blocks?: unknown; triaged_at?: string | null };
 }
 
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {

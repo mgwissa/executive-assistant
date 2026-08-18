@@ -52,13 +52,18 @@ Supabase OAuth grant.
   contain enough detail.
 - `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
   queue, creates notes, appends explicitly approved context to existing notes,
-  and writes briefings through the existing audited mutation engine.
+  marks meeting notes triaged or reopened, and writes briefings through the
+  existing audited mutation engine.
 
 Every mutation creates an `agent_runs` row and a reversible `agent_actions` row
 per applied change. The endpoint cannot delete tasks, change legacy priority,
 or arbitrarily rewrite existing BlockNote documents. A `note_append` action
 accepts `noteId` and `content`; content may use headings, paragraphs, bullets,
 and numbered items. It preserves existing blocks and refuses concurrent edits.
+The workspace context exposes `meetingNotesNeedingTriage`. After the user and
+agent have captured any decisions, tasks, follow-ups, and durable context, a
+`note_triage` action with `noteId` and `triaged: true` clears that note from the
+Meeting inbox; `triaged: false` reopens it.
 
 This integration does not poll and does not call a model. The connected MCP
 client decides when to read context or request an agreed workspace change.

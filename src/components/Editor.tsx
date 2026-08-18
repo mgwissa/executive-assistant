@@ -1,20 +1,23 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useNotesStore } from '../store/useNotesStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { formatRelative } from '../lib/format';
 import { MoveNoteModal } from './MoveNoteModal';
 import { NoteWorkstreamPicker } from './NoteWorkstreamPicker';
 import { NotesEditor } from './NotesEditor';
-import { BookIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
+import { BookIcon, CheckSquareIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
 import type { Json } from '../types/database';
 
 export function Editor() {
+  const user = useAuthStore((s) => s.user);
   const note = useNotesStore((s) =>
     s.activeId ? (s.notes.find((n) => n.id === s.activeId) ?? null) : null,
   );
   const updateNote = useNotesStore((s) => s.updateNote);
   const deleteNote = useNotesStore((s) => s.deleteNote);
+  const setMeetingTriage = useNotesStore((s) => s.setMeetingTriage);
   const setActive = useNotesStore((s) => s.setActive);
   const notebooks = useNotebooksStore((s) => s.notebooks);
   const sections = useNotebooksStore((s) => s.sections);
@@ -106,6 +109,22 @@ export function Editor() {
               <span className="hidden whitespace-nowrap rounded-full bg-surface-sunken px-2.5 py-1 text-[11px] font-medium text-text-muted ring-1 ring-border md:inline">
                 {savedLabel}
               </span>
+            ) : null}
+            {note.linked_event_id && note.user_id === user?.id ? (
+              <button
+                type="button"
+                onClick={() => void setMeetingTriage(user.id, note.id, note.triaged_at === null)}
+                className={[
+                  'btn-ghost h-9 whitespace-nowrap px-2.5 text-xs',
+                  note.triaged_at
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : 'text-brand-700 dark:text-brand-300',
+                ].join(' ')}
+                title={note.triaged_at ? 'Return this note to the meeting inbox' : 'Clear this note from the meeting inbox'}
+              >
+                <CheckSquareIcon className="h-4 w-4" />
+                <span className="hidden lg:inline">{note.triaged_at ? 'Triaged · Reopen' : 'Mark triaged'}</span>
+              </button>
             ) : null}
             <NoteWorkstreamPicker noteId={note.id} noteOwnerId={note.user_id} />
             <button

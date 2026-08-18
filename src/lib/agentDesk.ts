@@ -28,6 +28,7 @@ export const AGENT_ACTION_KINDS = [
   'memory_write',
   'note_create',
   'note_append',
+  'note_triage',
   'brief_write',
 ] as const;
 
@@ -231,6 +232,20 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'patch_note', noteId: target.id, patch: before, expectedUpdatedAt };
     }
 
+    case 'note_triage': {
+      if (target.type !== 'note') {
+        return { reason: 'Missing the note reference needed to undo this' };
+      }
+      if (!before || !('triaged_at' in before)) {
+        return { reason: 'No prior meeting triage state was recorded' };
+      }
+      const expectedUpdatedAt = after ? str(after.updated_at) : null;
+      if (!expectedUpdatedAt) {
+        return { reason: 'No note version was recorded for safe undo' };
+      }
+      return { op: 'patch_note', noteId: target.id, patch: before, expectedUpdatedAt };
+    }
+
     case 'brief_write': {
       if (target.type !== 'brief') {
         return { reason: 'Missing the brief reference needed to undo this' };
@@ -265,6 +280,7 @@ export const ACTION_KIND_META: Record<
   memory_write: { label: 'Learned', accent: 'purple' },
   note_create: { label: 'Captured note', accent: 'blue' },
   note_append: { label: 'Added context', accent: 'blue' },
+  note_triage: { label: 'Triaged meeting note', accent: 'green' },
   brief_write: { label: 'Briefed', accent: 'purple' },
 };
 

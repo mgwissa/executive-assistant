@@ -74,6 +74,7 @@ export type Database = {
           content_blocks: Json | null;
           linked_event_id: string | null;
           linked_occurrence_start_at: string | null;
+          triaged_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -86,6 +87,7 @@ export type Database = {
           content_blocks?: Json | null;
           linked_event_id?: string | null;
           linked_occurrence_start_at?: string | null;
+          triaged_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -98,6 +100,7 @@ export type Database = {
           content_blocks?: Json | null;
           linked_event_id?: string | null;
           linked_occurrence_start_at?: string | null;
+          triaged_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

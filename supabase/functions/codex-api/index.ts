@@ -50,6 +50,7 @@ type MutationInput = {
   taskIds?: unknown;
   focusItems?: unknown;
   noteId?: unknown;
+  triaged?: unknown;
   sectionId?: unknown;
   content?: unknown;
   linkedEventId?: unknown;
@@ -559,6 +560,51 @@ async function mutate(
     return { ok: true, kind, actionId: logged.id, targetId: noteId };
   }
 
+  if (kind === 'note_triage') {
+    const noteId = str(input.noteId);
+    if (!noteId || typeof input.triaged !== 'boolean') {
+      return { ok: false, kind, error: 'noteId and boolean triaged are required' };
+    }
+    const { data: existing, error: readError } = await admin
+      .from('notes')
+      .select('id,linked_event_id,triaged_at,updated_at')
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) return { ok: false, kind, error: readError.message };
+    if (!existing?.linked_event_id) return { ok: false, kind, error: 'owned meeting note not found' };
+
+    const triagedAt = input.triaged ? new Date().toISOString() : null;
+    const before = { triaged_at: existing.triaged_at };
+    const { data, error } = await admin
+      .from('notes')
+      .update({ triaged_at: triagedAt })
+      .eq('id', noteId)
+      .eq('user_id', userId)
+      .eq('updated_at', existing.updated_at)
+      .select('triaged_at,updated_at')
+      .maybeSingle();
+    if (error) return { ok: false, kind, error: error.message };
+    if (!data) return { ok: false, kind, error: 'note changed while triage was being updated; reload it and try again' };
+
+    const logged = await logAction(admin, principal, runId, input, {
+      target: { type: 'note', id: noteId },
+      before,
+      after: { triaged_at: data.triaged_at, updated_at: data.updated_at },
+    });
+    if ('error' in logged) {
+      const { error: rollbackError } = await admin
+        .from('notes')
+        .update(before)
+        .eq('id', noteId)
+        .eq('user_id', userId)
+        .eq('updated_at', data.updated_at);
+      const suffix = rollbackError ? `; rollback also failed: ${rollbackError.message}` : '';
+      return { ok: false, kind, error: `${logged.error}${suffix}` };
+    }
+    return { ok: true, kind, actionId: logged.id, targetId: noteId };
+  }
+
   if (kind === 'brief_write') {
     const source = isRecord(input.brief) ? input.brief : {};
     const briefKind = str(source.kind);
@@ -625,7 +671,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     admin.from('events').select('*').eq('user_id', userId).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(250),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
-    admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
+    admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
     admin.from('workstreams').select('id,name,description,status,position').eq('user_id', userId).order('position'),
     admin.from('note_workstreams').select('workstream_id,note_id').eq('user_id', userId),
     admin.from('agent_actions').select('id,kind,title,rationale,effects,status,actor_name,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -660,6 +706,20 @@ async function buildContext(admin: SupabaseClient, userId: string) {
       instruction: 'Create today\'s morning brief and refresh the focus plan before responding to the user.',
     }]
     : [];
+  const meetingNotesNeedingTriage = notes
+    .filter((note) =>
+      note.linked_event_id &&
+      note.linked_occurrence_start_at &&
+      !note.triaged_at &&
+      note.excerpt.trim() !== '' &&
+      new Date(note.linked_occurrence_start_at).getTime() + 30 * 60 * 1000 <= now.getTime()
+    )
+    .map((note) => ({
+      id: note.id,
+      title: note.title,
+      occurrenceStartAt: note.linked_occurrence_start_at,
+      excerpt: note.excerpt,
+    }));
 
   return {
     now: now.toISOString(),
@@ -675,6 +735,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     notebooks: notebooksRes.data ?? [],
     sections: sectionsRes.data ?? [],
     notes,
+    meetingNotesNeedingTriage,
     workstreams: workstreamsRes.data ?? [],
     noteWorkstreams: noteWorkstreamsRes.data ?? [],
     recentBriefs: briefsRes.data ?? [],
@@ -685,7 +746,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
 async function searchNotes(admin: SupabaseClient, userId: string, query: string) {
   const { data, error } = await admin
     .from('notes')
-    .select('id,title,content,linked_event_id,linked_occurrence_start_at,updated_at')
+    .select('id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(500);

@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context to an existing note, and briefing writes. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, and briefing writes. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,7 +48,7 @@ const TOOLS = [
           maxItems: 25,
           items: {
             type: 'object',
-            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items.',
+            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged.',
             required: ['kind'],
             properties: { kind: { type: 'string' } },
             additionalProperties: true,

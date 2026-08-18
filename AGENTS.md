@@ -82,7 +82,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | Path | View | Notes |
 |------|------|-------|
 | `/dashboard` | `TodayPage` | Primary daily view: compact persisted Codex morning brief, after-4pm evening closeout, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
-| `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds a workstream lens over the preserved Notebook→Section→Note library. Notes can appear in multiple workstreams without being moved; unassigned notes form the migration inbox. |
+| `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds a meeting-triage inbox and workstream lens over the preserved Notebook→Section→Note library. Completed linked notes remain in Meeting inbox until triaged; notes can appear in multiple workstreams without being moved. |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
 | `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -106,7 +106,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `weekly_routine jsonb` (custom template; null = built-in guide), `focus_queue jsonb` (focus stack order + `snoozedUntil` per ref), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_reminder_enabled`, `notify_in_app_nudges_enabled`, `notify_browser_nudges_enabled`, `notify_email_address` (recipient override) |
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
-| `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel) |
+| `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel), `triaged_at` (owner finished reviewing the meeting note) |
 | `workstreams`, `note_workstreams` | Notes 2.0 operational context | Per-user active/paused/closed workstreams plus a many-to-many note lens. Existing notebook/section storage remains authoritative and untouched. |
 | `tasks` | Standalone tasks | `due_date` (real external deadline), `review_date` (resurface/reconsider; never escalates), `due_time` (optional; requires `due_date`), legacy `priority` (retained for compatibility), `tags text[]` (filter on `/tasks`), `reminder_sent_at`, `linked_event_id` (FK → `events`), `waiting_on`, `chase_snoozed_until`, `last_chased_at`, `estimated_minutes`, `description`, `priority_set_at`, `reschedule_count`, `done` |
 | `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required`, `allow_back_to_back`, `debrief_required` (assistant temperament; Outlook rows flags-only on edit) |
@@ -118,7 +118,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | `agent_connections` | Local authorization and attribution for per-user OAuth clients | `name`, `oauth_client_id`, `auth_kind`, `scopes`, `last_used_at`, `revoked_at` |
 | `agent_runs` | One row per agent invocation | `kind`, `status`, `summary`, `stats`, `agent_connection_id`, `actor_name`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per connected-agent write | `kind` (including `note_create`, `note_append`, and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
+| `agent_actions` | **The audit trail.** One row per connected-agent write | `kind` (including `note_create`, `note_append`, `note_triage`, and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
@@ -211,7 +211,7 @@ Today path.
 
 **Assistant briefing** (`lib/assistantBriefing.ts`, `/assistant` tabs + digest email): **Stats** (counts), **Watch list** (blind spots EA is monitoring), **Decisions needed** (your call — commit, date, delegate, or drop; reschedule offenders, undated priorities, stale note items). Section id `decisions` in code; not “The Nudge”.
 
-**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → weekday morning catch-up ✅ → evening closeout/open-loop capture → **Notes 2.0 (in progress: workstream lens, iterative migration, note audit, safe audited context append)** → richer Today context. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
+**Agent-first roadmap (owner reprioritized 2026-08):** Today command center ✅ → deadline/review-date split ✅ → audited writes and activity ✅ → persisted briefings ✅ → live focus-plan sync ✅ → hosted OAuth MCP ✅ → weekday morning catch-up ✅ → evening closeout/open-loop capture → **Notes 2.0 (in progress: meeting-triage inbox, workstream lens, iterative migration, note audit, safe audited context append)** → richer Today context. Proactive email remains deferred; the owner keeps the app open. Document shifts here when order changes.
 
 **Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
 
@@ -279,18 +279,19 @@ to `codex-api`; neither function calls a model or polls.
   pending catch-up check. No cron row is needed; writing the dated brief resolves
   it, and a simple “good morning” tells the agent to process it before replying.
 - Writes: task create/update/complete, ordered focus queue, safe creation of a
-  legacy-markdown note, and append-only approved context on an owned note.
+  legacy-markdown note, append-only approved context on an owned note, and
+  audited triage/reopen of owned meeting notes.
   Appends preserve existing BlockNote JSON and add compatible blocks; they
   never parse or rewrite the existing document. No task deletion, priority
   mutation, or arbitrary rich-note rewrite.
 - Audit: each `mutate` request creates a manual `agent_runs` row; each applied
   mutation creates an undoable `agent_actions` row. Both record the connection
   id and display name. `note_create` undo deletes the created note;
-  `note_append` restores the exact previous content only when the note has not
-  been edited since the append.
+  `note_append` and `note_triage` restore the exact previous state only when the
+  note has not been edited since the action.
 
 Deployment order: apply migrations through
-`2026-08-18_048_note_append_actions.sql`; enable the Supabase OAuth server,
+`2026-08-18_049_meeting_note_triage.sql`; enable the Supabase OAuth server,
 set its authorization path to `/oauth/consent`, and enable dynamic client
 registration; set `MCP_PUBLIC_URL` to the deployed Vercel `/mcp` URL; then
 deploy `agent-connections`, `codex-api`, `executive-assistant-mcp`, and the web
@@ -412,6 +413,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Agent note responses strip embedded image data.** Keep `sanitizeNoteText()` ahead of response truncation in `codex-api`; otherwise markdown data-URI images can inflate a context response by megabytes.
 - **Canonical notes require dual-format appends.** `content_blocks` wins over legacy markdown in `NotesEditor`, and the Edge runtime cannot safely instantiate BlockNote's DOM-backed editor. `note_append` must therefore preserve existing JSON and add only server-built heading/paragraph/list blocks while also updating `content`. Never clear or regenerate an existing BlockNote document.
 - **Note append and undo are optimistic.** Both compare the stored `updated_at` version before writing. A concurrent edit must produce a conflict, not overwrite newer note content.
+- **Meeting triage is lifecycle, not organization.** A note belongs in Meeting inbox only when it is owned, linked to a past occurrence, has meaningful content, and has no `triaged_at`. Workstreams remain many-to-many subject grouping. Marking a note triaged never moves it or creates inferred tasks.
 - **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
 - **OAuth identity owns agent scope.** `codex-api` derives both the user and OAuth client from the verified access token, then requires an active matching `agent_connections` row. Never accept a target user from an MCP request body.
 - **The public MCP resource URL is canonical.** Plugin clients connect to the Vercel `/mcp` proxy, so production must set `MCP_PUBLIC_URL=https://executive-assistant-chi.vercel.app/mcp`. A mismatch between that value and the client URL can break OAuth resource validation even when the underlying Supabase function is healthy. Every user still signs in and approves a separate OAuth grant.

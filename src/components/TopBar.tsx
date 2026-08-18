@@ -17,7 +17,7 @@ const titles: Record<string, string> = {
 
 const subtitles: Record<string, string> = {
   dashboard: 'Your schedule, context, and concerns for the day.',
-  notes: 'Collect context by workstream while keeping the original library intact.',
+  notes: 'Triage meeting notes and collect context without losing the original library.',
   tasks: 'Commitments, real deadlines, and review dates.',
   calendar: 'Today, this week, and beyond.',
   owed: "Tasks you're waiting on from other people.",
