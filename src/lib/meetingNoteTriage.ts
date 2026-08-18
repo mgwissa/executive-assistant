@@ -23,5 +23,5 @@ export function meetingOccurrenceEnded(
 }
 
 export function meetingNoteNeedsTriage(note: Note, events: Event[], now = new Date()): boolean {
-  return !note.triaged_at && hasMeetingNoteContent(note) && meetingOccurrenceEnded(note, events, now);
+  return !note.scratch_at && !note.triaged_at && hasMeetingNoteContent(note) && meetingOccurrenceEnded(note, events, now);
 }

@@ -75,6 +75,7 @@ export type Database = {
           linked_event_id: string | null;
           linked_occurrence_start_at: string | null;
           triaged_at: string | null;
+          scratch_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -88,6 +89,7 @@ export type Database = {
           linked_event_id?: string | null;
           linked_occurrence_start_at?: string | null;
           triaged_at?: string | null;
+          scratch_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -101,6 +103,7 @@ export type Database = {
           linked_event_id?: string | null;
           linked_occurrence_start_at?: string | null;
           triaged_at?: string | null;
+          scratch_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

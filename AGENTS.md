@@ -82,7 +82,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 | Path | View | Notes |
 |------|------|-------|
 | `/dashboard` | `TodayPage` | Primary daily view: compact persisted Codex morning brief, after-4pm evening closeout, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
-| `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds a meeting-triage inbox and workstream lens over the preserved Notebook→Section→Note library. Completed linked notes remain in Meeting inbox until triaged; notes can appear in multiple workstreams without being moved. |
+| `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds Scratch and meeting-triage inboxes plus a workstream lens over the preserved Notebook→Section→Note library. Scratch notes keep their physical location but stay out of durable Library/Workstream views until promoted; completed linked notes remain in Meeting inbox until triaged. |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
 | `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
 | `/owed` | `OwedToMePage` | Tasks with non-empty `waiting_on` |
@@ -106,7 +106,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 | `profiles` | One row per auth user. Settings + notification prefs | `first_name`, `timezone`, `enabled_addons text[]`, `meeting_rules jsonb` (title-pattern assistant overrides), `weekly_routine jsonb` (custom template; null = built-in guide), `focus_queue jsonb` (focus stack order + `snoozedUntil` per ref), `outlook_ics_url`, `priority_escalation jsonb`, `notify_email_*`, `notify_email_reminder_enabled`, `notify_in_app_nudges_enabled`, `notify_browser_nudges_enabled`, `notify_email_address` (recipient override) |
 | `notebooks` | Top-level grouping | `user_id`, `name`, `position` |
 | `sections` | Inside a notebook | `notebook_id`, `name`, `position` |
-| `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel), `triaged_at` (owner finished reviewing the meeting note) |
+| `notes` | Inside a section | `section_id`, `title`, `content` (markdown), `content_blocks jsonb` (BlockNote doc), `linked_event_id` + `linked_occurrence_start_at` (one note per meeting occurrence — banner Notes/Debrief panel), `triaged_at` (owner finished reviewing the meeting note), `scratch_at` (ordinary note is held in the Scratch cleanup inbox until promoted) |
 | `workstreams`, `note_workstreams` | Notes 2.0 operational context | Per-user active/paused/closed workstreams plus a many-to-many note lens. Existing notebook/section storage remains authoritative and untouched. |
 | `tasks` | Standalone tasks | `due_date` (real external deadline), `review_date` (resurface/reconsider; never escalates), `due_time` (optional; requires `due_date`), legacy `priority` (retained for compatibility), `tags text[]` (filter on `/tasks`), `reminder_sent_at`, `linked_event_id` (FK → `events`), `waiting_on`, `chase_snoozed_until`, `last_chased_at`, `estimated_minutes`, `description`, `priority_set_at`, `reschedule_count`, `done` |
 | `events` | Calendar entries | `source` ('manual' \| 'outlook_ics'), `start_at`, `end_at`, recurrence fields, `prep_required`, `allow_back_to_back`, `debrief_required` (assistant temperament; Outlook rows flags-only on edit) |
@@ -280,7 +280,8 @@ to `codex-api`; neither function calls a model or polls.
   it, and a simple “good morning” tells the agent to process it before replying.
 - Writes: task create/update/complete, ordered focus queue, safe creation of a
   legacy-markdown note, append-only approved context on an owned note, and
-  audited triage/reopen of owned meeting notes.
+  audited triage/reopen of owned meeting notes plus scratch/promote of ordinary
+  owned notes.
   Appends preserve existing BlockNote JSON and add compatible blocks; they
   never parse or rewrite the existing document. No task deletion, priority
   mutation, or arbitrary rich-note rewrite.
@@ -291,7 +292,7 @@ to `codex-api`; neither function calls a model or polls.
   note has not been edited since the action.
 
 Deployment order: apply migrations through
-`2026-08-18_049_meeting_note_triage.sql`; enable the Supabase OAuth server,
+`2026-08-18_050_note_scratch_inbox.sql`; enable the Supabase OAuth server,
 set its authorization path to `/oauth/consent`, and enable dynamic client
 registration; set `MCP_PUBLIC_URL` to the deployed Vercel `/mcp` URL; then
 deploy `agent-connections`, `codex-api`, `executive-assistant-mcp`, and the web
@@ -414,6 +415,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Canonical notes require dual-format appends.** `content_blocks` wins over legacy markdown in `NotesEditor`, and the Edge runtime cannot safely instantiate BlockNote's DOM-backed editor. `note_append` must therefore preserve existing JSON and add only server-built heading/paragraph/list blocks while also updating `content`. Never clear or regenerate an existing BlockNote document.
 - **Note append and undo are optimistic.** Both compare the stored `updated_at` version before writing. A concurrent edit must produce a conflict, not overwrite newer note content.
 - **Meeting triage is lifecycle, not organization.** A note belongs in Meeting inbox only when it is owned, linked to a past occurrence, has meaningful content, and has no `triaged_at`. Workstreams remain many-to-many subject grouping. Marking a note triaged never moves it or creates inferred tasks.
+- **Scratch is lifecycle, not organization.** `notes.scratch_at` moves an ordinary note into a cleanup inbox without changing its notebook, section, or workstream links. Scratch notes stay out of durable Library/Workstream views until promoted. Meeting notes continue to use `triaged_at` instead.
 - **`before`/`after` use raw DB column names**, deliberately — undo is a direct `update(before)`. Do not "helpfully" camelCase them.
 - **OAuth identity owns agent scope.** `codex-api` derives both the user and OAuth client from the verified access token, then requires an active matching `agent_connections` row. Never accept a target user from an MCP request body.
 - **The public MCP resource URL is canonical.** Plugin clients connect to the Vercel `/mcp` proxy, so production must set `MCP_PUBLIC_URL=https://executive-assistant-chi.vercel.app/mcp`. A mismatch between that value and the client URL can break OAuth resource validation even when the underlying Supabase function is healthy. Every user still signs in and approves a separate OAuth grant.

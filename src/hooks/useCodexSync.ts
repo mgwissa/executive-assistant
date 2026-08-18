@@ -84,7 +84,8 @@ export function useCodexSync(userId: string | undefined) {
         missedCursor ||
         changedKinds.has('note_create') ||
         changedKinds.has('note_append') ||
-        changedKinds.has('note_triage')
+        changedKinds.has('note_triage') ||
+        changedKinds.has('note_scratch')
       ) {
         refreshes.push(useNotesStore.getState().fetchAll(userId));
       }

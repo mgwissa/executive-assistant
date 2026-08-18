@@ -52,8 +52,9 @@ Supabase OAuth grant.
   contain enough detail.
 - `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
   queue, creates notes, appends explicitly approved context to existing notes,
-  marks meeting notes triaged or reopened, and writes briefings through the
-  existing audited mutation engine.
+  marks meeting notes triaged or reopened, moves ordinary notes into or out of
+  the Scratch inbox, and writes briefings through the existing audited mutation
+  engine.
 
 Every mutation creates an `agent_runs` row and a reversible `agent_actions` row
 per applied change. The endpoint cannot delete tasks, change legacy priority,
@@ -64,6 +65,10 @@ The workspace context exposes `meetingNotesNeedingTriage`. After the user and
 agent have captured any decisions, tasks, follow-ups, and durable context, a
 `note_triage` action with `noteId` and `triaged: true` clears that note from the
 Meeting inbox; `triaged: false` reopens it.
+The context also exposes `scratchNotes`. A `note_scratch` action with `noteId`
+and `scratch: true` moves an ordinary note into the cleanup inbox without
+changing its notebook or section; `scratch: false` promotes it back into the
+durable library. Meeting notes continue to use their separate triage lifecycle.
 
 This integration does not poll and does not call a model. The connected MCP
 client decides when to read context or request an agreed workspace change.

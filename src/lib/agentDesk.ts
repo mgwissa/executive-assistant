@@ -29,6 +29,7 @@ export const AGENT_ACTION_KINDS = [
   'note_create',
   'note_append',
   'note_triage',
+  'note_scratch',
   'brief_write',
 ] as const;
 
@@ -232,12 +233,14 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'patch_note', noteId: target.id, patch: before, expectedUpdatedAt };
     }
 
-    case 'note_triage': {
+    case 'note_triage':
+    case 'note_scratch': {
       if (target.type !== 'note') {
         return { reason: 'Missing the note reference needed to undo this' };
       }
-      if (!before || !('triaged_at' in before)) {
-        return { reason: 'No prior meeting triage state was recorded' };
+      const lifecycleColumn = action.kind === 'note_scratch' ? 'scratch_at' : 'triaged_at';
+      if (!before || !(lifecycleColumn in before)) {
+        return { reason: 'No prior note lifecycle state was recorded' };
       }
       const expectedUpdatedAt = after ? str(after.updated_at) : null;
       if (!expectedUpdatedAt) {
@@ -281,6 +284,7 @@ export const ACTION_KIND_META: Record<
   note_create: { label: 'Captured note', accent: 'blue' },
   note_append: { label: 'Added context', accent: 'blue' },
   note_triage: { label: 'Triaged meeting note', accent: 'green' },
+  note_scratch: { label: 'Changed scratch state', accent: 'amber' },
   brief_write: { label: 'Briefed', accent: 'purple' },
 };
 

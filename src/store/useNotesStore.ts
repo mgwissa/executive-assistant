@@ -19,7 +19,11 @@ type NotesState = {
   setActive: (id: string | null) => void;
 
   fetchAll: (userId: string) => Promise<void>;
-  createNote: (userId: string, sectionId: string) => Promise<Note | null>;
+  createNote: (
+    userId: string,
+    sectionId: string,
+    options?: { scratch?: boolean },
+  ) => Promise<Note | null>;
   /** Find or create a note tied to one calendar occurrence. */
   ensureMeetingNote: (
     userId: string,
@@ -32,6 +36,7 @@ type NotesState = {
     patch: { title?: string; content?: string; content_blocks?: Json | null },
   ) => Promise<void>;
   setMeetingTriage: (userId: string, id: string, triaged: boolean) => Promise<boolean>;
+  setScratchState: (userId: string, id: string, scratch: boolean) => Promise<boolean>;
   deleteNote: (id: string) => Promise<void>;
   clear: () => void;
 };
@@ -63,12 +68,17 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     set({
       notes: data ?? [],
       loading: false,
-      activeId: get().activeId ?? data?.[0]?.id ?? null,
+      activeId:
+        get().activeId ??
+        data?.find((note) => !note.scratch_at)?.id ??
+        data?.[0]?.id ??
+        null,
     });
   },
 
-  createNote: async (userId, sectionId) => {
+  createNote: async (userId, sectionId, options) => {
     const now = new Date().toISOString();
+    const scratchAt = options?.scratch ? now : null;
     const optimistic: Note = {
       id: `tmp-${randomUUID()}`,
       user_id: userId,
@@ -79,6 +89,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       linked_event_id: null,
       linked_occurrence_start_at: null,
       triaged_at: null,
+      scratch_at: scratchAt,
       created_at: now,
       updated_at: now,
     };
@@ -86,7 +97,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     const { data, error } = await supabase
       .from('notes')
-      .insert({ user_id: userId, section_id: sectionId, title: 'Untitled', content: '' })
+      .insert({
+        user_id: userId,
+        section_id: sectionId,
+        title: 'Untitled',
+        content: '',
+        scratch_at: scratchAt,
+      })
       .select()
       .single();
 
@@ -124,6 +141,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       linked_event_id: target.eventId,
       linked_occurrence_start_at: occKey,
       triaged_at: null,
+      scratch_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -232,6 +250,45 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       notes: get().notes.map((note) =>
         note.id === id
           ? { ...note, triaged_at: data.triaged_at, updated_at: data.updated_at }
+          : note,
+      ),
+    });
+    return true;
+  },
+
+  setScratchState: async (userId, id, scratch) => {
+    const existing = get().notes.find((note) => note.id === id);
+    if (!existing || existing.user_id !== userId || existing.linked_event_id) return false;
+
+    const scratchAt = scratch ? new Date().toISOString() : null;
+    const previous = existing;
+    set({
+      notes: get().notes.map((note) =>
+        note.id === id ? { ...note, scratch_at: scratchAt } : note,
+      ),
+      error: null,
+    });
+
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ scratch_at: scratchAt })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id,scratch_at,updated_at')
+      .maybeSingle();
+    if (error || !data) {
+      set({
+        notes: get().notes.map((note) => (note.id === id ? previous : note)),
+        error: error?.message ?? 'Scratch state could not be updated',
+      });
+      return false;
+    }
+
+    markNoteSelfPersisted(data.id, data.updated_at);
+    set({
+      notes: get().notes.map((note) =>
+        note.id === id
+          ? { ...note, scratch_at: data.scratch_at, updated_at: data.updated_at }
           : note,
       ),
     });

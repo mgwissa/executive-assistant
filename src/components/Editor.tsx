@@ -7,7 +7,7 @@ import { formatRelative } from '../lib/format';
 import { MoveNoteModal } from './MoveNoteModal';
 import { NoteWorkstreamPicker } from './NoteWorkstreamPicker';
 import { NotesEditor } from './NotesEditor';
-import { BookIcon, CheckSquareIcon, ChevronLeftIcon, FolderIcon, MoveIcon, TrashIcon } from './icons';
+import { BookIcon, CheckSquareIcon, ChevronLeftIcon, FolderIcon, InboxIcon, MoveIcon, TrashIcon } from './icons';
 import type { Json } from '../types/database';
 
 export function Editor() {
@@ -18,6 +18,7 @@ export function Editor() {
   const updateNote = useNotesStore((s) => s.updateNote);
   const deleteNote = useNotesStore((s) => s.deleteNote);
   const setMeetingTriage = useNotesStore((s) => s.setMeetingTriage);
+  const setScratchState = useNotesStore((s) => s.setScratchState);
   const setActive = useNotesStore((s) => s.setActive);
   const notebooks = useNotebooksStore((s) => s.notebooks);
   const sections = useNotebooksStore((s) => s.sections);
@@ -124,6 +125,20 @@ export function Editor() {
               >
                 <CheckSquareIcon className="h-4 w-4" />
                 <span className="hidden lg:inline">{note.triaged_at ? 'Triaged · Reopen' : 'Mark triaged'}</span>
+              </button>
+            ) : null}
+            {!note.linked_event_id && note.user_id === user?.id ? (
+              <button
+                type="button"
+                onClick={() => void setScratchState(user.id, note.id, note.scratch_at === null)}
+                className={[
+                  'btn-ghost h-9 whitespace-nowrap px-2.5 text-xs',
+                  note.scratch_at ? 'text-brand-700 dark:text-brand-300' : 'text-text-muted',
+                ].join(' ')}
+                title={note.scratch_at ? 'Promote this note into the durable library' : 'Move this note to the Scratch inbox'}
+              >
+                <InboxIcon className="h-4 w-4" />
+                <span className="hidden lg:inline">{note.scratch_at ? 'Promote to library' : 'Move to Scratch'}</span>
               </button>
             ) : null}
             <NoteWorkstreamPicker noteId={note.id} noteOwnerId={note.user_id} />

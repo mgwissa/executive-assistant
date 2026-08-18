@@ -84,7 +84,9 @@ export function Sidebar() {
   const createWorkstream = useWorkstreamsStore((s) => s.createWorkstream);
 
   const [shareOpen, setShareOpen] = useState(false);
-  const [navigationMode, setNavigationMode] = useState<'meetingInbox' | 'workstreams' | 'library'>('workstreams');
+  const [navigationMode, setNavigationMode] = useState<
+    'meetingInbox' | 'scratch' | 'workstreams' | 'library'
+  >('workstreams');
 
   useEffect(() => {
     setShareOpen(false);
@@ -105,7 +107,7 @@ export function Sidebar() {
     return notes.filter((n) => n.section_id && sectionIds.has(n.section_id));
   }, [notes, notebookSections]);
 
-  const filtered = useMemo(() => {
+  const filteredNotes = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return notesInNotebook;
     return notesInNotebook.filter(
@@ -114,6 +116,19 @@ export function Sidebar() {
         (n.content ?? '').toLowerCase().includes(q),
     );
   }, [notesInNotebook, query]);
+
+  const filtered = useMemo(
+    () => filteredNotes.filter((note) => !note.scratch_at),
+    [filteredNotes],
+  );
+  const scratchNotes = useMemo(
+    () => filteredNotes.filter((note) => Boolean(note.scratch_at)),
+    [filteredNotes],
+  );
+  const scratchCount = useMemo(
+    () => notesInNotebook.filter((note) => Boolean(note.scratch_at)).length,
+    [notesInNotebook],
+  );
 
   const notesBySection = useMemo(() => {
     const map = new Map<string, typeof filtered>();
@@ -162,9 +177,13 @@ export function Sidebar() {
     });
   };
 
-  const handleNewNote = async (sectionId: string, workstreamId?: string | null) => {
+  const handleNewNote = async (
+    sectionId: string,
+    workstreamId?: string | null,
+    scratch = false,
+  ) => {
     if (!user) return;
-    const note = await createNote(user.id, sectionId);
+    const note = await createNote(user.id, sectionId, { scratch });
     if (note && workstreamId) {
       await useWorkstreamsStore.getState().toggleNote(user.id, note.id, workstreamId);
     }
@@ -227,7 +246,7 @@ export function Sidebar() {
 
       {/* Search + new section */}
       <div className="relative space-y-2 border-b border-border-strong bg-gradient-to-b from-brand-50/20 to-transparent px-3 py-3 dark:from-brand-950/12">
-        <div className="grid grid-cols-3 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
+        <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
           <button
             type="button"
             onClick={() => setNavigationMode('meetingInbox')}
@@ -242,6 +261,23 @@ export function Sidebar() {
             {pendingMeetingNotes.length > 0 ? (
               <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
                 {pendingMeetingNotes.length}
+              </span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setNavigationMode('scratch')}
+            className={[
+              'flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              navigationMode === 'scratch'
+                ? 'bg-surface-raised text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            ].join(' ')}
+          >
+            Scratch
+            {scratchCount > 0 ? (
+              <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                {scratchCount}
               </span>
             ) : null}
           </button>
@@ -280,11 +316,12 @@ export function Sidebar() {
               void handleNewNote(
                 firstSection.id,
                 navigationMode === 'workstreams' ? activeWorkstreamId : null,
+                navigationMode === 'scratch',
               )
             }
           >
             <PlusIcon className="h-4 w-4" />
-            New note
+            {navigationMode === 'scratch' ? 'New scratch' : 'New note'}
           </button>
           {navigationMode === 'library' ? (
             <button
@@ -299,7 +336,7 @@ export function Sidebar() {
               <FolderIcon className="h-4 w-4" />
               <PlusIcon className="h-3 w-3" />
             </button>
-          ) : (
+          ) : navigationMode === 'workstreams' ? (
             <button
               className="btn-ghost shrink-0 px-2"
               title="New workstream"
@@ -312,7 +349,7 @@ export function Sidebar() {
               <TargetIcon className="h-4 w-4" />
               <PlusIcon className="h-3 w-3" />
             </button>
-          )}
+          ) : null}
         </div> : (
           <p className="px-1 text-[11px] leading-relaxed text-text-muted">
             Meeting notes appear here after the meeting ends and stay until reviewed.
@@ -329,6 +366,13 @@ export function Sidebar() {
         ) : navigationMode === 'meetingInbox' ? (
           <MeetingInboxNavigation
             notes={visiblePendingMeetingNotes}
+            sections={notebookSections}
+            activeNoteId={activeId}
+            onSelectNote={setActive}
+          />
+        ) : navigationMode === 'scratch' ? (
+          <ScratchInboxNavigation
+            notes={scratchNotes}
             sections={notebookSections}
             activeNoteId={activeId}
             onSelectNote={setActive}
@@ -385,6 +429,69 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+  );
+}
+
+function ScratchInboxNavigation({
+  notes,
+  sections,
+  activeNoteId,
+  onSelectNote,
+}: {
+  notes: Note[];
+  sections: Section[];
+  activeNoteId: string | null;
+  onSelectNote: (id: string) => void;
+}) {
+  return (
+    <div>
+      <div className="px-2 pb-3">
+        <p className="text-xs font-semibold text-text">Scratch inbox</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted">
+          Capture first. Promote useful context after tasks and decisions have been extracted.
+        </p>
+      </div>
+      {notes.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border-strong bg-surface-raised/50 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-text">Scratch inbox clear</p>
+          <p className="mt-1 text-xs text-text-muted">Quick captures waiting for cleanup will appear here.</p>
+        </div>
+      ) : (
+        <ul className="space-y-1.5">
+          {notes.map((note) => {
+            const active = note.id === activeNoteId;
+            const section = sections.find((item) => item.id === note.section_id);
+            return (
+              <li key={note.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectNote(note.id)}
+                  className={[
+                    'w-full rounded-lg px-3 py-2.5 text-left transition-colors',
+                    active
+                      ? 'bg-brand-50 text-brand-800 ring-1 ring-brand-200 dark:bg-brand-950/35 dark:text-brand-200 dark:ring-brand-500/25'
+                      : 'bg-surface-raised/55 text-text ring-1 ring-border hover:bg-surface-raised',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start gap-2">
+                    <NoteIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{note.title || 'Untitled scratch'}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-text-muted">
+                        {extractPreview(note.content) || 'Open to add or sort this capture.'}
+                      </p>
+                      <p className="mt-1 truncate text-[10px] text-text-subtle">
+                        {section?.name ?? 'Library'} · {formatRelative(note.scratch_at ?? note.updated_at)}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -16,7 +16,7 @@ const TOOLS = [
   {
     name: 'get_workspace_context',
     title: 'Get executive-assistant context',
-    description: 'Read the current user’s schedule, tasks, focus plan, notes index, recent briefs, recent audited activity, and any due check-in work. Call this first when the user starts a morning conversation, including a simple “good morning”.',
+    description: 'Read the current user’s schedule, tasks, focus plan, notes index, Scratch inbox, recent briefs, recent audited activity, and any due check-in work. Call this first when the user starts a morning conversation, including a simple “good morning”.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, and briefing writes. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, and briefing writes. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,7 +48,7 @@ const TOOLS = [
           maxItems: 25,
           items: {
             type: 'object',
-            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged.',
+            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged. For note_scratch provide kind, noteId, and scratch.',
             required: ['kind'],
             properties: { kind: { type: 'string' } },
             additionalProperties: true,

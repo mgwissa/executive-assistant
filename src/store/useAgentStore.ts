@@ -64,8 +64,14 @@ function asNoteUpdate(patch: Record<string, unknown>): {
   content?: string;
   content_blocks?: unknown;
   triaged_at?: string | null;
+  scratch_at?: string | null;
 } {
-  return patch as { content?: string; content_blocks?: unknown; triaged_at?: string | null };
+  return patch as {
+    content?: string;
+    content_blocks?: unknown;
+    triaged_at?: string | null;
+    scratch_at?: string | null;
+  };
 }
 
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {
@@ -122,7 +128,7 @@ async function executeUndo(userId: string, plan: UndoPlan): Promise<string | nul
         .select('id')
         .maybeSingle();
       if (error) return error.message;
-      return data ? null : 'The note changed after this append, so undo was stopped to protect newer edits';
+      return data ? null : 'The note changed after this action, so undo was stopped to protect newer edits';
     }
     case 'delete_brief': {
       const { error } = await supabase.from('agent_briefs').delete().eq('id', plan.briefId);
