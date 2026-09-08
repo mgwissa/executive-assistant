@@ -107,6 +107,7 @@ export function OAuthConsentPage() {
                 <li>Search your notes when more context is needed.</li>
                 <li>Create, update, or complete tasks and rearrange your focus plan.</li>
                 <li>Create notes, append approved context, triage meeting notes, save briefings, and consolidate private notebooks after you explicitly approve it.</li>
+                <li>Create workstreams and add or remove note links without changing the notes themselves.</li>
               </ul>
               <p className="mt-3 text-xs text-text-subtle">It cannot delete tasks or change the legacy priority field. Applied changes appear in Codex activity and remain undoable where supported.</p>
             </div>

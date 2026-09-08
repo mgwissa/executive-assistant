@@ -6,7 +6,7 @@ bridge, or copy long-lived API tokens.
 
 ## Project setup
 
-1. Apply migrations through `2026-09-08_051_notebook_merge_actions.sql`.
+1. Apply migrations through `2026-09-08_052_workstream_actions.sql`.
 2. In Supabase Dashboard, open **Authentication -> OAuth Server**:
    - enable the OAuth server;
    - set the authorization path to `/oauth/consent`;
@@ -53,7 +53,8 @@ Supabase OAuth grant.
 - `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
   queue, creates notes, appends explicitly approved context to existing notes,
   marks meeting notes triaged or reopened, moves ordinary notes into or out of
-  the Scratch inbox, merges one private owned notebook into another, and writes
+  the Scratch inbox, merges one private owned notebook into another, creates
+  workstreams, assigns/unassigns individual note links, and writes
   briefings through the existing audited mutation engine.
 
 Every mutation creates an `agent_runs` row and an `agent_actions` row per
@@ -76,6 +77,44 @@ For explicitly approved consolidation, `notebook_merge` requires exact
 `sourceNotebookId` and `destinationNotebookId` values returned by context. Both
 must be private notebooks owned by the authenticated user; shared notebooks and
 notebooks with active invites are refused.
+
+### Workstream actions
+
+Use `workstream_create` with `workstream: {name, description?}`. Names are trimmed
+and must be 1–100 characters. An existing case-insensitive name returns its
+`targetId` with `skipped: "unchanged"`; it does not rename or edit that workstream.
+Use that returned ID in a **subsequent** request:
+
+```json
+{
+  "kind": "note_workstream",
+  "noteId": "<owned note ID from context>",
+  "workstreamId": "<existing or newly returned workstream ID>",
+  "assigned": true,
+  "dedupeKey": "<stable key for this agreed change>"
+}
+```
+
+`assigned: false` removes only this link. This is a state-setting action, never a
+toggle or replacement of all memberships. It does not change note text, blocks,
+notebook/section, Scratch, or meeting triage. Foreign notes/workstreams are refused.
+No-ops do not create audit actions. A repeated dedupe key returns the original
+action/target IDs without reapplying it, even if the action was subsequently undone.
+
+Migration 052 adds service-only `apply_agent_workstream_action` and signed-in,
+owner-only `undo_agent_workstream_action`. Data and audit writes are transactional.
+Undo requires membership to still match the recorded resulting state; creation
+can only be undone while the workstream is unchanged and has no linked notes.
+Undo never deletes notes or other workstream memberships. Membership undo is a
+current-state check, not a history of intervening manual edits.
+
+Deploy migration 052 **before** `codex-api` and `executive-assistant-mcp`, then the
+web app for activity labels, Undo, and automatic workstream-store refresh. Existing
+OAuth connections continue to work; refresh the client's tool definitions if it
+still shows the older action instructions.
+
+Run `npm run test:workstreams` (Node 22.13+) to exercise the actual migrations in
+isolated PostgreSQL via PGlite, including ownership, no-ops, audit rollback, and Undo.
 
 This integration does not poll and does not call a model. The connected MCP
 client decides when to read context or request an agreed workspace change.

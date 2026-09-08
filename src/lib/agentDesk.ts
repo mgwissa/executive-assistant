@@ -31,6 +31,8 @@ export const AGENT_ACTION_KINDS = [
   'note_triage',
   'note_scratch',
   'notebook_merge',
+  'workstream_create',
+  'note_workstream',
   'brief_write',
 ] as const;
 
@@ -79,6 +81,7 @@ export type AgentTarget =
   | { type: 'memory'; key: string }
   | { type: 'note'; id: string }
   | { type: 'notebook'; id: string }
+  | { type: 'workstream'; id: string }
   | { type: 'brief'; id: string }
   | { type: 'unknown' };
 
@@ -90,6 +93,10 @@ export function parseTarget(raw: unknown): AgentTarget {
     return id ? { type: 'task', id } : { type: 'unknown' };
   }
   if (type === 'profile') return { type: 'profile' };
+  if (type === 'workstream') {
+    const id = str(raw.id);
+    return id ? { type: 'workstream', id } : { type: 'unknown' };
+  }
   if (type === 'note') {
     const id = str(raw.id);
     return id ? { type: 'note', id } : { type: 'unknown' };
@@ -126,6 +133,7 @@ export function parseColumnPatch(raw: unknown): ColumnPatch | null {
  * testable in isolation and readable in one place.
  */
 export type UndoPlan =
+  | { op: 'undo_workstream_action'; actionId: string }
   | { op: 'delete_task'; taskId: string }
   | { op: 'patch_task'; taskId: string; patch: ColumnPatch }
   | { op: 'restore_task'; row: ColumnPatch }
@@ -144,6 +152,7 @@ export function isUndoRefusal(v: UndoPlan | UndoRefusal): v is UndoRefusal {
 }
 
 export type AgentActionLike = {
+  id?: string;
   kind: string;
   status: string;
   target: unknown;
@@ -171,6 +180,12 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
   const after = parseColumnPatch(action.after);
 
   switch (action.kind) {
+    case 'workstream_create':
+    case 'note_workstream': {
+      if (!action.id) return { reason: 'Missing the audit reference needed to undo this' };
+      // The RPC checks ownership and saved state and reverses the audit atomically.
+      return { op: 'undo_workstream_action', actionId: action.id };
+    }
     // The task did not exist beforehand, so reversing means removing it.
     case 'task_create': {
       if (target.type !== 'task') {
@@ -297,6 +312,8 @@ export const ACTION_KIND_META: Record<
   note_triage: { label: 'Triaged meeting note', accent: 'green' },
   note_scratch: { label: 'Changed scratch state', accent: 'amber' },
   notebook_merge: { label: 'Merged notebook', accent: 'amber' },
+  workstream_create: { label: 'Created workstream', accent: 'green' },
+  note_workstream: { label: 'Changed workstream link', accent: 'blue' },
   brief_write: { label: 'Briefed', accent: 'purple' },
 };
 

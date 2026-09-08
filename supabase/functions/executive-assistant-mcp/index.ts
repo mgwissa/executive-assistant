@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, and briefing writes. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,9 +48,24 @@ const TOOLS = [
           maxItems: 25,
           items: {
             type: 'object',
-            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged. For note_scratch provide kind, noteId, and scratch. For notebook_merge provide kind, sourceNotebookId, and destinationNotebookId only after the user explicitly approves consolidation and source removal.',
+            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged. For note_scratch provide kind, noteId, and scratch. For notebook_merge provide kind, sourceNotebookId, and destinationNotebookId only after the user explicitly approves consolidation and source removal. For workstream_create provide workstream: {name, description?}; an existing case-insensitive name is reused unchanged. Read its targetId from the result before a separate note_workstream call with exact noteId, workstreamId, and assigned: true or false. This changes only that link, not other memberships, note text, notebook placement, triage, or Scratch. Use stable per-action dedupeKey values for retries.',
             required: ['kind'],
-            properties: { kind: { type: 'string' } },
+            properties: {
+              kind: { type: 'string' },
+              workstream: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 100 },
+                  description: { type: 'string', maxLength: 4000 },
+                },
+                required: ['name'],
+                additionalProperties: false,
+              },
+              noteId: { type: 'string', format: 'uuid' },
+              workstreamId: { type: 'string', format: 'uuid' },
+              assigned: { type: 'boolean' },
+              dedupeKey: { type: 'string' },
+            },
             additionalProperties: true,
           },
         },

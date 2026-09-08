@@ -873,6 +873,14 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      apply_agent_workstream_action: {
+        Args: { p_user_id: string; p_run_id: string; p_connection_id: string; p_actor_name: string; p_input: Json };
+        Returns: Json;
+      };
+      undo_agent_workstream_action: {
+        Args: { p_action_id: string };
+        Returns: undefined;
+      };
       accept_notebook_invite: {
         Args: { invite_token: string };
         Returns: string;

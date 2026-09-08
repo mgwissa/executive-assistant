@@ -14,6 +14,7 @@ import type {
 import { useProfileStore } from './useProfileStore';
 import { useNotesStore } from './useNotesStore';
 import { useTasksStore } from './useTasksStore';
+import { useWorkstreamsStore } from './useWorkstreamsStore';
 
 const RUN_LIMIT = 40;
 const ACTION_LIMIT = 250;
@@ -76,6 +77,10 @@ function asNoteUpdate(patch: Record<string, unknown>): {
 
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {
   switch (plan.op) {
+    case 'undo_workstream_action': {
+      const { error } = await supabase.rpc('undo_agent_workstream_action', { p_action_id: plan.actionId });
+      return error?.message ?? null;
+    }
     case 'delete_task': {
       const { error } = await supabase.from('tasks').delete().eq('id', plan.taskId);
       return error?.message ?? null;
@@ -225,6 +230,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         ),
       });
       return false;
+    }
+
+    if (plan.op === 'undo_workstream_action') {
+      // The transaction already updated the audit record; do not mark it twice.
+      await Promise.all([get().fetchAll(userId), useWorkstreamsStore.getState().fetchAll(userId)]);
+      set({ undoingId: null });
+      return true;
     }
 
     const undoneAt = new Date().toISOString();

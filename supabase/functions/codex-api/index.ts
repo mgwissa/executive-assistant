@@ -50,6 +50,9 @@ type MutationInput = {
   taskIds?: unknown;
   focusItems?: unknown;
   noteId?: unknown;
+  workstream?: unknown;
+  workstreamId?: unknown;
+  assigned?: unknown;
   triaged?: unknown;
   sectionId?: unknown;
   sourceNotebookId?: unknown;
@@ -65,7 +68,7 @@ type MutationResult = {
   kind: string;
   actionId?: string;
   targetId?: string;
-  skipped?: 'duplicate';
+  skipped?: 'duplicate' | 'unchanged';
   error?: string;
 };
 
@@ -282,6 +285,20 @@ async function mutate(
 ): Promise<MutationResult> {
   const userId = principal.userId;
   const kind = input.kind;
+  if (kind === 'workstream_create' || kind === 'note_workstream') {
+    const { data, error } = await admin.rpc('apply_agent_workstream_action', {
+      p_user_id: userId,
+      p_run_id: runId,
+      p_connection_id: principal.connectionId,
+      p_actor_name: principal.actorName,
+      p_input: input,
+    });
+    if (error) return { ok: false, kind, error: error.message };
+    if (!isRecord(data) || data.ok !== true || data.kind !== kind || typeof data.targetId !== 'string') {
+      return { ok: false, kind, error: 'Unexpected workstream action response; check the activity log before retrying' };
+    }
+    return data as MutationResult;
+  }
   const dedupeKey = str(input.dedupeKey);
   if (dedupeKey) {
     const { data: existing } = await admin

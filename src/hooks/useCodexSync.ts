@@ -5,6 +5,7 @@ import { useNotesStore } from '../store/useNotesStore';
 import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
+import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
 
 const CODEX_SYNC_INTERVAL_MS = 30_000;
 const RECENT_ACTION_LIMIT = 50;
@@ -24,7 +25,7 @@ type RecentAction = {
 };
 
 /**
- * Keeps the open app in step with audited writes made through the local Codex
+ * Keeps the open app in step with audited writes made through the hosted agent
  * bridge. The audit table is the inexpensive change signal; operational stores
  * are refreshed only when a new action says their data may have changed.
  */
@@ -93,6 +94,9 @@ export function useCodexSync(userId: string | undefined) {
       }
       if (missedCursor || changedKinds.has('notebook_merge')) {
         refreshes.push(useNotebooksStore.getState().fetchAll(userId));
+      }
+      if (missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream')) {
+        refreshes.push(useWorkstreamsStore.getState().fetchAll(userId));
       }
       if (missedCursor || changedKinds.has('focus_reorder')) {
         refreshes.push(useProfileStore.getState().fetchProfile(userId));

@@ -284,7 +284,11 @@ to `codex-api`; neither function calls a model or polls.
   owned notes. An explicitly approved `notebook_merge` can consolidate one
   private owned notebook into another; it preserves sections, notes, links, and
   ids, and refuses shared notebooks or active invites before removing the empty
-  source container.
+  source container. `workstream_create` creates or reuses a case-insensitive named
+  workstream; `note_workstream` sets one owned note/workstream membership with
+  `assigned: true|false`. It preserves all other memberships, note content,
+  notebook placement, triage, and Scratch. Use returned targetId from creation in
+  a subsequent assignment request; never guess IDs or use toggle semantics.
   Appends preserve existing BlockNote JSON and add compatible blocks; they
   never parse or rewrite the existing document. No task deletion, priority
   mutation, or arbitrary rich-note rewrite.
@@ -295,9 +299,15 @@ to `codex-api`; neither function calls a model or polls.
   note has not been edited since the action. `notebook_merge` is audited but is
   deliberately not auto-undoable because the removed source container cannot be
   recreated without risking later notes moved into its surviving sections.
+  Workstream mutations use service-only `apply_agent_workstream_action` so data
+  and audit commit together. Owner-only `undo_agent_workstream_action` atomically
+  checks current state and reverses both. Creation undo refuses edited or populated
+  workstreams. New audit kinds are `workstream_create` and `note_workstream`; sync
+  refreshes `useWorkstreamsStore` for either. `npm run test:workstreams` runs the
+  actual SQL migrations in isolated PGlite (Node 22.13+), not a live database.
 
 Deployment order: apply migrations through
-`2026-09-08_051_notebook_merge_actions.sql`; enable the Supabase OAuth server,
+`2026-09-08_052_workstream_actions.sql`; enable the Supabase OAuth server,
 set its authorization path to `/oauth/consent`, and enable dynamic client
 registration; set `MCP_PUBLIC_URL` to the deployed Vercel `/mcp` URL; then
 deploy `agent-connections`, `codex-api`, `executive-assistant-mcp`, and the web
