@@ -116,15 +116,15 @@ export function Editor() {
                 type="button"
                 onClick={() => void setMeetingTriage(user.id, note.id, note.triaged_at === null)}
                 className={[
-                  'btn-ghost h-9 whitespace-nowrap px-2.5 text-xs',
+                  'h-9 whitespace-nowrap px-2.5 text-xs',
                   note.triaged_at
-                    ? 'text-emerald-700 dark:text-emerald-300'
-                    : 'text-brand-700 dark:text-brand-300',
+                    ? 'btn-ghost text-emerald-700 dark:text-emerald-300'
+                    : 'btn-primary',
                 ].join(' ')}
                 title={note.triaged_at ? 'Return this note to the meeting inbox' : 'Clear this note from the meeting inbox'}
               >
                 <CheckSquareIcon className="h-4 w-4" />
-                <span className="hidden lg:inline">{note.triaged_at ? 'Triaged · Reopen' : 'Mark triaged'}</span>
+                <span className="hidden lg:inline">{note.triaged_at ? 'Triaged · Reopen' : 'Finish triage'}</span>
               </button>
             ) : null}
             {!note.linked_event_id && note.user_id === user?.id ? (
@@ -132,8 +132,8 @@ export function Editor() {
                 type="button"
                 onClick={() => void setScratchState(user.id, note.id, note.scratch_at === null)}
                 className={[
-                  'btn-ghost h-9 whitespace-nowrap px-2.5 text-xs',
-                  note.scratch_at ? 'text-brand-700 dark:text-brand-300' : 'text-text-muted',
+                  'h-9 whitespace-nowrap px-2.5 text-xs',
+                  note.scratch_at ? 'btn-primary' : 'btn-ghost text-text-muted',
                 ].join(' ')}
                 title={note.scratch_at ? 'Promote this note into the durable library' : 'Move this note to the Scratch inbox'}
               >

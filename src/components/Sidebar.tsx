@@ -55,6 +55,7 @@ const SECTION_TONES = [
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const notes = useNotesStore((s) => s.notes);
+  const notesLoading = useNotesStore((s) => s.loading);
   const events = useEventsStore((s) => s.events);
   const activeId = useNotesStore((s) => s.activeId);
   const query = useNotesStore((s) => s.query);
@@ -86,7 +87,8 @@ export function Sidebar() {
   const [shareOpen, setShareOpen] = useState(false);
   const [navigationMode, setNavigationMode] = useState<
     'meetingInbox' | 'scratch' | 'workstreams' | 'library'
-  >('workstreams');
+  >('library');
+  const initializedNavigationNotebookId = useRef<string | null>(null);
 
   useEffect(() => {
     setShareOpen(false);
@@ -167,6 +169,25 @@ export function Sidebar() {
     return pendingMeetingNotes.filter((note) => visibleIds.has(note.id));
   }, [filtered, pendingMeetingNotes]);
 
+  useEffect(() => {
+    if (
+      !activeNotebookId ||
+      notesLoading ||
+      initializedNavigationNotebookId.current === activeNotebookId
+    ) {
+      return;
+    }
+
+    setNavigationMode(
+      pendingMeetingNotes.length > 0
+        ? 'meetingInbox'
+        : scratchCount > 0
+          ? 'scratch'
+          : 'library',
+    );
+    initializedNavigationNotebookId.current = activeNotebookId;
+  }, [activeNotebookId, notesLoading, pendingMeetingNotes.length, scratchCount]);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapsed = (sectionId: string) => {
     setCollapsed((prev) => {
@@ -244,67 +265,81 @@ export function Sidebar() {
         />
       ) : null}
 
-      {/* Search + new section */}
+      {/* Search + note workflow navigation */}
       <div className="relative space-y-2 border-b border-border-strong bg-gradient-to-b from-brand-50/20 to-transparent px-3 py-3 dark:from-brand-950/12">
-        <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border" aria-label="Notes navigation mode">
-          <button
-            type="button"
-            onClick={() => setNavigationMode('meetingInbox')}
-            className={[
-              'flex items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-xs font-medium transition-colors',
-              navigationMode === 'meetingInbox'
-                ? 'bg-surface-raised text-text shadow-sm'
-                : 'text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            Meetings
-            {pendingMeetingNotes.length > 0 ? (
-              <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
-                {pendingMeetingNotes.length}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setNavigationMode('scratch')}
-            className={[
-              'flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-              navigationMode === 'scratch'
-                ? 'bg-surface-raised text-text shadow-sm'
-                : 'text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            Scratch
-            {scratchCount > 0 ? (
-              <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
-                {scratchCount}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setNavigationMode('workstreams')}
-            className={[
-              'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-              navigationMode === 'workstreams'
-                ? 'bg-surface-raised text-text shadow-sm'
-                : 'text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            Workstreams
-          </button>
-          <button
-            type="button"
-            onClick={() => setNavigationMode('library')}
-            className={[
-              'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-              navigationMode === 'library'
-                ? 'bg-surface-raised text-text shadow-sm'
-                : 'text-text-muted hover:text-text',
-            ].join(' ')}
-          >
-            Library
-          </button>
+        <div className="space-y-2" aria-label="Notes navigation mode">
+          <div>
+            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
+              Inbox
+            </p>
+            <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border">
+              <button
+                type="button"
+                onClick={() => setNavigationMode('meetingInbox')}
+                className={[
+                  'flex items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-xs font-medium transition-colors',
+                  navigationMode === 'meetingInbox'
+                    ? 'bg-surface-raised text-text shadow-sm'
+                    : 'text-text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Meetings
+                {pendingMeetingNotes.length > 0 ? (
+                  <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                    {pendingMeetingNotes.length}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavigationMode('scratch')}
+                className={[
+                  'flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  navigationMode === 'scratch'
+                    ? 'bg-surface-raised text-text shadow-sm'
+                    : 'text-text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Scratch
+                {scratchCount > 0 ? (
+                  <span className="rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/60 dark:text-brand-300">
+                    {scratchCount}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-text-subtle">
+              Browse
+            </p>
+            <div className="grid grid-cols-2 rounded-lg bg-surface-sunken p-1 ring-1 ring-border">
+              <button
+                type="button"
+                onClick={() => setNavigationMode('library')}
+                className={[
+                  'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  navigationMode === 'library'
+                    ? 'bg-surface-raised text-text shadow-sm'
+                    : 'text-text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Library
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavigationMode('workstreams')}
+                className={[
+                  'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  navigationMode === 'workstreams'
+                    ? 'bg-surface-raised text-text shadow-sm'
+                    : 'text-text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Workstreams
+              </button>
+            </div>
+          </div>
         </div>
         <SearchBar />
         {navigationMode !== 'meetingInbox' ? <div className="flex gap-2">
