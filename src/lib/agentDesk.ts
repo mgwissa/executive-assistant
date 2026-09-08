@@ -30,6 +30,7 @@ export const AGENT_ACTION_KINDS = [
   'note_append',
   'note_triage',
   'note_scratch',
+  'notebook_merge',
   'brief_write',
 ] as const;
 
@@ -77,6 +78,7 @@ export type AgentTarget =
   | { type: 'profile' }
   | { type: 'memory'; key: string }
   | { type: 'note'; id: string }
+  | { type: 'notebook'; id: string }
   | { type: 'brief'; id: string }
   | { type: 'unknown' };
 
@@ -91,6 +93,10 @@ export function parseTarget(raw: unknown): AgentTarget {
   if (type === 'note') {
     const id = str(raw.id);
     return id ? { type: 'note', id } : { type: 'unknown' };
+  }
+  if (type === 'notebook') {
+    const id = str(raw.id);
+    return id ? { type: 'notebook', id } : { type: 'unknown' };
   }
   if (type === 'brief') {
     const id = str(raw.id);
@@ -249,6 +255,11 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'patch_note', noteId: target.id, patch: before, expectedUpdatedAt };
     }
 
+    case 'notebook_merge':
+      return {
+        reason: 'All notes were preserved in the destination, but the removed source notebook cannot be recreated automatically',
+      };
+
     case 'brief_write': {
       if (target.type !== 'brief') {
         return { reason: 'Missing the brief reference needed to undo this' };
@@ -285,6 +296,7 @@ export const ACTION_KIND_META: Record<
   note_append: { label: 'Added context', accent: 'blue' },
   note_triage: { label: 'Triaged meeting note', accent: 'green' },
   note_scratch: { label: 'Changed scratch state', accent: 'amber' },
+  notebook_merge: { label: 'Merged notebook', accent: 'amber' },
   brief_write: { label: 'Briefed', accent: 'purple' },
 };
 

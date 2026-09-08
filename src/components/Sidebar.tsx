@@ -95,6 +95,11 @@ export function Sidebar() {
   }, [activeNotebookId]);
 
   const activeNotebook = notebooks.find((n) => n.id === activeNotebookId) ?? null;
+  const showNotebookPicker =
+    notebooks.length > 1 ||
+    (activeNotebook
+      ? isNotebookShared(activeNotebook, user?.id, memberCountByNotebook)
+      : false);
 
   const notebookSections = useMemo(
     () =>
@@ -233,20 +238,24 @@ export function Sidebar() {
         className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-brand-200/0 via-brand-300/25 to-brand-200/0 dark:via-brand-500/20"
         aria-hidden
       />
-      {/* Notebook picker */}
-      <div className="relative border-b border-border-strong bg-gradient-to-br from-surface-raised/90 via-brand-50/25 to-brand-100/15 px-3 py-3 dark:from-surface-raised/40 dark:via-brand-950/15 dark:to-surface-raised/20">
-        <NotebookPicker
-          notebooks={notebooks}
-          memberCountByNotebook={memberCountByNotebook}
-          currentUserId={user?.id}
-          activeId={activeNotebookId}
-          onSelect={setActiveNotebook}
-          onCreate={(name) => user && createNotebook(user.id, name)}
-          onRename={renameNotebook}
-          onDelete={deleteNotebook}
-          onShare={() => setShareOpen(true)}
-        />
-      </div>
+      {/* A single private notebook is an implementation detail, not a navigation
+          decision. Surface this layer only when it represents a real choice or
+          collaboration boundary. */}
+      {showNotebookPicker ? (
+        <div className="relative border-b border-border-strong bg-gradient-to-br from-surface-raised/90 via-brand-50/25 to-brand-100/15 px-3 py-3 dark:from-surface-raised/40 dark:via-brand-950/15 dark:to-surface-raised/20">
+          <NotebookPicker
+            notebooks={notebooks}
+            memberCountByNotebook={memberCountByNotebook}
+            currentUserId={user?.id}
+            activeId={activeNotebookId}
+            onSelect={setActiveNotebook}
+            onCreate={(name) => user && createNotebook(user.id, name)}
+            onRename={renameNotebook}
+            onDelete={deleteNotebook}
+            onShare={() => setShareOpen(true)}
+          />
+        </div>
+      ) : null}
 
       {activeNotebook && user ? (
         <ShareNotebookModal

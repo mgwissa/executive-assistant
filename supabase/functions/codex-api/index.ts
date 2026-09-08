@@ -52,6 +52,8 @@ type MutationInput = {
   noteId?: unknown;
   triaged?: unknown;
   sectionId?: unknown;
+  sourceNotebookId?: unknown;
+  destinationNotebookId?: unknown;
   content?: unknown;
   linkedEventId?: unknown;
   linkedOccurrenceStartAt?: unknown;
@@ -657,6 +659,185 @@ async function mutate(
     return { ok: true, kind, actionId: logged.id, targetId: noteId };
   }
 
+  if (kind === 'notebook_merge') {
+    const sourceNotebookId = str(input.sourceNotebookId);
+    const destinationNotebookId = str(input.destinationNotebookId);
+    if (!sourceNotebookId || !destinationNotebookId) {
+      return { ok: false, kind, error: 'sourceNotebookId and destinationNotebookId are required' };
+    }
+    if (sourceNotebookId === destinationNotebookId) {
+      return { ok: false, kind, error: 'source and destination notebooks must be different' };
+    }
+
+    const { data: notebooks, error: notebooksError } = await admin
+      .from('notebooks')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', [sourceNotebookId, destinationNotebookId]);
+    if (notebooksError) return { ok: false, kind, error: notebooksError.message };
+    const sourceNotebook = (notebooks ?? []).find((notebook) => notebook.id === sourceNotebookId);
+    const destinationNotebook = (notebooks ?? []).find((notebook) => notebook.id === destinationNotebookId);
+    if (!sourceNotebook || !destinationNotebook) {
+      return { ok: false, kind, error: 'both notebooks must exist and be owned by the current user' };
+    }
+
+    const now = new Date().toISOString();
+    const [membersResult, invitesResult] = await Promise.all([
+      admin
+        .from('notebook_members')
+        .select('notebook_id', { count: 'exact', head: true })
+        .in('notebook_id', [sourceNotebookId, destinationNotebookId]),
+      admin
+        .from('notebook_invites')
+        .select('notebook_id', { count: 'exact', head: true })
+        .in('notebook_id', [sourceNotebookId, destinationNotebookId])
+        .is('revoked_at', null)
+        .gt('expires_at', now),
+    ]);
+    const accessError = membersResult.error ?? invitesResult.error;
+    if (accessError) return { ok: false, kind, error: accessError.message };
+    if ((membersResult.count ?? 0) > 0 || (invitesResult.count ?? 0) > 0) {
+      return {
+        ok: false,
+        kind,
+        error: 'shared notebooks and notebooks with active invites cannot be merged',
+      };
+    }
+
+    const [sourceSectionsResult, destinationSectionsResult] = await Promise.all([
+      admin
+        .from('sections')
+        .select('id,notebook_id,user_id,name,position,created_at,updated_at')
+        .eq('notebook_id', sourceNotebookId)
+        .order('position'),
+      admin
+        .from('sections')
+        .select('id,position')
+        .eq('notebook_id', destinationNotebookId)
+        .order('position', { ascending: false })
+        .limit(1),
+    ]);
+    const sectionsError = sourceSectionsResult.error ?? destinationSectionsResult.error;
+    if (sectionsError) return { ok: false, kind, error: sectionsError.message };
+    const sourceSections = sourceSectionsResult.data ?? [];
+    if (sourceSections.some((section) => section.user_id !== userId)) {
+      return { ok: false, kind, error: 'source notebook contains sections owned by another user' };
+    }
+
+    const sourceSectionIds = sourceSections.map((section) => section.id);
+    const noteCountBeforeResult = sourceSectionIds.length === 0
+      ? { count: 0, error: null }
+      : await admin
+          .from('notes')
+          .select('id', { count: 'exact', head: true })
+          .in('section_id', sourceSectionIds);
+    if (noteCountBeforeResult.error) {
+      return { ok: false, kind, error: noteCountBeforeResult.error.message };
+    }
+    const noteCountBefore = noteCountBeforeResult.count ?? 0;
+    const firstDestinationPosition = (destinationSectionsResult.data?.[0]?.position ?? -1) + 1;
+    const movedSections: Array<{
+      id: string;
+      originalPosition: number;
+      mergedUpdatedAt: string;
+    }> = [];
+
+    const rollbackMovedSections = async (): Promise<string | null> => {
+      let rollbackError: string | null = null;
+      for (const moved of [...movedSections].reverse()) {
+        const { error } = await admin
+          .from('sections')
+          .update({ notebook_id: sourceNotebookId, position: moved.originalPosition })
+          .eq('id', moved.id)
+          .eq('notebook_id', destinationNotebookId)
+          .eq('updated_at', moved.mergedUpdatedAt);
+        if (error && !rollbackError) rollbackError = error.message;
+      }
+      return rollbackError;
+    };
+
+    for (const [index, section] of sourceSections.entries()) {
+      const { data: moved, error } = await admin
+        .from('sections')
+        .update({ notebook_id: destinationNotebookId, position: firstDestinationPosition + index })
+        .eq('id', section.id)
+        .eq('notebook_id', sourceNotebookId)
+        .eq('updated_at', section.updated_at)
+        .select('id,updated_at')
+        .maybeSingle();
+      if (error || !moved) {
+        const rollbackError = await rollbackMovedSections();
+        const suffix = rollbackError ? `; rollback also failed: ${rollbackError}` : '';
+        return {
+          ok: false,
+          kind,
+          error: `${error?.message ?? 'a section changed while the notebooks were being merged'}${suffix}`,
+        };
+      }
+      movedSections.push({
+        id: section.id,
+        originalPosition: section.position,
+        mergedUpdatedAt: moved.updated_at,
+      });
+    }
+
+    const { count: sourceSectionsRemaining, error: remainingError } = await admin
+      .from('sections')
+      .select('id', { count: 'exact', head: true })
+      .eq('notebook_id', sourceNotebookId);
+    const { count: noteCountAfter, error: noteCountError } = sourceSectionIds.length === 0
+      ? { count: 0, error: null }
+      : await admin
+          .from('notes')
+          .select('id', { count: 'exact', head: true })
+          .in('section_id', sourceSectionIds);
+    if (remainingError || noteCountError || (sourceSectionsRemaining ?? 0) !== 0 || (noteCountAfter ?? 0) !== noteCountBefore) {
+      const rollbackError = await rollbackMovedSections();
+      const suffix = rollbackError ? `; rollback also failed: ${rollbackError}` : '';
+      return {
+        ok: false,
+        kind,
+        error: `${remainingError?.message ?? noteCountError?.message ?? 'notebook merge verification failed'}${suffix}`,
+      };
+    }
+
+    const logged = await logAction(admin, principal, runId, input, {
+      target: { type: 'notebook', id: sourceNotebookId },
+      before: {
+        source_notebook: sourceNotebook,
+        sections: sourceSections,
+        note_count: noteCountBefore,
+      },
+      after: {
+        destination_notebook_id: destinationNotebookId,
+        moved_section_ids: sourceSectionIds,
+        note_count: noteCountAfter ?? 0,
+      },
+    });
+    if ('error' in logged) {
+      const rollbackError = await rollbackMovedSections();
+      const suffix = rollbackError ? `; rollback also failed: ${rollbackError}` : '';
+      return { ok: false, kind, error: `${logged.error}${suffix}` };
+    }
+
+    const { data: deleted, error: deleteError } = await admin
+      .from('notebooks')
+      .delete()
+      .eq('id', sourceNotebookId)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+    if (deleteError || !deleted) {
+      const rollbackError = await rollbackMovedSections();
+      const { error: auditDeleteError } = await admin.from('agent_actions').delete().eq('id', logged.id);
+      const failures = [rollbackError, auditDeleteError?.message].filter(Boolean).join('; ');
+      const suffix = failures ? `; cleanup also failed: ${failures}` : '';
+      return { ok: false, kind, error: `${deleteError?.message ?? 'source notebook was not deleted'}${suffix}` };
+    }
+
+    return { ok: true, kind, actionId: logged.id, targetId: destinationNotebookId };
+  }
+
   if (kind === 'brief_write') {
     const source = isRecord(input.brief) ? input.brief : {};
     const briefKind = str(source.kind);
@@ -723,7 +904,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     admin.from('events').select('*').eq('user_id', userId).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(250),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
-    admin.from('notes').select('id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,scratch_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
+    admin.from('notes').select('id,section_id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,scratch_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
     admin.from('workstreams').select('id,name,description,status,position').eq('user_id', userId).order('position'),
     admin.from('note_workstreams').select('workstream_id,note_id').eq('user_id', userId),
     admin.from('agent_actions').select('id,kind,title,rationale,effects,status,actor_name,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -808,7 +989,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
 async function searchNotes(admin: SupabaseClient, userId: string, query: string) {
   const { data, error } = await admin
     .from('notes')
-    .select('id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,scratch_at,updated_at')
+    .select('id,section_id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,scratch_at,updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(500);

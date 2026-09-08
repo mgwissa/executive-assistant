@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAgentStore } from '../store/useAgentStore';
 import { useNotesStore } from '../store/useNotesStore';
+import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 
@@ -85,9 +86,13 @@ export function useCodexSync(userId: string | undefined) {
         changedKinds.has('note_create') ||
         changedKinds.has('note_append') ||
         changedKinds.has('note_triage') ||
-        changedKinds.has('note_scratch')
+        changedKinds.has('note_scratch') ||
+        changedKinds.has('notebook_merge')
       ) {
         refreshes.push(useNotesStore.getState().fetchAll(userId));
+      }
+      if (missedCursor || changedKinds.has('notebook_merge')) {
+        refreshes.push(useNotebooksStore.getState().fetchAll(userId));
       }
       if (missedCursor || changedKinds.has('focus_reorder')) {
         refreshes.push(useProfileStore.getState().fetchProfile(userId));

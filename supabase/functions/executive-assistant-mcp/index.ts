@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, and briefing writes. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, and briefing writes. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,7 +48,7 @@ const TOOLS = [
           maxItems: 25,
           items: {
             type: 'object',
-            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged. For note_scratch provide kind, noteId, and scratch.',
+            description: 'One audited action. For note_append provide kind, noteId, and approved content using headings, paragraphs, bullets, or numbered items. For note_triage provide kind, noteId, and triaged. For note_scratch provide kind, noteId, and scratch. For notebook_merge provide kind, sourceNotebookId, and destinationNotebookId only after the user explicitly approves consolidation and source removal.',
             required: ['kind'],
             properties: { kind: { type: 'string' } },
             additionalProperties: true,
@@ -59,7 +59,7 @@ const TOOLS = [
       additionalProperties: false,
     },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   },
 ] as const;
 
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'Executive Assistant', version: '1.0.0' },
-      instructions: 'Use read tools to understand the user’s real schedule and work context. When the user begins a morning conversation—even with only “good morning”—call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited and reversible in the app.',
+      instructions: 'Use read tools to understand the user’s real schedule and work context. When the user begins a morning conversation—even with only “good morning”—call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.',
     });
   }
   if (method === 'ping') return rpcResult(id, {});

@@ -26,7 +26,7 @@ const subtitles: Record<string, string> = {
   time: 'Where your hours are going.',
   routine: 'This week\u2019s rhythm.',
   assistant: 'Your morning briefing in full.',
-  activity: 'A reversible record of changes Codex made to your workspace.',
+  activity: 'An audited record of changes Codex made to your workspace.',
 };
 
 export function TopBar() {

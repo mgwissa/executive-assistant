@@ -221,7 +221,7 @@ Actions workflow, or separate model API key is required.
 
 Project setup:
 
-1. Apply migrations through `2026-08-17_046_oauth_agent_connections.sql`.
+1. Apply migrations through `2026-09-08_051_notebook_merge_actions.sql`.
 2. Enable the Supabase OAuth server, set its authorization path to
    `/oauth/consent`, enable dynamic client registration, and use an asymmetric
    JWT signing key.
@@ -279,7 +279,9 @@ The refresh should:
 
 Reruns update the same day's briefing and focus plan instead of creating
 duplicates. All workspace mutations flow through `apply_workspace_actions`, so
-they remain attributed, audited, and undoable in **Codex activity**. Local Codex
+they remain attributed and audited in **Codex activity**; ordinary edits are
+undoable there. A notebook merge preserves its notes but cannot recreate the
+removed source container automatically. Local Codex
 automations require the computer to be awake and the Codex app available at the
 scheduled time.
 

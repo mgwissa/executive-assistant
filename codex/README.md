@@ -6,7 +6,7 @@ bridge, or copy long-lived API tokens.
 
 ## Project setup
 
-1. Apply migrations through `2026-08-17_046_oauth_agent_connections.sql`.
+1. Apply migrations through `2026-09-08_051_notebook_merge_actions.sql`.
 2. In Supabase Dashboard, open **Authentication -> OAuth Server**:
    - enable the OAuth server;
    - set the authorization path to `/oauth/consent`;
@@ -53,12 +53,15 @@ Supabase OAuth grant.
 - `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
   queue, creates notes, appends explicitly approved context to existing notes,
   marks meeting notes triaged or reopened, moves ordinary notes into or out of
-  the Scratch inbox, and writes briefings through the existing audited mutation
-  engine.
+  the Scratch inbox, merges one private owned notebook into another, and writes
+  briefings through the existing audited mutation engine.
 
-Every mutation creates an `agent_runs` row and a reversible `agent_actions` row
-per applied change. The endpoint cannot delete tasks, change legacy priority,
-or arbitrarily rewrite existing BlockNote documents. A `note_append` action
+Every mutation creates an `agent_runs` row and an `agent_actions` row per
+applied change. Ordinary edits remain reversible. `notebook_merge` is the narrow
+exception: it preserves every section and note in the destination before it
+removes the empty private source notebook, but the source container is not
+automatically recreated by Undo. The endpoint cannot delete tasks, change legacy
+priority, or arbitrarily rewrite existing BlockNote documents. A `note_append` action
 accepts `noteId` and `content`; content may use headings, paragraphs, bullets,
 and numbered items. It preserves existing blocks and refuses concurrent edits.
 The workspace context exposes `meetingNotesNeedingTriage`. After the user and
@@ -69,6 +72,10 @@ The context also exposes `scratchNotes`. A `note_scratch` action with `noteId`
 and `scratch: true` moves an ordinary note into the cleanup inbox without
 changing its notebook or section; `scratch: false` promotes it back into the
 durable library. Meeting notes continue to use their separate triage lifecycle.
+For explicitly approved consolidation, `notebook_merge` requires exact
+`sourceNotebookId` and `destinationNotebookId` values returned by context. Both
+must be private notebooks owned by the authenticated user; shared notebooks and
+notebooks with active invites are refused.
 
 This integration does not poll and does not call a model. The connected MCP
 client decides when to read context or request an agreed workspace change.

@@ -118,7 +118,7 @@ All tables are RLS-protected; users only see their own rows except for **shared 
 
 | `agent_connections` | Local authorization and attribution for per-user OAuth clients | `name`, `oauth_client_id`, `auth_kind`, `scopes`, `last_used_at`, `revoked_at` |
 | `agent_runs` | One row per agent invocation | `kind`, `status`, `summary`, `stats`, `agent_connection_id`, `actor_name`, `started_at` |
-| `agent_actions` | **The audit trail.** One row per connected-agent write | `kind` (including `note_create`, `note_append`, `note_triage`, and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
+| `agent_actions` | **The audit trail.** One row per connected-agent write | `kind` (including `note_create`, `note_append`, `note_triage`, `notebook_merge`, and `brief_write`), `title`, `rationale`, `effects`, `target`, **`before`** (prior column values — the undo contract), `after`, `agent_connection_id`, `actor_name`, `dedupe_key`, `status` |
 | `agent_memory` | The agent's only continuity between ephemeral runs | `key` (unique per user), `content`, `kind`, `pinned` |
 | `agent_briefs` | Morning / evening written output | `kind`, `brief_date`, `body` |
 
@@ -281,18 +281,23 @@ to `codex-api`; neither function calls a model or polls.
 - Writes: task create/update/complete, ordered focus queue, safe creation of a
   legacy-markdown note, append-only approved context on an owned note, and
   audited triage/reopen of owned meeting notes plus scratch/promote of ordinary
-  owned notes.
+  owned notes. An explicitly approved `notebook_merge` can consolidate one
+  private owned notebook into another; it preserves sections, notes, links, and
+  ids, and refuses shared notebooks or active invites before removing the empty
+  source container.
   Appends preserve existing BlockNote JSON and add compatible blocks; they
   never parse or rewrite the existing document. No task deletion, priority
   mutation, or arbitrary rich-note rewrite.
 - Audit: each `mutate` request creates a manual `agent_runs` row; each applied
-  mutation creates an undoable `agent_actions` row. Both record the connection
+  mutation creates an `agent_actions` row. Both record the connection
   id and display name. `note_create` undo deletes the created note;
   `note_append` and `note_triage` restore the exact previous state only when the
-  note has not been edited since the action.
+  note has not been edited since the action. `notebook_merge` is audited but is
+  deliberately not auto-undoable because the removed source container cannot be
+  recreated without risking later notes moved into its surviving sections.
 
 Deployment order: apply migrations through
-`2026-08-18_050_note_scratch_inbox.sql`; enable the Supabase OAuth server,
+`2026-09-08_051_notebook_merge_actions.sql`; enable the Supabase OAuth server,
 set its authorization path to `/oauth/consent`, and enable dynamic client
 registration; set `MCP_PUBLIC_URL` to the deployed Vercel `/mcp` URL; then
 deploy `agent-connections`, `codex-api`, `executive-assistant-mcp`, and the web
