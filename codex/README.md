@@ -1,7 +1,7 @@
 # Hosted agent connection
 
 The app exposes a hosted, per-user MCP server. Codex connects to the deployed
-Supabase endpoint with OAuth; users do not clone this repository, run a local
+public Vercel `/mcp` endpoint with OAuth; users do not clone this repository, run a local
 bridge, or copy long-lived API tokens.
 
 ## Project setup
@@ -23,6 +23,10 @@ bridge, or copy long-lived API tokens.
    ```
 5. Deploy the Vercel app. Its `/mcp` rewrite proxies the Edge Function without
    exposing the project-specific Supabase function URL as the plugin identity.
+   `VITE_MCP_PUBLIC_URL` controls the setup address displayed in Profile; it must
+   match `MCP_PUBLIC_URL`. Both default/setup examples use
+   `https://executive-assistant-chi.vercel.app/mcp`. Do not give clients the
+   internal Supabase function URL when the public resource is the Vercel URL.
 
 Use an asymmetric JWT signing key for the Supabase project. The MCP endpoint
 validates every access token with Supabase Auth and requires the OAuth
@@ -43,6 +47,29 @@ that user.
 The Profile page lists approved clients and can revoke them. Revocation first
 blocks the client in the app's own connection table and then revokes the
 Supabase OAuth grant.
+
+### Connection recovery and approval identity
+
+- An OAuth approval is permission, not proof of a live agent connection. Profile
+  displays each client ID, local access status, and the last authenticated workspace
+  request. It cannot inspect or renew the login stored inside the MCP client.
+- Separate registrations may share a display name. Do not merge or revoke clients
+  solely because they are all named Codex. Identify the client and its usage first.
+- Keep one configured server for this workspace per client configuration. Reuse
+  the existing Vercel `/mcp` entry; disable obsolete direct-Supabase entries instead
+  of repeatedly adding replacements.
+- Renew an expired login with Authenticate in the client, or
+  `codex mcp login <your-server-name>` in a normal terminal. Approve access in the
+  browser. Verify `get_workspace_context` afterwards; a saved approval alone is
+  not a successful test. If refresh fails again, inspect the client error and
+  authorization-server response rather than assuming another registration fixes it.
+- Deploy the updated `agent-connections` function for owner-scoped activity
+  metadata (`action: list`). This returns only client ID, last request, and local
+  revocation time; the private table and token columns remain inaccessible. The
+  frontend still lists/revokes grants if that metadata endpoint is unavailable,
+  but explicitly labels their workspace-access status as unknown.
+- Run `npm run test:connections` for setup URL, approval-state, and metadata
+  authorization regressions. No new migration is needed for this update.
 
 ## Exposed tools
 

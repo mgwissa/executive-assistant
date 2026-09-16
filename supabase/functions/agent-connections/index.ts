@@ -46,6 +46,17 @@ Deno.serve(async (req) => {
   const clientId = typeof body.clientId === 'string' ? body.clientId.trim() : '';
   const admin = createClient(supabaseUrl, serviceKey);
 
+  if (action === 'list') {
+    const { data, error } = await admin
+      .from('agent_connections')
+      .select('oauth_client_id,last_used_at,revoked_at')
+      .eq('user_id', user.id)
+      .eq('auth_kind', 'oauth');
+    return error
+      ? jsonResponse({ error: 'Could not load connection activity' }, 500)
+      : jsonResponse({ connections: data ?? [] });
+  }
+
   if (action === 'approve') {
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
     if (!clientId || !name) return jsonResponse({ error: 'Valid clientId and name are required' }, 400);

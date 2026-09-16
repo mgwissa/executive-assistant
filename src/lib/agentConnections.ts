@@ -1,15 +1,10 @@
 import { supabase } from './supabase';
-
-export type AgentConnectionGrant = {
-  client: {
-    id: string;
-    name: string;
-    uri: string;
-    logo_uri: string;
-  };
-  scopes: string[];
-  granted_at: string;
-};
+import {
+  mergeAgentConnections,
+  resolveMcpPublicUrl,
+  type AgentConnectionGrant,
+  type AgentConnectionMetadata,
+} from './agentConnectionStatus';
 
 export type AgentAuthorizationDetails = {
   authorization_id: string;
@@ -20,14 +15,24 @@ export type AgentAuthorizationDetails = {
 };
 
 export function executiveAssistantMcpUrl(): string {
-  const base = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '');
-  return base ? `${base}/functions/v1/executive-assistant-mcp` : '';
+  return resolveMcpPublicUrl(import.meta.env.VITE_MCP_PUBLIC_URL as string | undefined);
 }
 
-export async function listAgentConnections(): Promise<AgentConnectionGrant[]> {
+export async function listAgentConnections() {
   const { data, error } = await supabase.auth.oauth.listGrants();
   if (error) throw error;
-  return (data ?? []) as AgentConnectionGrant[];
+  // A failed metadata lookup must not hide grants or imply that access works.
+  // This also supports deploying the frontend before the updated function.
+  let metadata: AgentConnectionMetadata[] | null = null;
+  try {
+    const result = await supabase.functions.invoke<{ connections?: AgentConnectionMetadata[] }>('agent-connections', {
+      body: { action: 'list' },
+    });
+    if (!result.error && Array.isArray(result.data?.connections)) metadata = result.data.connections;
+  } catch {
+    // Keep revocation available even when last-use information is unavailable.
+  }
+  return { connections: mergeAgentConnections((data ?? []) as AgentConnectionGrant[], metadata), metadataUnavailable: metadata === null };
 }
 
 async function updateConnectionRecord(action: 'approve' | 'revoke', clientId: string, name?: string): Promise<void> {

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test:connections": "node --experimental-strip-types --test tests/agent-connections.test.mjs",
     "test:workstreams": "node --experimental-strip-types --test tests/workstream-actions.test.mjs",
     "preview": "vite preview"
   },
