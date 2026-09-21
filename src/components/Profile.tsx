@@ -787,7 +787,7 @@ function CalendarSyncSection({
         return;
       }
       const { imported } = await syncOutlookCalendar();
-      setSyncMessage(`Synced successfully. Imported ${imported} occurrence(s).`);
+      setSyncMessage(`Synced successfully. Refreshed ${imported} occurrence(s). Existing meeting links were preserved.`);
       await fetchProfile(userId);
       const { fromIso, toIso } = eventsFetchIsoRange(profileTimezone);
       await fetchEventsRange(userId, fromIso, toIso);
@@ -853,6 +853,10 @@ function CalendarSyncSection({
         />
       </Field>
 
+      <p className="mt-2 text-xs text-text-muted">
+        Agents with workspace write access refresh this calendar before reading your workspace.
+        Outlook may take time to publish recent edits.
+      </p>
       {lastSyncedLabel && (
         <p className="mt-2 text-xs text-text-muted">Last synced: {lastSyncedLabel}</p>
       )}

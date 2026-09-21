@@ -9,6 +9,7 @@
  */
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { refreshOutlookCalendar, type CalendarSyncResult } from '../_shared/outlookCalendar.ts';
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { localDateString } from '../_shared/datetime.ts';
 
@@ -908,7 +909,7 @@ async function mutate(
   return { ok: false, kind, error: `unsupported mutation kind "${kind}"` };
 }
 
-async function buildContext(admin: SupabaseClient, userId: string) {
+async function buildContext(admin: SupabaseClient, userId: string, calendarSync: CalendarSyncResult) {
   const { data: profile } = await admin.from('profiles').select('*').eq('user_id', userId).maybeSingle();
   const timezone = (profile?.timezone as string | null) ?? 'UTC';
   const now = new Date();
@@ -918,7 +919,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
 
   const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, workstreamsRes, noteWorkstreamsRes, actionsRes, briefsRes] = await Promise.all([
     admin.from('tasks').select('*').eq('user_id', userId).or(`done.eq.false,updated_at.gte.${doneSince}`).order('updated_at', { ascending: false }).limit(400),
-    admin.from('events').select('*').eq('user_id', userId).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(250),
+    admin.from('events').select('*').eq('user_id', userId).is('outlook_cancelled_at', null).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(1000),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
     admin.from('notes').select('id,section_id,title,content,linked_event_id,linked_occurrence_start_at,triaged_at,scratch_at,updated_at').eq('user_id', userId).order('updated_at', { ascending: false }).limit(80),
@@ -928,6 +929,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     admin.from('agent_briefs').select('id,kind,brief_date,body,stats,created_at').eq('user_id', userId).order('brief_date', { ascending: false }).limit(14),
   ]);
 
+  if (eventsRes.error) throw new Error('Could not read calendar events; do not treat the schedule as empty.');
   const events = eventsRes.data ?? [];
   const eventIds = new Set(events.map((event) => event.id));
   const notes = (notesRes.data ?? []).map((note) => {
@@ -984,6 +986,8 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     now: now.toISOString(),
     today,
     timezone,
+    calendarSync,
+    calendarWindow: { from: windowStart, to: windowEnd, truncated: events.length === 1000 },
     checkIn: {
       localTime: clock.label,
       pendingChecks,
@@ -1104,7 +1108,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Connection cannot change the workspace' }, 403);
     }
 
-    if (action === 'context') return jsonResponse({ ok: true, context: await buildContext(admin, principal.userId) });
+    if (action === 'context') {
+      const calendarSync = await refreshOutlookCalendar(admin, principal.userId, principal);
+      return jsonResponse({ ok: true, context: await buildContext(admin, principal.userId, calendarSync) });
+    }
     if (action === 'notes.search') {
       const query = str(body.query);
       if (!query || query.length < 2) return jsonResponse({ error: 'query must contain at least 2 characters' }, 400);

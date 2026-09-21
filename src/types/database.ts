@@ -388,6 +388,8 @@ export type Database = {
           until_at: string | null;
           count: number | null;
           source: string;
+          outlook_source_key: string | null;
+          outlook_cancelled_at: string | null;
           prep_required: boolean;
           allow_back_to_back: boolean;
           debrief_required: boolean;
@@ -407,6 +409,8 @@ export type Database = {
           until_at?: string | null;
           count?: number | null;
           source?: string;
+          outlook_source_key?: string | null;
+          outlook_cancelled_at?: string | null;
           prep_required?: boolean;
           allow_back_to_back?: boolean;
           debrief_required?: boolean;
@@ -426,6 +430,8 @@ export type Database = {
           until_at?: string | null;
           count?: number | null;
           source?: string;
+          outlook_source_key?: string | null;
+          outlook_cancelled_at?: string | null;
           prep_required?: boolean;
           allow_back_to_back?: boolean;
           debrief_required?: boolean;
@@ -873,6 +879,13 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      apply_outlook_calendar_snapshot: {
+        Args: {
+          p_user_id: string; p_connection_id: string | null; p_expected_url: string;
+          p_timezone: string; p_started_at: string; p_from: string; p_to: string; p_rows: Json;
+        };
+        Returns: Json;
+      };
       apply_agent_workstream_action: {
         Args: { p_user_id: string; p_run_id: string; p_connection_id: string; p_actor_name: string; p_input: Json };
         Returns: Json;

@@ -6,7 +6,7 @@ bridge, or copy long-lived API tokens.
 
 ## Project setup
 
-1. Apply migrations through `2026-09-08_052_workstream_actions.sql`.
+1. Apply migrations through `2026-09-21_053_safe_calendar_sync.sql`.
 2. In Supabase Dashboard, open **Authentication -> OAuth Server**:
    - enable the OAuth server;
    - set the authorization path to `/oauth/consent`;
@@ -20,6 +20,7 @@ bridge, or copy long-lived API tokens.
    supabase functions deploy agent-connections
    supabase functions deploy codex-api
    supabase functions deploy executive-assistant-mcp
+   supabase functions deploy sync-outlook-calendar
    ```
 5. Deploy the Vercel app. Its `/mcp` rewrite proxies the Edge Function without
    exposing the project-specific Supabase function URL as the plugin identity.
@@ -73,7 +74,7 @@ Supabase OAuth grant.
 
 ## Exposed tools
 
-- `get_workspace_context`: reads the schedule, open/recent work, focus queue,
+- `get_workspace_context`: refreshes Outlook first, then reads the schedule, open/recent work, focus queue,
   note index and linked excerpts, briefings, and recent audited activity.
 - `search_notes`: performs a bounded search when the normal context does not
   contain enough detail.
@@ -104,6 +105,34 @@ For explicitly approved consolidation, `notebook_merge` requires exact
 `sourceNotebookId` and `destinationNotebookId` values returned by context. Both
 must be private notebooks owned by the authenticated user; shared notebooks and
 notebooks with active invites are refused.
+
+### Calendar refresh before context
+
+Every context request attempts to fetch the saved published Outlook feed before
+querying calendar events. An active `workspace:write` grant is required for the
+refresh; a read-only grant still reads cached context. No automation prompt or
+new MCP tool is needed. Refresh the client's tool definitions after deployment:
+`get_workspace_context` now declares its audited write/network side effects.
+
+Read `context.calendarSync`: `status`, `lastSyncedAt`, `message`, and (on success)
+`coverageStart` / `coverageEnd`. Only `synced` confirms this attempt succeeded.
+`failed`, `superseded`, `not_authorized`, and `not_configured` do not establish an
+empty calendar. Check `calendarWindow.truncated` too. Published ICS is a snapshot;
+we can force a new fetch, not force Outlook to publish a recent edit immediately.
+
+Migration 053 adds stable Outlook identity/soft-retirement columns and a
+service-only RPC. Meeting updates, linked occurrence keys, sync timestamp and
+audit commit together. IDs, notes, tasks, flags, and debrief history survive syncs;
+removed meetings leave the active schedule without deleting their history.
+Existing legacy rows can be adopted only by an unambiguous exact match, since the
+old importer did not store Outlook UIDs. Already-changed legacy rows need review.
+Sync actions are audited but not blindly undoable: Outlook remains authoritative.
+
+Deploy **migration 053 first**, then `sync-outlook-calendar`, `codex-api`,
+`executive-assistant-mcp`, `send-daily-digest`, and the frontend (the normal push
+workflow deploys Edge Functions). Never push the new functions before the
+migration is applied. Run `npm run test:calendar`, `npm run lint`, and
+`npm run build` locally. Do not apply the migration to production as a test.
 
 ### Workstream actions
 

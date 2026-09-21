@@ -74,7 +74,7 @@ export function EventComposer({
   initialEvent?: Event | null;
   onClose: () => void;
   onCreate: (
-    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source'>,
+    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source' | 'outlook_source_key' | 'outlook_cancelled_at'>,
   ) => Promise<void>;
   onUpdate?: (id: string, patch: Partial<Event>) => Promise<void>;
 }) {
@@ -113,6 +113,8 @@ export function EventComposer({
           : null,
       count: v.endMode === 'count' ? v.count : null,
       source: 'manual',
+      outlook_source_key: null,
+      outlook_cancelled_at: null,
       prep_required: v.prep_required,
       allow_back_to_back: v.allow_back_to_back,
       debrief_required: v.debrief_required,

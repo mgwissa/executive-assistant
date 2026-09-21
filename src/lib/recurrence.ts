@@ -9,6 +9,7 @@ export type Occurrence = {
   end: Date;
   /** Copied from the parent event for UI (e.g. delete / badges). */
   source: string;
+  outlookSourceKey?: string | null;
 };
 
 function addMinutes(d: Date, minutes: number) {
@@ -39,6 +40,7 @@ export function generateOccurrences(
   { limit = 500 }: { limit?: number } = {},
 ): Occurrence[] {
   const out: Occurrence[] = [];
+  if (event.outlook_cancelled_at) return out;
   const start = new Date(event.start_at);
   const timezone = event.timezone || 'UTC';
   const zonedStart = toZonedTime(start, timezone);
@@ -63,6 +65,7 @@ export function generateOccurrences(
       start: occStart,
       end: occEnd,
       source: event.source ?? 'manual',
+      outlookSourceKey: event.outlook_source_key,
     });
   };
 
@@ -169,11 +172,13 @@ export function generateOccurrences(
   return out;
 }
 
-/** Collapse duplicate slots (Outlook ICS often lists master + instance VEVENTs). */
+/** Prefer imported identity; retain slot dedupe only for legacy rows without UIDs. */
 export function dedupeOccurrences(occurrences: Occurrence[]): Occurrence[] {
   const seen = new Set<string>();
   return occurrences.filter((o) => {
-    const key = `${o.start.getTime()}|${o.title}|${o.source}`;
+    const key = o.outlookSourceKey
+      ? `outlook:${o.outlookSourceKey}`
+      : `${o.start.getTime()}|${o.title}|${o.source}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

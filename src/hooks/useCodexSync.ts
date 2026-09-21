@@ -6,6 +6,9 @@ import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
+import { useEventsStore } from '../store/useEventsStore';
+import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
+import { eventsFetchIsoRange } from '../lib/eventQueries';
 
 const CODEX_SYNC_INTERVAL_MS = 30_000;
 const RECENT_ACTION_LIMIT = 50;
@@ -88,6 +91,7 @@ export function useCodexSync(userId: string | undefined) {
         changedKinds.has('note_append') ||
         changedKinds.has('note_triage') ||
         changedKinds.has('note_scratch') ||
+        changedKinds.has('calendar_sync') ||
         changedKinds.has('notebook_merge')
       ) {
         refreshes.push(useNotesStore.getState().fetchAll(userId));
@@ -98,8 +102,13 @@ export function useCodexSync(userId: string | undefined) {
       if (missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream')) {
         refreshes.push(useWorkstreamsStore.getState().fetchAll(userId));
       }
-      if (missedCursor || changedKinds.has('focus_reorder')) {
+      if (missedCursor || changedKinds.has('focus_reorder') || changedKinds.has('calendar_sync')) {
         refreshes.push(useProfileStore.getState().fetchProfile(userId));
+      }
+      if (missedCursor || changedKinds.has('calendar_sync')) {
+        const { fromIso, toIso } = eventsFetchIsoRange(useProfileStore.getState().profile?.timezone);
+        refreshes.push(useEventsStore.getState().fetchRange(userId, fromIso, toIso));
+        refreshes.push(useMeetingDebriefStore.getState().fetchRange(userId, fromIso, toIso));
       }
 
       await Promise.all(refreshes);

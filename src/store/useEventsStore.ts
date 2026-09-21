@@ -13,7 +13,7 @@ type EventsState = {
   fetchRange: (userId: string, fromIso: string, toIso: string) => Promise<void>;
   createEvent: (
     userId: string,
-    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source'> & {
+    payload: Omit<Event, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'source' | 'outlook_source_key' | 'outlook_cancelled_at'> & {
       id?: string;
       source?: string;
     },
@@ -47,6 +47,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           .select('*')
           .eq('user_id', userId)
           .eq('recurrence', 'none')
+          .is('outlook_cancelled_at', null)
           .gte('start_at', fromIso)
           .lt('start_at', toIso)
           .order('start_at', { ascending: true })
@@ -69,6 +70,7 @@ export const useEventsStore = create<EventsState>((set, get) => ({
           .select('*')
           .eq('user_id', userId)
           .neq('recurrence', 'none')
+          .is('outlook_cancelled_at', null)
           .lte('start_at', toIso)
           .or(`until_at.is.null,until_at.gte.${fromIso}`)
           .order('start_at', { ascending: true })
@@ -115,6 +117,8 @@ export const useEventsStore = create<EventsState>((set, get) => ({
       until_at: payload.until_at ?? null,
       count: payload.count ?? null,
       source: payload.source ?? 'manual',
+      outlook_source_key: null,
+      outlook_cancelled_at: null,
       prep_required: payload.prep_required ?? true,
       allow_back_to_back: payload.allow_back_to_back ?? false,
       debrief_required: payload.debrief_required ?? true,

@@ -391,6 +391,7 @@ async function buildContext(admin: SupabaseClient, userId: string) {
     admin
       .from('events')
       .select('*')
+      .is('outlook_cancelled_at', null)
       .eq('user_id', userId)
       .gte('start_at', windowStart)
       .lte('start_at', windowEnd)

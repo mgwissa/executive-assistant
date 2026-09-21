@@ -34,6 +34,7 @@ export const AGENT_ACTION_KINDS = [
   'workstream_create',
   'note_workstream',
   'brief_write',
+  'calendar_sync',
 ] as const;
 
 export type AgentActionKind = (typeof AGENT_ACTION_KINDS)[number];
@@ -180,6 +181,8 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
   const after = parseColumnPatch(action.after);
 
   switch (action.kind) {
+    case 'calendar_sync':
+      return { reason: 'Calendar sync follows Outlook. Change the meeting in Outlook, then sync again.' };
     case 'workstream_create':
     case 'note_workstream': {
       if (!action.id) return { reason: 'Missing the audit reference needed to undo this' };
@@ -315,6 +318,7 @@ export const ACTION_KIND_META: Record<
   workstream_create: { label: 'Created workstream', accent: 'green' },
   note_workstream: { label: 'Changed workstream link', accent: 'blue' },
   brief_write: { label: 'Briefed', accent: 'purple' },
+  calendar_sync: { label: 'Calendar synced', accent: 'blue' },
 };
 
 export const RUN_KIND_LABEL: Record<AgentRunKind, string> = {

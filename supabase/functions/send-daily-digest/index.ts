@@ -499,6 +499,7 @@ async function processProfile(
   const { data: rawEvents, error: eventsErr } = await admin
     .from('events')
     .select('id, title, start_at, duration_minutes, timezone')
+    .is('outlook_cancelled_at', null)
     .eq('user_id', profile.user_id)
     .gte('start_at', windowStart)
     .lt('start_at', windowEnd)

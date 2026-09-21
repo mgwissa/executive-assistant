@@ -16,10 +16,10 @@ const TOOLS = [
   {
     name: 'get_workspace_context',
     title: 'Get executive-assistant context',
-    description: 'Read the current user’s schedule, tasks, focus plan, notes index, Scratch inbox, recent briefs, recent audited activity, and any due check-in work. Call this first when the user starts a morning conversation, including a simple “good morning”.',
+    description: 'Refresh the published Outlook calendar, then read the current user\'s schedule, tasks, focus plan, notes, briefs, audited activity, and due check-ins. Calendar refresh requires workspace:write permission; read-only connections receive saved events. Check calendarSync.status, lastSyncedAt, coverage, and calendarWindow.truncated before planning: an unverified or incomplete calendar never means free time. Call this first for a morning conversation, including "good morning".',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   {
     name: 'search_notes',
@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'Executive Assistant', version: '1.0.0' },
-      instructions: 'Use read tools to understand the user’s real schedule and work context. When the user begins a morning conversation—even with only “good morning”—call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.',
+      instructions: 'Use get_workspace_context to understand the real schedule and work context. It first attempts an audited Outlook refresh when the connection has write access. Inspect calendarSync and calendarWindow.truncated: stale, missing, failed, or incomplete calendar data never establishes free time. When the user begins a morning conversation, even with only "good morning", call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Flag calendar uncertainty in the plan. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.',
     });
   }
   if (method === 'ping') return rpcResult(id, {});

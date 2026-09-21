@@ -63,7 +63,7 @@ Open <http://localhost:5173>, sign up, and start writing.
 ### 4. (Optional) Outlook published calendar → app
 
 1. In Outlook on the web, publish your calendar and copy the **ICS** URL (the one ending in `calendar.ics`), not the HTML link.
-2. After running migration `2026-04-17_005_outlook_ics_sync.sql`, open **Profile** in the app, paste the URL under **Outlook calendar**, click **Save URL**, then **Sync now**.
+2. Apply migrations through `2026-09-21_053_safe_calendar_sync.sql` before deploying calendar sync. Open **Profile**, paste the URL under **Outlook calendar**, click **Save URL**, then **Sync now**.
 3. Deploy the Edge Function so the server can fetch the ICS feed (avoids browser CORS):
 
 ```bash
@@ -78,9 +78,11 @@ If you deploy from the Dashboard only, run the CLI command above once so hosted 
 
 On hosted Supabase, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available to the function automatically. The function only accepts ICS URLs from known Microsoft hosts (`outlook.office365.com`, `outlook.live.com`, etc.).
 
-Each sync replaces previously imported rows (`events.source = 'outlook_ics'`) and leaves events you created in the app (`source = 'manual'`) untouched. The function only **stores occurrences for the current calendar week** (Monday 00:00 through Sunday, in your profile timezone), so regular Monday syncs stay small and fast.
+Sync updates Outlook occurrences in place using stable identities, preserving meeting IDs, linked notes/tasks, assistant flags, and debrief history. Missing meetings leave the active schedule without deleting history. Manual events are untouched. The import covers the previous week and the next two full weeks after this week, in your profile timezone. Older imported history remains saved.
 
-The **Calendar** page and client fetch use the same Monday–Sunday window.
+Agents with workspace write access refresh Outlook automatically before `get_workspace_context`. Failures retain saved events and return an explicit unverified-calendar status and last successful sync time. Outlook can delay publishing recent edits; a fresh fetch cannot force publication. See [calendar deployment and safety details](codex/README.md#calendar-refresh-before-context). `npm run test:calendar` tests the importer and transactional migration without touching production.
+
+The **Calendar** page continues to show the current Monday-Sunday week.
 
 ### 5. (Optional) Email notifications
 

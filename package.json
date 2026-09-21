@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test:connections": "node --experimental-strip-types --test tests/agent-connections.test.mjs",
     "test:workstreams": "node --experimental-strip-types --test tests/workstream-actions.test.mjs",
+    "test:calendar": "node --experimental-strip-types --test tests/calendar-sync.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "ical.js": "2.0.1",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.19",
     "typescript": "~6.0.2",
