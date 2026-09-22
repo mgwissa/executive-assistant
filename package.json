@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:connections": "node --experimental-strip-types --test tests/agent-connections.test.mjs",
+    "test:tasks": "node --experimental-strip-types --test tests/task-actions.test.mjs",
     "test:workstreams": "node --experimental-strip-types --test tests/workstream-actions.test.mjs",
     "test:calendar": "node --experimental-strip-types --test tests/calendar-sync.test.mjs",
     "preview": "vite preview"

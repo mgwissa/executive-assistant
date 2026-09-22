@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks, rewrite existing note content, or change legacy priority.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete including explicit priority changes, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. Priority is independent of deadlines, review dates, and focus order; never automatically escalate it. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks or rewrite existing note content.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -52,6 +52,23 @@ const TOOLS = [
             required: ['kind'],
             properties: {
               kind: { type: 'string' },
+              taskId: { type: 'string', format: 'uuid' },
+              task: {
+                type: 'object',
+                description: 'For task_create. Priority defaults to normal when omitted; set it only when explicitly requested.',
+                properties: {
+                  priority: { type: 'string', enum: ['critical', 'urgent', 'high', 'normal', 'low'] },
+                },
+                additionalProperties: true,
+              },
+              patch: {
+                type: 'object',
+                description: 'For task_update with taskId. Set priority only when explicitly requested. low means Later, normal Routine, high Active, urgent Important, critical Critical. Priority changes do not set or clear dates, change focus order, or complete work. priority_set_at is server-managed and cannot be supplied.',
+                properties: {
+                  priority: { type: 'string', enum: ['critical', 'urgent', 'high', 'normal', 'low'] },
+                },
+                additionalProperties: true,
+              },
               workstream: {
                 type: 'object',
                 properties: {

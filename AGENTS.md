@@ -290,8 +290,16 @@ to `codex-api`; neither function calls a model or polls.
   notebook placement, triage, and Scratch. Use returned targetId from creation in
   a subsequent assignment request; never guess IDs or use toggle semantics.
   Appends preserve existing BlockNote JSON and add compatible blocks; they
-  never parse or rewrite the existing document. No task deletion, priority
-  mutation, or arbitrary rich-note rewrite.
+  never parse or rewrite the existing document. Explicit task priority is supported
+  through `task_create.task.priority` and `task_update.patch.priority`: accept only
+  `critical | urgent | high | normal | low` (low is displayed as Later). Omitted
+  creation priority defaults to normal; updates preserve it unless supplied.
+  `priority_set_at` is server-managed, changes only with the priority, and is
+  audited/restored with it. Same-priority requests are no-ops; no automatic
+  escalation, date changes, or focus reordering. No task deletion or arbitrary
+  rich-note rewrite. Run `npm run test:tasks` for validation, owner/write-scope,
+  audit rollback, dedupe, Undo, and date-independence regressions. No migration;
+  deploy `codex-api` and `executive-assistant-mcp`, then refresh MCP tool discovery.
 - Audit: each `mutate` request creates a manual `agent_runs` row; each applied
   mutation creates an `agent_actions` row. Both record the connection
   id and display name. `note_create` undo deletes the created note;

@@ -4,7 +4,7 @@
  * Auth uses Supabase OAuth access tokens issued to MCP clients. The token's
  * verified user and client_id claims identify both the workspace owner and the
  * agent connection. This endpoint is deliberately narrower than the dormant
- * scheduled agent: no polling, task deletion, legacy priority mutation, or
+ * scheduled agent: no polling, task deletion, automatic priority escalation, or
  * arbitrary rich-note rewriting.
  */
 
@@ -21,6 +21,7 @@ const corsHeaders: Record<string, string> = {
 const TASK_WRITABLE = new Set([
   'title',
   'done',
+  'priority',
   'due_date',
   'review_date',
   'due_time',
@@ -29,6 +30,8 @@ const TASK_WRITABLE = new Set([
   'description',
   'waiting_on',
 ]);
+
+const TASK_PRIORITIES = new Set(['critical', 'urgent', 'high', 'normal', 'low']);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -193,6 +196,13 @@ function taskPatch(raw: unknown): JsonRecord | { error: string } {
   const patch: JsonRecord = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!TASK_WRITABLE.has(key)) continue;
+    if (key === 'priority') {
+      if (typeof value !== 'string' || !TASK_PRIORITIES.has(value)) {
+        return { error: 'priority must be critical, urgent, high, normal, or low' };
+      }
+      patch.priority = value;
+      continue;
+    }
     if (key === 'title') {
       const title = str(value);
       if (!title || title.length > 200) return { error: 'title must be 1–200 characters' };
@@ -326,7 +336,7 @@ async function mutate(
       user_id: userId,
       title,
       done: false,
-      priority: 'normal',
+      priority: patchResult.priority ?? 'normal',
       priority_set_at: now,
     };
     const { data, error } = await admin.from('tasks').insert(insert).select('*').single();
@@ -356,6 +366,19 @@ async function mutate(
       .eq('user_id', userId)
       .maybeSingle();
     if (readError || !row) return { ok: false, kind, error: readError?.message ?? 'task not found' };
+    if ('priority' in patchResult) {
+      if (patchResult.priority === row.priority) {
+        // Repeating the current priority must not reset its age or audit a no-op.
+        delete patchResult.priority;
+      } else {
+        // Server-owned metadata; include it in before/after for rollback and Undo.
+        // A priority change never implies a deadline or a review date.
+        patchResult.priority_set_at = new Date().toISOString();
+      }
+      if (Object.keys(patchResult).length === 0) {
+        return { ok: true, kind, targetId: taskId, skipped: 'unchanged' };
+      }
+    }
     const before = priorValues(row as JsonRecord, Object.keys(patchResult));
     const effectiveDueDate = 'due_date' in patchResult ? patchResult.due_date : row.due_date;
     if (patchResult.due_time && !effectiveDueDate) {

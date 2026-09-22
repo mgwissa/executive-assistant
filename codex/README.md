@@ -89,8 +89,8 @@ Every mutation creates an `agent_runs` row and an `agent_actions` row per
 applied change. Ordinary edits remain reversible. `notebook_merge` is the narrow
 exception: it preserves every section and note in the destination before it
 removes the empty private source notebook, but the source container is not
-automatically recreated by Undo. The endpoint cannot delete tasks, change legacy
-priority, or arbitrarily rewrite existing BlockNote documents. A `note_append` action
+automatically recreated by Undo. The endpoint cannot delete tasks or arbitrarily
+rewrite existing BlockNote documents. A `note_append` action
 accepts `noteId` and `content`; content may use headings, paragraphs, bullets,
 and numbered items. It preserves existing blocks and refuses concurrent edits.
 The workspace context exposes `meetingNotesNeedingTriage`. After the user and
@@ -105,6 +105,31 @@ For explicitly approved consolidation, `notebook_merge` requires exact
 `sourceNotebookId` and `destinationNotebookId` values returned by context. Both
 must be private notebooks owned by the authenticated user; shared notebooks and
 notebooks with active invites are refused.
+
+### Explicit task priority
+
+Use `task_update` with an owned `taskId` and `patch: {"priority": "low"}` when
+the user explicitly asks to deprioritize a task. Accepted values are `critical`,
+`urgent`, `high`, `normal`, and `low`; their UI labels are Critical, Important,
+Active, Routine, and Later. `task_create` also accepts `task.priority`, defaulting
+to `normal` when omitted. Invalid values (including null) are rejected.
+
+Priority never implies a deadline, review date, completion, or focus position.
+For "low priority with no deadline", explicitly include `"due_date": null` in
+the same patch; otherwise existing dates remain untouched. Do not infer priority
+changes from overdue work or automatically escalate tasks.
+
+The server updates `priority_set_at` only when priority changes and records both
+fields for audit rollback and Undo. Clients cannot supply that timestamp. A
+same-priority-only update returns `skipped: "unchanged"` without a task write or
+audit action. Existing dedupe keys still make retries safe. The existing opt-in
+critical-task notification trigger is unchanged.
+
+No database migration is required. Deploy `codex-api` and
+`executive-assistant-mcp`, then refresh the client's tool definitions so the new
+priority contract is visible. Run `npm run test:tasks`, `npm run lint`, and
+`npm run build` before deployment; task tests use an isolated in-memory database
+double, not live workspace data.
 
 ### Calendar refresh before context
 
