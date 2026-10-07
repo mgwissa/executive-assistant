@@ -1,160 +1,56 @@
 import { formatInTimeZone } from 'date-fns-tz';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { parseDayPlan } from '../../supabase/functions/_shared/dayPlan';
 import { useDirectiveClock } from '../hooks/useDirectiveClock';
 import { resolveCalendarTimeZone } from '../lib/calendarWeek';
-import { generateDirective } from '../lib/executiveDirective';
-import { extractActionItems } from '../lib/format';
-import { parseMeetingRules } from '../lib/meetingTemperament';
+import { parseFocusQueue } from '../lib/focusQueue';
 import { viewPath } from '../lib/routes';
-import { filterActionItemsDeduped } from '../lib/taskActionMatch';
-import { parseFocusQueue, type FocusWorkMode } from '../lib/focusQueue';
 import { toCreateTaskOptions, type TaskQuickAddPayload } from '../lib/taskQuickAdd';
-import {
-  buildTodayViewModel,
-  formatDuration,
-  formatTodayTime,
-  type TodayConcern,
-} from '../lib/today';
+import { buildTodayViewModel, formatDuration, formatTodayTime } from '../lib/today';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAgentStore } from '../store/useAgentStore';
 import { useEventsStore } from '../store/useEventsStore';
-import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { useNotesStore } from '../store/useNotesStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import type { AgentBrief } from '../types';
-import {
-  ArrowRightIcon,
-  CalendarIcon,
-  ClockIcon,
-  NoteIcon,
-  SquareIcon,
-  SparklesIcon,
-} from './icons';
+import { ArrowRightIcon, CalendarIcon, ClockIcon, NoteIcon, SquareIcon, SparklesIcon } from './icons';
+import { MarkdownPreview } from './MarkdownPreview';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskQuickAddForm } from './TaskQuickAddForm';
-import { MarkdownPreview } from './MarkdownPreview';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
 
-const CONCERN_STYLE: Record<TodayConcern['severity'], string> = {
-  critical: 'border-red-500/30 bg-red-500/[0.06]',
-  warning: 'border-amber-500/30 bg-amber-500/[0.06]',
-  info: 'border-blue-500/30 bg-blue-500/[0.06]',
-};
-
-const FOCUS_MODE_META: Record<FocusWorkMode, { label: string; variant: 'purple' | 'blue' | 'amber' }> = {
-  deep_work: { label: 'Deep work', variant: 'purple' },
-  quick_follow_up: { label: 'Quick follow-up', variant: 'blue' },
-  waiting: { label: 'Waiting', variant: 'amber' },
-};
-
-function greetingFor(now: Date, timezone: string): string {
-  const hour = Number(formatInTimeZone(now, timezone, 'H'));
-  if (hour < 5) return 'Still up';
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  if (hour < 21) return 'Good evening';
-  return 'Good night';
-}
-
-function morningCheckState(now: Date, timezone: string): 'waiting' | 'upcoming' | 'weekend' {
-  const weekday = formatInTimeZone(now, timezone, 'EEE');
-  if (weekday === 'Sat' || weekday === 'Sun') return 'weekend';
-  const minutes = Number(formatInTimeZone(now, timezone, 'H')) * 60
-    + Number(formatInTimeZone(now, timezone, 'm'));
-  return minutes >= 7 * 60 + 30 ? 'waiting' : 'upcoming';
-}
-
-function displayName(firstName: string | null | undefined, email: string | null | undefined): string {
-  const preferred = firstName?.trim();
-  if (preferred) return preferred;
-  return email?.split('@')[0]?.split(/[._-]/)[0] || 'there';
-}
-
-function briefSummary(body: string): string {
-  const firstParagraph = body
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line !== '' && !line.startsWith('#') && !/^(?:[-*]|\d+\.)\s/.test(line));
-  return (firstParagraph ?? 'A briefing is ready for today.')
-    .replace(/\*\*/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-}
-
-function SavedBriefCard({
-  brief,
-  loading,
-  eyebrow,
-  title,
-  emptyMessage,
-  expanded,
-  onToggle,
-  bodyId,
-  openLabel,
-}: {
-  brief: AgentBrief | null;
-  loading: boolean;
-  eyebrow: string;
-  title: string;
-  emptyMessage: string;
-  expanded: boolean;
-  onToggle: () => void;
-  bodyId: string;
-  openLabel: string;
-}) {
-  const summary = brief ? briefSummary(brief.body) : null;
-
+function SavedBriefCard({ brief, loading, evening = false }: { brief: AgentBrief | null; loading: boolean; evening?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const title = evening ? 'Evening closeout' : 'The plan and context';
+  const summary = brief?.body.split(/\r?\n/).map((line) => line.trim())
+    .find((line) => line && !line.startsWith('#') && !/^(?:[-*]|\d+\.)\s/.test(line))
+    ?.replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   return (
-    <Card padded="sm" className={brief ? 'border-brand-500/20 bg-brand-500/[0.04]' : undefined}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-300">
-          <SparklesIcon className="h-4 w-4" />
-        </div>
+    <Card padded="sm">
+      <div className="flex items-start gap-3">
+        <SparklesIcon className="mt-1 h-4 w-4 shrink-0 text-brand-500" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">{eyebrow}</p>
-            {brief ? <Badge variant="purple">Saved today</Badge> : null}
-          </div>
-          <h2 className="mt-0.5 text-base font-semibold text-text">{title}</h2>
-          {loading && !brief ? (
-            <p className="mt-1 text-sm text-text-muted">Checking for today's entry...</p>
-          ) : summary ? (
-            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-muted">{summary}</p>
-          ) : (
-            <p className="mt-1 text-sm leading-relaxed text-text-muted">{emptyMessage}</p>
-          )}
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-text-muted">
+            {summary ?? (loading ? 'Loading the saved plan…' : evening
+              ? 'Ask Codex to close out your day and save tomorrow’s starting point.'
+              : 'Ask Codex for a morning plan. Your next action and answered questions will stay in sync here.')}
+          </p>
         </div>
-        {brief ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="btn-secondary shrink-0 self-start text-xs"
-            aria-expanded={expanded}
-            aria-controls={bodyId}
-          >
-            {expanded ? 'Collapse' : openLabel}
-          </button>
-        ) : null}
+        {brief ? <button type="button" className="btn-ghost shrink-0 text-xs"
+          onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}
+          aria-controls={evening ? 'evening-brief-body' : 'morning-brief-body'}>
+          {expanded ? 'Collapse' : 'Read brief'}
+        </button> : null}
       </div>
-      {brief && expanded ? (
-        <div id={bodyId} className="mt-4 border-t border-border pt-4">
-          <MarkdownPreview content={brief.body} />
-        </div>
-      ) : null}
+      {brief && expanded ? <div id={evening ? 'evening-brief-body' : 'morning-brief-body'} className="mt-4 border-t border-border pt-4">
+        <MarkdownPreview content={brief.body} />
+      </div> : null}
     </Card>
-  );
-}
-
-function SummaryMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-border bg-surface-raised px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-text">{value}</p>
-      <p className="mt-0.5 truncate text-xs text-text-muted">{detail}</p>
-    </div>
   );
 }
 
@@ -163,10 +59,10 @@ export function TodayPage() {
   const user = useAuthStore((state) => state.user);
   const briefs = useAgentStore((state) => state.briefs);
   const briefsLoading = useAgentStore((state) => state.loading);
+  const agentError = useAgentStore((state) => state.error);
   const fetchAgentData = useAgentStore((state) => state.fetchAll);
   const profile = useProfileStore((state) => state.profile);
   const notes = useNotesStore((state) => state.notes);
-  const notesLoading = useNotesStore((state) => state.loading);
   const setActiveNote = useNotesStore((state) => state.setActive);
   const tasks = useTasksStore((state) => state.tasks);
   const tasksLoading = useTasksStore((state) => state.loading);
@@ -174,352 +70,160 @@ export function TodayPage() {
   const toggleTaskDone = useTasksStore((state) => state.toggleDone);
   const events = useEventsStore((state) => state.events);
   const eventsLoading = useEventsStore((state) => state.loading);
-  const debriefStates = useMeetingDebriefStore((state) => state.states);
+  const eventsError = useEventsStore((state) => state.error);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [morningBriefExpanded, setMorningBriefExpanded] = useState(false);
-  const [eveningBriefExpanded, setEveningBriefExpanded] = useState(false);
   const clock = useDirectiveClock(true);
-
-  useEffect(() => {
-    if (user) void fetchAgentData(user.id);
-  }, [user, fetchAgentData]);
-
+  useEffect(() => { if (user) void fetchAgentData(user.id); }, [user, fetchAgentData]);
+  const now = useMemo(() => { void clock; return new Date(); }, [clock]);
   const timezone = resolveCalendarTimeZone(profile?.timezone);
-  const now = useMemo(() => {
-    void clock;
-    return new Date();
-  }, [clock]);
-  const actionItems = useMemo(
-    () => filterActionItemsDeduped(tasks, extractActionItems(notes)),
-    [tasks, notes],
-  );
-  const directive = useMemo(
-    () =>
-      generateDirective({
-        tasks,
-        actionItems,
-        events,
-        timezone,
-        now,
-        hasCalendarSource: !!profile?.outlook_ics_url?.trim() || events.length > 0,
-        meetingRules: parseMeetingRules(profile?.meeting_rules),
-        debriefStates,
-      }),
-    [tasks, actionItems, events, timezone, now, profile?.outlook_ics_url, profile?.meeting_rules, debriefStates],
-  );
-  const focusPrefs = useMemo(
-    () => parseFocusQueue(profile?.focus_queue),
-    [profile?.focus_queue],
-  );
-  const today = useMemo(
-    () => buildTodayViewModel({
-      now,
-      timezone,
-      events,
-      tasks,
-      notes,
-      directive,
-      focusEntries: focusPrefs.stack,
-    }),
-    [now, timezone, events, tasks, notes, directive, focusPrefs.stack],
-  );
-
-  const selectedTask = selectedTaskId
-    ? tasks.find((task) => task.id === selectedTaskId) ?? null
-    : null;
-  const loading = notesLoading || tasksLoading || eventsLoading;
-  const dateLabel = formatInTimeZone(now, timezone, 'EEEE, MMMM d');
   const todayIso = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
-  const morningBrief = briefs.find(
-    (brief) => brief.kind === 'morning' && brief.brief_date === todayIso,
-  ) ?? null;
-  const morningState = morningCheckState(now, timezone);
-  const morningEmptyMessage = morningState === 'waiting'
-    ? 'Morning check is waiting. Say “good morning” to Codex; it will reconcile the workspace before replying.'
-    : morningState === 'upcoming'
-      ? 'The weekday morning check becomes available at 7:30 AM and runs with your first Codex conversation.'
-      : 'Morning catch-up checks run on weekdays. You can still ask Codex for a brief whenever you want one.';
-  const eveningBrief = briefs.find(
-    (brief) => brief.kind === 'evening' && brief.brief_date === todayIso,
-  ) ?? null;
-  const showEveningCloseout = !!eveningBrief || Number(formatInTimeZone(now, timezone, 'H')) >= 16;
-  const focusPlanUpdatedLabel = focusPrefs.updatedAt
-    ? formatInTimeZone(new Date(focusPrefs.updatedAt), timezone, 'h:mm a')
-    : null;
-
-  const openNote = (noteId: string) => {
-    setActiveNote(noteId);
-    navigate(viewPath('notes'));
-  };
-
-  const handleQuickAdd = async (payload: TaskQuickAddPayload) => {
-    if (!user) return;
-    await createTask(user.id, payload.title, toCreateTaskOptions(payload));
+  const morningBrief = briefs.find((brief) => brief.kind === 'morning' && brief.brief_date === todayIso) ?? null;
+  const eveningBrief = briefs.find((brief) => brief.kind === 'evening' && brief.brief_date === todayIso) ?? null;
+  const stats = morningBrief?.stats && typeof morningBrief.stats === 'object' && !Array.isArray(morningBrief.stats)
+    ? morningBrief.stats : {};
+  const dayPlan = useMemo(() => parseDayPlan(stats.dayPlan), [stats.dayPlan]);
+  const focusPrefs = useMemo(() => parseFocusQueue(profile?.focus_queue), [profile?.focus_queue]);
+  const syncAt = profile?.outlook_ics_last_synced_at ?? stats.calendarSyncedAt;
+  const syncTime = typeof syncAt === 'string' ? Date.parse(syncAt) : NaN;
+  const calendarVerified = !!profile && !eventsLoading && !eventsError
+    && (!profile?.outlook_ics_url?.trim() || (
+      Number.isFinite(syncTime) && now.getTime() >= syncTime && now.getTime() - syncTime <= 2 * 60 * 60_000
+      && stats.calendarRefreshStatus === 'synced' && stats.calendarWindowTruncated === false
+    ));
+  const today = useMemo(() => buildTodayViewModel({
+    now, timezone, events, tasks, notes, focusPrefs, dayPlan, calendarVerified,
+  }), [now, timezone, events, tasks, notes, focusPrefs, dayPlan, calendarVerified]);
+  const next = today.focus[0] ?? null;
+  const loading = tasksLoading || briefsLoading;
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const openNote = (noteId: string) => { setActiveNote(noteId); navigate(viewPath('notes')); };
+  const capture = async (payload: TaskQuickAddPayload) => {
+    if (user) await createTask(user.id, payload.title, toCreateTaskOptions(payload));
   };
 
   return (
     <div className="h-full overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-[88rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <header className="mb-7 flex flex-col gap-4 sm:mb-9 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <Badge variant="subtle" className="uppercase tracking-wider">
-              {dateLabel}
-            </Badge>
-            <h1 className="mt-3 text-3xl font-medium tracking-tight text-text sm:text-4xl">
-              {greetingFor(now, timezone)}, {displayName(profile?.first_name, user?.email)}.
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted sm:text-base">
-              Here is the shape of your day, the context already attached to it, and what deserves a decision.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">{formatInTimeZone(now, timezone, 'EEEE, MMMM d')}</p>
+            <h1 className="mt-1 text-2xl font-medium tracking-tight text-text sm:text-3xl">One thing at a time.</h1>
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-            Live in {timezone}
-          </div>
+          <button type="button" className="btn-ghost text-xs" onClick={() => navigate(viewPath('tasks'))}>
+            {today.summary.dueTodayCount} due today · {today.summary.overdueCount} past deadlines
+            <ArrowRightIcon className="h-3.5 w-3.5" />
+          </button>
         </header>
 
-        <section className="mb-4" aria-labelledby="morning-brief-heading">
-          <span id="morning-brief-heading" className="sr-only">Morning brief</span>
-          <SavedBriefCard
-            brief={morningBrief}
-            loading={briefsLoading}
-            eyebrow="From Codex"
-            title="Morning brief"
-            emptyMessage={morningEmptyMessage}
-            expanded={morningBriefExpanded}
-            onToggle={() => setMorningBriefExpanded((expanded) => !expanded)}
-            bodyId="morning-brief-body"
-            openLabel="Read full brief"
-          />
-        </section>
-
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Today at a glance">
-          <SummaryMetric
-            label="Meetings"
-            value={String(today.summary.meetingCount)}
-            detail={`${formatDuration(today.summary.meetingMinutes)} on calendar`}
-          />
-          <SummaryMetric
-            label="Meeting time"
-            value={formatDuration(today.summary.meetingMinutes)}
-            detail="Across today's schedule"
-          />
-          <SummaryMetric
-            label="Open focus"
-            value={formatDuration(today.summary.focusMinutes)}
-            detail="In windows of 20m or more"
-          />
-          <SummaryMetric
-            label="Deadlines"
-            value={String(today.summary.dueWorkCount)}
-            detail="Due today or overdue"
-          />
-        </section>
-
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.75fr)]">
-          <section className="min-w-0">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">Your day</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Schedule and context</h2>
-              </div>
-              <button type="button" className="btn-ghost" onClick={() => navigate(viewPath('calendar'))}>
-                Calendar <ArrowRightIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <Card padded="none" className="overflow-hidden">
-              {loading && today.agenda.length === 0 ? (
-                <EmptyState icon={<ClockIcon className="h-5 w-5" />} title="Loading today" message="Gathering your schedule and work." />
-              ) : today.agenda.length === 0 ? (
-                <EmptyState icon={<CalendarIcon className="h-5 w-5" />} title="No scheduled blocks" message="Your calendar is clear today." />
-              ) : (
-                <ol className="divide-y divide-border">
-                  {today.agenda.map((item) => (
-                    <li key={item.id} className="grid grid-cols-[4.6rem_minmax(0,1fr)] gap-3 px-4 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:px-5">
-                      <div className="pt-0.5 text-right font-mono text-xs text-text-muted">
-                        <p>{formatTodayTime(item.start, timezone)}</p>
-                        <p className="mt-1 text-[10px] text-text-subtle">{formatTodayTime(item.end, timezone)}</p>
-                      </div>
-                      <div className="min-w-0 border-l border-border pl-4">
-                        <div className="flex flex-wrap items-start gap-2">
-                          <button
-                            type="button"
-                            onClick={() => item.kind === 'meeting' ? navigate(viewPath('calendar')) : setSelectedTaskId(item.taskId)}
-                            className="min-w-0 flex-1 text-left text-sm font-semibold text-text hover:text-brand-600 dark:hover:text-brand-300"
-                          >
-                            {item.title}
-                          </button>
-                          <Badge variant={item.kind === 'meeting' ? 'blue' : 'purple'}>
-                            {item.kind === 'meeting' ? 'Meeting' : 'Task'}
-                          </Badge>
-                        </div>
-                        {item.kind === 'meeting' && item.linkedNote ? (
-                          <div className="mt-3 rounded-lg border border-brand-500/20 bg-brand-500/[0.05] p-3">
-                            <div className="flex items-start gap-3">
-                              <NoteIcon className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                              <div className="min-w-0 flex-1">
-                                <button type="button" onClick={() => openNote(item.linkedNote!.id)} className="truncate text-left text-xs font-semibold text-text hover:text-brand-600 dark:hover:text-brand-300">
-                                  {item.linkedNote.title}
-                                </button>
-                                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-text-muted">{item.linkedNote.excerpt}</p>
-                              </div>
-                              <button type="button" onClick={() => openNote(item.linkedNote!.id)} className="btn-ghost h-8 shrink-0 px-2 text-xs">
-                                Open
-                              </button>
-                            </div>
-                          </div>
-                        ) : item.kind === 'meeting' ? (
-                          <p className="mt-2 text-xs text-text-subtle">No meeting note linked to this occurrence.</p>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </Card>
+        {agentError ? <p role="status" className="mb-4 text-sm text-text-muted">The saved plan could not refresh. It may be out of date.</p> : null}
+        {today.decision ? (
+          <section className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4" aria-labelledby="plan-question">
+            <p id="plan-question" className="text-xs font-semibold uppercase tracking-wide text-text-subtle">One answer needed</p>
+            <p className="mt-2 text-sm font-medium text-text">{today.decision.prompt}</p>
+            <p className="mt-2 text-xs leading-relaxed text-text-muted">
+              Tell Codex your answer in our conversation; it will be saved with the plan.
+              {today.decision.kind === 'meeting' ? ' Outlook invitations stay unchanged.' : ''}
+            </p>
+            {today.decision.taskId ? <button type="button" className="btn-ghost mt-2 text-xs" onClick={() => setSelectedTaskId(today.decision!.taskId!)}>
+              Open task context <ArrowRightIcon className="h-3.5 w-3.5" />
+            </button> : null}
           </section>
+        ) : null}
 
-          <aside className="min-w-0 space-y-6">
-            <section>
-              <div className="mb-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">Watchouts</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Worth your attention</h2>
-              </div>
-              <div className="space-y-3">
-                {today.concerns.length === 0 ? (
-                  <Card padded="sm" className="border-emerald-500/20 bg-emerald-500/[0.05]">
-                    <p className="text-sm font-semibold text-text">No major concerns</p>
-                    <p className="mt-1 text-xs leading-relaxed text-text-muted">The day looks workable from the information currently available.</p>
-                  </Card>
-                ) : (
-                  today.concerns.map((concern) => (
-                    <div key={concern.id} className={`rounded-xl border p-4 ${CONCERN_STYLE[concern.severity]}`}>
-                      <div className="flex items-start gap-3">
-                        <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
-                        <div>
-                          <p className="text-sm font-semibold text-text">{concern.headline}</p>
-                          <p className="mt-1 text-xs leading-relaxed text-text-muted">{concern.detail}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-text">Open focus windows</h2>
-                <span className="text-xs text-text-muted">Until 5pm</span>
-              </div>
-              <Card padded="sm">
-                {today.openWindows.length === 0 ? (
-                  <p className="text-sm text-text-muted">No open window of 20 minutes or more remains.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {today.openWindows.slice(0, 4).map((window) => (
-                      <li key={window.id} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-medium text-text">{formatTodayTime(window.start, timezone)} – {formatTodayTime(window.end, timezone)}</span>
-                        <Badge variant="subtle">{formatDuration((window.end.getTime() - window.start.getTime()) / 60_000)}</Badge>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            </section>
-          </aside>
-        </div>
-
-        <section className="mt-6">
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">Commitments</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">Focus queue</h2>
-              {focusPrefs.managedBy || focusPlanUpdatedLabel ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  {focusPrefs.managedBy === 'codex' ? <Badge variant="purple">Codex plan</Badge> : null}
-                  {focusPrefs.managedBy === 'user' ? <Badge variant="subtle">Your plan</Badge> : null}
-                  {focusPlanUpdatedLabel ? <span className="text-xs text-text-subtle">Updated {focusPlanUpdatedLabel}</span> : null}
+        <section aria-labelledby="next-action-heading" className="mb-4">
+          <Card padded="none" className="border-brand-500/25 bg-brand-500/[0.04]">
+            <div className="p-5 sm:p-6">
+              <p id="next-action-heading" className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 dark:text-brand-300">Do this next</p>
+              {next ? <>
+                <h2 className="mt-3 text-xl font-semibold leading-snug text-text sm:text-2xl">{next.title}</h2>
+                <p className="mt-3 text-base leading-relaxed text-text">{next.nextAction ?? 'Open the task for its saved context before starting.'}</p>
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">{next.whyNow}</p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button type="button" className="btn-primary" onClick={() => setSelectedTaskId(next.taskId)}>Open task <ArrowRightIcon className="h-4 w-4" /></button>
+                  <button type="button" className="btn-secondary" onClick={() => void toggleTaskDone(next.taskId, true)}>Mark done</button>
+                  {next.timingLabel ? <span className="text-xs text-text-muted">{next.timingLabel}</span> : null}
                 </div>
-              ) : null}
+              </> : <p className="mt-3 text-sm leading-relaxed text-text-muted">{loading ? 'Loading your saved focus…'
+                : 'No active next action is saved. Ask Codex to choose the next step; your backlog is still in All work.'}</p>}
+              <p className="mt-4 text-xs text-text-subtle">
+                {focusPrefs.managedBy === 'codex' ? 'Codex plan' : 'Saved focus plan'}
+                {focusPrefs.updatedAt ? ` · Updated ${formatInTimeZone(new Date(focusPrefs.updatedAt), timezone, 'MMM d, h:mm a')}` : ''}
+              </p>
             </div>
-            <button type="button" className="btn-ghost" onClick={() => navigate(viewPath('tasks'))}>
-              All work <ArrowRightIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <Card padded="none" className="overflow-hidden">
-            <div className="border-b border-border p-4 sm:p-5">
-              <TaskQuickAddForm
-                disabled={!user}
-                variant="embedded"
-                idPrefix="today-quick-add"
-                titlePlaceholder="Capture a commitment…"
-                submitLabel="Capture"
-                onSubmit={handleQuickAdd}
-              />
-            </div>
-            {today.focus.length === 0 ? (
-              <div className="px-4 py-5 text-sm text-text-muted sm:px-5">
-                Nothing is being pushed right now. Real deadlines and arrived review dates appear automatically; Work can set a temporary starting point until your connected agent manages this queue.
-              </div>
-            ) : (
-              <ul className="divide-y divide-border">
-                {today.focus.map((item, index) => (
-                  <li key={item.taskId} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-xs font-semibold text-brand-600 dark:text-brand-300">
-                      {index + 1}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void toggleTaskDone(item.taskId, true)}
-                      className="mt-0.5 text-text-muted hover:text-emerald-500"
-                      aria-label={`Complete ${item.title}`}
-                    >
-                      <SquareIcon className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setSelectedTaskId(item.taskId)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm font-medium text-text hover:text-brand-600 dark:hover:text-brand-300">{item.title}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.whyNow}</p>
-                      {item.nextAction ? (
-                        <p className="mt-1.5 text-xs leading-relaxed text-text">
-                          <span className="font-semibold">Next:</span> {item.nextAction}
-                        </p>
-                      ) : null}
-                      {item.mode || item.timingLabel ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {item.mode ? (
-                            <Badge variant={FOCUS_MODE_META[item.mode].variant}>{FOCUS_MODE_META[item.mode].label}</Badge>
-                          ) : null}
-                          {item.timingLabel ? <span className="text-[11px] font-medium uppercase tracking-wide text-text-subtle">{item.timingLabel}</span> : null}
-                        </div>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </Card>
         </section>
 
-        {showEveningCloseout ? (
-          <section className="mt-6" aria-labelledby="evening-closeout-heading">
-            <span id="evening-closeout-heading" className="sr-only">Evening closeout</span>
-            <SavedBriefCard
-              brief={eveningBrief}
-              loading={briefsLoading}
-              eyebrow="End of day"
-              title="Evening closeout"
-              emptyMessage={'Ask Codex to "close out my day" in the desktop conversation. We\'ll capture wins, open loops, and tomorrow\'s starting point here.'}
-              expanded={eveningBriefExpanded}
-              onToggle={() => setEveningBriefExpanded((expanded) => !expanded)}
-              bodyId="evening-closeout-body"
-              openLabel="Read full closeout"
-            />
-          </section>
-        ) : null}
-      </div>
+        <SavedBriefCard brief={morningBrief} loading={briefsLoading} />
 
+        {today.focus.length > 1 ? <section className="mt-6" aria-labelledby="up-next-heading">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 id="up-next-heading" className="text-sm font-semibold text-text">After that</h2>
+            <button type="button" className="btn-ghost text-xs" onClick={() => navigate(viewPath('tasks'))}>All work <ArrowRightIcon className="h-3.5 w-3.5" /></button>
+          </div>
+          <Card padded="none">
+            <ul className="divide-y divide-border">
+              {today.focus.slice(1).map((item, index) => <li key={item.taskId} className="flex items-start gap-3 p-4">
+                <span className="mt-0.5 text-xs font-semibold text-text-subtle">{index + 2}</span>
+                <button type="button" className="text-text-muted hover:text-emerald-500" onClick={() => void toggleTaskDone(item.taskId, true)} aria-label={`Complete ${item.title}`}><SquareIcon className="h-4 w-4" /></button>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelectedTaskId(item.taskId)}>
+                  <p className="text-sm font-medium text-text">{item.title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-text-muted">{item.nextAction ?? item.whyNow}</p>
+                </button>
+              </li>)}
+            </ul>
+          </Card>
+        </section> : null}
+
+        <section className="mt-6">
+          <Card padded="sm">
+            <TaskQuickAddForm disabled={!user} variant="embedded" idPrefix="today-quick-add" titlePlaceholder="Capture a commitment…" submitLabel="Capture" onSubmit={capture} />
+          </Card>
+        </section>
+
+        <section className="mt-7" aria-labelledby="schedule-heading">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 id="schedule-heading" className="text-lg font-semibold text-text">Around your meetings</h2>
+            <button type="button" className="btn-ghost text-xs" onClick={() => navigate(viewPath('calendar'))}>Calendar <ArrowRightIcon className="h-3.5 w-3.5" /></button>
+          </div>
+          <p className="mb-3 text-xs leading-relaxed text-text-muted">
+            {calendarVerified ? 'Available in the latest saved calendar, until 5pm. These are not booked work blocks.'
+              : 'Calendar availability is not verified. Refresh the calendar before treating any time as free.'}
+          </p>
+          {calendarVerified && today.openWindows.length > 0 ? <ul className="mb-4 flex flex-wrap gap-2" aria-label="Available focus windows">
+            {today.openWindows.slice(0, 4).map((window) => <li key={window.id} className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-text-muted">
+              {formatTodayTime(window.start, timezone)} – {formatTodayTime(window.end, timezone)}
+              <span className="ml-2 text-text-subtle">{formatDuration((window.end.getTime() - window.start.getTime()) / 60_000)}</span>
+            </li>)}
+          </ul> : null}
+          <Card padded="none">
+            {eventsLoading && today.agenda.length === 0 ? <EmptyState icon={<ClockIcon className="h-5 w-5" />} title="Loading schedule" message="Reading your saved calendar." />
+              : today.agenda.length === 0 ? <EmptyState icon={<CalendarIcon className="h-5 w-5" />} title="No scheduled blocks returned" message={calendarVerified ? 'No meetings are saved for today.' : 'An empty schedule does not establish free time.'} />
+              : <ol className="divide-y divide-border">
+                {today.agenda.map((item) => <li key={item.id} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 p-4">
+                  <div className="text-right font-mono text-xs text-text-muted">
+                    <p>{formatTodayTime(item.start, timezone)}</p><p className="mt-1 text-[10px] text-text-subtle">{formatTodayTime(item.end, timezone)}</p>
+                  </div>
+                  <div className="min-w-0 border-l border-border pl-4">
+                    <div className="flex flex-wrap items-start gap-2">
+                      <button type="button" className={`min-w-0 text-left text-sm font-semibold ${item.attendance === 'not_attending' ? 'text-text-subtle' : 'text-text'}`} onClick={() => item.kind === 'meeting' ? navigate(viewPath('calendar')) : setSelectedTaskId(item.taskId!)}>
+                        {item.title}
+                      </button>
+                      <Badge variant={item.attendance === 'not_attending' ? 'subtle' : 'blue'}>
+                        {item.attendance === 'not_attending' ? 'Not attending' : item.attendance === 'selected' ? 'Your choice' : item.kind === 'meeting' ? 'Meeting' : 'Task'}
+                      </Badge>
+                    </div>
+                    {item.attendance === 'not_attending' ? <p className="mt-2 text-xs text-text-subtle">Your plan reflects the other meeting. This Outlook invitation has not been changed.</p> : null}
+                    {item.linkedNote ? <button type="button" className="mt-2 flex items-center gap-2 text-xs text-brand-600 dark:text-brand-300" onClick={() => openNote(item.linkedNote!.id)}>
+                      <NoteIcon className="h-3.5 w-3.5" />{item.linkedNote.title}
+                    </button> : null}
+                  </div>
+                </li>)}
+              </ol>}
+          </Card>
+        </section>
+
+        {eveningBrief || Number(formatInTimeZone(now, timezone, 'H')) >= 16 ? <section className="mt-6"><SavedBriefCard brief={eveningBrief} loading={briefsLoading} evening /></section> : null}
+      </div>
       {selectedTask ? <TaskDetailModal task={selectedTask} onClose={() => setSelectedTaskId(null)} /> : null}
     </div>
   );

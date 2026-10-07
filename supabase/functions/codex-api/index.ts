@@ -12,6 +12,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { refreshOutlookCalendar, type CalendarSyncResult } from '../_shared/outlookCalendar.ts';
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { localDateString } from '../_shared/datetime.ts';
+import { mergeBriefStats, parseDayPlan } from '../_shared/dayPlan.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -889,7 +890,6 @@ async function mutate(
     }
     if (!briefDate) return { ok: false, kind, error: 'brief.brief_date must be YYYY-MM-DD' };
     if (!body || body.length > 20_000) return { ok: false, kind, error: 'brief.body must be 1–20,000 characters' };
-    const stats = isRecord(source.stats) ? source.stats : {};
     const { data: existing, error: readError } = await admin
       .from('agent_briefs')
       .select('*')
@@ -898,6 +898,30 @@ async function mutate(
       .eq('brief_date', briefDate)
       .maybeSingle();
     if (readError) return { ok: false, kind, error: readError.message };
+    let stats: JsonRecord;
+    try {
+      stats = mergeBriefStats(existing?.stats, source.stats);
+    } catch (error) {
+      return { ok: false, kind, error: error instanceof Error ? error.message : 'Invalid day plan' };
+    }
+    // New references must belong to this workspace. Preserved decisions are
+    // revalidated against current occurrence snapshots by the read model.
+    if (isRecord(source.stats) && isRecord(source.stats.dayPlan)) {
+      const plan = parseDayPlan(stats.dayPlan);
+      const eventIds = [...new Set(plan.meetingChoices.flatMap((choice) => choice.meetings.map((meeting) => meeting.eventId)))];
+      if (eventIds.length) {
+        const { data: owned, error } = await admin.from('events').select('id')
+          .eq('user_id', userId).is('outlook_cancelled_at', null).in('id', eventIds);
+        if (error) return { ok: false, kind, error: error.message };
+        if ((owned ?? []).length !== eventIds.length) return { ok: false, kind, error: 'day plan contains an unknown or cancelled meeting' };
+      }
+      const taskIds = [...new Set(plan.questions.flatMap((question) => question.taskId ? [question.taskId] : []))];
+      if (taskIds.length) {
+        const { data: owned, error } = await admin.from('tasks').select('id').eq('user_id', userId).in('id', taskIds);
+        if (error) return { ok: false, kind, error: error.message };
+        if ((owned ?? []).length !== taskIds.length) return { ok: false, kind, error: 'day plan contains an unknown task' };
+      }
+    }
     const payload = {
       user_id: userId,
       run_id: runId,
@@ -1026,6 +1050,7 @@ async function buildContext(admin: SupabaseClient, userId: string, calendarSync:
     workstreams: workstreamsRes.data ?? [],
     noteWorkstreams: noteWorkstreamsRes.data ?? [],
     recentBriefs: briefsRes.data ?? [],
+    dayPlan: parseDayPlan((briefsRes.data ?? []).find((brief) => brief.kind === 'morning' && brief.brief_date === today)?.stats?.dayPlan),
     recentCodexActions: actionsRes.data ?? [],
   };
 }

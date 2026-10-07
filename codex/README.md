@@ -237,3 +237,36 @@ The run should finish with a short conversational summary of what changed and
 which uncertainties, if any, need the owner's input. Reruns are safe because the
 briefing store is keyed by user, kind, and date, while focus reordering replaces
 the current plan and every mutation is audited.
+
+### Save answers in the daily plan
+
+Today leads with the first active item in `profiles.focus_queue`, not a second
+backlog ranking. The separate Watchouts sidebar is removed. Real deadlines
+remain visible through Work; overdue records are not automatically today's plan.
+
+Use the current morning brief's `stats.dayPlan` for structured decisions shared
+with the home screen and `get_workspace_context`. To record a calendar choice,
+write `meetingChoices: [{ meetings: [{eventId,title,startAt,endAt},
+{eventId,title,startAt,endAt}], selectedEventId }]`. Copy the exact conflicting
+occurrence snapshots from context (end = start + duration). This records the
+owner's attendance intent, not a cancellation or Outlook edit. The app stops
+asking only while both snapshots still match; schedule or title changes
+invalidate the answer. Other invites stay visible as "Not attending".
+
+`questions` contains at most three `{id,prompt,taskId?,status}` records, with
+status `open` or `resolved`. Capture only concrete, materially relevant gaps;
+resolve the stable ID after the owner answers and preserve confirmed task
+context. Do not reopen unchanged answered questions or deferred scope. The
+home screen shows one unresolved question at a time, answered in Codex.
+
+`brief_write` merges stats and preserves omitted dayPlan fields on reruns.
+Use an explicit empty array to clear one field. All writes use the existing
+audited brief action and Undo contract. No database migration is required;
+deploy the frontend, `codex-api`, and `executive-assistant-mcp` together and
+refresh tool discovery. Verify with `npm run test:plan`.
+
+If the agent's sandbox cannot write Git metadata, the owner can run
+`codex/deploy-saved-plan.ps1` from normal PowerShell after explicit deployment
+approval. It stages only this change's listed files, refuses an existing staged
+index or newer remote main, and stops on errors. A successful push starts the
+existing Vercel/GitHub deployments; it does not itself establish they succeeded.

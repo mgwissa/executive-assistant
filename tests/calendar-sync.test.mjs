@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { PGlite } from '@electric-sql/pglite';
 import { actionKindMeta, planUndo } from '../src/lib/agentDesk.ts';
 import { dedupeOccurrences, generateOccurrences } from '../src/lib/recurrence.ts';
+import { parseDayPlan } from '../supabase/functions/_shared/dayPlan.ts';
 
 // Execute the actual Edge helper under Node; translate only Deno's import URLs.
 const source = await readFile(new URL('../supabase/functions/_shared/outlookCalendar.ts', import.meta.url), 'utf8');
@@ -281,7 +282,7 @@ function contextHandler({ syncStatus = 'synced', eventsError = false, validUser 
     },
   });
   vm.runInNewContext(edgeJs, {
-    Deno: { env: { get: () => 'test-config' }, serve: fn => {handler = fn;} }, createClient, Response, atob,
+    Deno: { env: { get: () => 'test-config' }, serve: fn => {handler = fn;} }, createClient, Response, atob, parseDayPlan,
     localDateString: () => '2026-09-21',
     refreshOutlookCalendar: async (_admin, owner, principal) => {
       assert.equal(owner,user); assert.equal(principal.connectionId,connection);

@@ -238,7 +238,7 @@ function workScore(w: UnifiedWork, todayIso: string): number {
 function toUnifiedWork(tasks: Task[], actionItems: ActionItem[], todayIso: string): UnifiedWork[] {
   const out: UnifiedWork[] = [];
   for (const t of tasks) {
-    if (t.done) continue;
+    if (t.done || t.waiting_on?.trim()) continue;
     const priority = (t.priority as TaskPriority) ?? 'normal';
     const relevant =
       isDueTodayOrOverdue(t.due_date, todayIso) ||
@@ -362,7 +362,7 @@ export function generateDirective(input: DirectiveInput): DirectiveReport {
   const timedBlocks: Array<{ start: Date; end: Date; work: UnifiedWork }> = [];
   for (const w of work) {
     if (w.kind !== 'task' || !w.dueDate || !w.dueTime) continue;
-    if (w.dueDate !== todayIso && !isOverdue(w.dueDate, todayIso)) continue;
+    if (w.dueDate !== todayIso) continue;
     const start = zonedInstant(w.dueDate, w.dueTime, tz);
     const blockMins = workMinutesForItem('task', w.taskId, input.tasks);
     const end = addMinutes(start, blockMins);

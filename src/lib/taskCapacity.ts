@@ -74,12 +74,27 @@ export function computeCapacitySnapshot(params: {
 
   let meetingMinutes = 0;
   let scheduledWorkMinutes = 0;
+  const meetings = timeline.filter((e) => e.kind === 'meeting' && e.end > now)
+    .map((e) => ({ start: Math.max(e.start.getTime(), now.getTime()), end: Math.min(e.end.getTime(), dayEnd.getTime()) }))
+    .filter((e) => e.end > e.start).sort((a, b) => a.start - b.start);
+  let coveredUntil = now.getTime();
+  for (const meeting of meetings) {
+    meetingMinutes += Math.max(0, meeting.end - Math.max(meeting.start, coveredUntil)) / 60_000;
+    coveredUntil = Math.max(coveredUntil, meeting.end);
+  }
+  const scheduledRefs = new Set<string>();
+  const refKey = (ref: WorkItemRef) => ref.kind === 'task' ? `task:${ref.taskId}` : `action:${ref.noteId}:${ref.line}`;
 
   for (const e of timeline) {
     if (e.end <= now) continue;
     const mins = entryMinutes(e, now, dayEnd);
-    if (e.kind === 'meeting') meetingMinutes += mins;
-    else if (e.kind === 'task' || e.kind === 'action' || e.kind === 'suggested') {
+    if (mins === 0) continue;
+    if (e.kind === 'task' || e.kind === 'action' || e.kind === 'suggested') {
+      if (e.ref) {
+        const key = refKey(e.ref);
+        if (scheduledRefs.has(key)) continue;
+        scheduledRefs.add(key);
+      }
       scheduledWorkMinutes += mins;
     }
   }
@@ -89,6 +104,8 @@ export function computeCapacitySnapshot(params: {
 
   for (const g of gaps) {
     if (g.kind !== 'untimed_today') continue;
+    if (g.ref && scheduledRefs.has(refKey(g.ref))) continue;
+    if (g.ref) scheduledRefs.add(refKey(g.ref));
     const mins = estimateForRef(g.ref, tasks);
     unscheduledWorkMinutes += mins;
     if (g.ref?.kind === 'task') {

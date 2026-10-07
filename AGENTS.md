@@ -44,7 +44,7 @@ src/
   App.tsx              Auth gate + route table + Shell layout
   main.tsx             Vite entry
   components/          UI components (one file per concern)
-    TodayPage.tsx       Routed home view: compact morning/evening Codex briefs, actual schedule, linked note context, focus windows, advisory concerns
+    TodayPage.tsx       Routed home view: saved next action, one unanswered question, briefs, focus queue, verified schedule/windows
     WorkPage.tsx        Routed commitments view: focus, deadlines, reviews, waiting, unscheduled, note items
     TaskQuickAddForm.tsx  Shared task create form (Tasks, Today, legacy Dashboard/Assistant)
     ExecutiveCommandCenter.tsx  NOW / gaps / timeline UI when assistant addon is on
@@ -81,7 +81,7 @@ Defined in `src/lib/routes.ts` (single source). All routes sit under a `<Shell>`
 
 | Path | View | Notes |
 |------|------|-------|
-| `/dashboard` | `TodayPage` | Primary daily view: compact persisted Codex morning brief, after-4pm evening closeout, chronological meetings and timed tasks, occurrence-linked note context, live focus windows, and up to three ranked advisory concerns. The legacy `Dashboard` remains in code for comparison but is not routed. |
+| `/dashboard` | `TodayPage` | Primary daily view: one saved next action, at most one unresolved planning question, persisted brief, remaining saved focus queue, and chronological schedule with occurrence-linked notes. Free windows require a verified complete calendar. No independent Watchouts sidebar or automatic overdue/review fallback. The legacy `Dashboard` remains in code but is not routed. |
 | `/notes` | `NotesView` (Sidebar + Editor) | Notes 2.0 adds Scratch and meeting-triage inboxes plus a workstream lens over the preserved Notebook→Section→Note library. Scratch notes keep their physical location but stay out of durable Library/Workstream views until promoted; completed linked notes remain in Meeting inbox until triaged. |
 | `/activity` | `AgentDeskPage` (activity-only mode) | Core Codex audit log: grouped writes, rationale/effects, exact before/after data, seen state, and safe undo. Always available; not gated by the legacy Agent addon. |
 | `/tasks` | `WorkPage` | Agent-first commitment buckets: active focus, real deadlines, review queue, waiting, unscheduled work, note action items, and a collapsible completed-work log with preserved context and reopen. Legacy `Tasks` remains in code but is not routed. |
@@ -158,9 +158,10 @@ Conventions:
 
 The agent-first operational model separates **real deadlines** (`due_date`) from
 **review dates** (`review_date`). Deadlines mean an external consequence;
-review dates mean “bring this back for a decision.” Today ranks an explicit
-`profiles.focus_queue` first, then real deadlines, then review dates that have
-arrived, and explains “why now” for each item. Future review dates stay quiet.
+review dates mean “bring this back for a decision.” Today shows only the explicit
+`profiles.focus_queue` and explains “why now” for each item; it does not turn the
+overdue/review backlog into today's planned workload. Real deadline counts remain
+visible with a link to Work. Future review dates stay quiet.
 `WorkPage` is the full operational inventory and lets the owner manually
 override `focus_queue`; Codex can manage the same queue through the bridge.
 Codex-authored stack entries may include `reason`, `nextAction`, and `mode`
@@ -215,7 +216,22 @@ Today path.
 
 **Deferred bottom-of-roadmap:** whole-day personal context. Start with busy-only personal calendar awareness, then add explicit work/personal, attendance, flexibility, and privacy controls before allowing Codex to manage personal details.
 
-**Desktop Codex sync:** `useCodexSync` checks the newest `agent_actions` row every 30 seconds while the app is visible and immediately when the tab regains focus. New audited writes refresh `useAgentStore` plus only the operational stores implicated by the action kind (tasks, notes, or profile focus queue). The first check seeds a cursor and does not reload existing data; overlapping focus/visibility checks are deduped.
+**Desktop Codex sync:** `useCodexSync` checks the newest `agent_actions` row every 30 seconds while the app is visible and immediately when the tab regains focus. The first check refreshes operational stores; later audited writes refresh only implicated stores. Advance the cursor only after successful refreshes, so failures retry rather than silently losing updates. Overlapping focus/visibility checks are deduped.
+
+**Shared saved day plan (2026-10):** `profiles.focus_queue` supplies ranked work;
+today's morning `agent_briefs.stats.dayPlan` supplies explicit attendance choices
+and up to three stable-id context questions. Shared validation is in
+`supabase/functions/_shared/dayPlan.ts`. A choice records both exact occurrence
+snapshots (event id, title, start, end) and the selected event id; it is attendance
+intent only and never changes Outlook invitations. Changed/missing/cancelled
+occurrences invalidate the old answer. `brief_write` preserves omitted decision
+fields and identical resolved questions; explicit `[]` clears a decision field.
+Use audited `brief_write`, not an unaudited profile write or prose-only answer.
+Today surfaces at most one unresolved question and ignores completed/waiting
+task questions. No new migration. Deploy frontend, `codex-api`, and
+`executive-assistant-mcp` together, then refresh tool discovery. Verify with
+`npm run test:plan`. `plan-preview.html` is a development-only sample fixture:
+no production account or live writes, not included in the default Vite build.
 
 ## Agent audit trail and legacy implementation
 
@@ -330,8 +346,10 @@ includes recent actions so the agent can see what it already did.
 
 ### Memory is the only continuity
 
-Agent runs are ephemeral and start with no memory of previous runs.
-`agent_memory` is the sole carry-forward. **Undone actions are the highest-value
+Agent runs are ephemeral. `agent_memory` carries durable assistant facts;
+workspace context carries saved tasks, notes, focus, briefs, and day-plan answers.
+Read those records rather than assuming the last conversation is the plan.
+**Undone actions are the highest-value
 signal available** — the playbook instructs the agent to check for them at the
 start of every run and record the correction.
 
@@ -391,7 +409,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 
 - `time` — TimeTrackingPage
 - `routine` — WeeklyRoutinePage (editable weekly rhythm). Built-in guide in `lib/weeklyRoutineGuide.ts`; user overrides in `profiles.weekly_routine` via `lib/weeklyRoutineTemplate.ts`. Progress in `routine_item_states` keyed by `template_version`.
-- `assistant` — Hidden optional `AssistantPage` + legacy **Executive Command Center**. The routed `/dashboard` now uses `TodayPage` regardless of this addon, reusing the pure directive/capacity engines only for advisory evidence.
+- `assistant` — Hidden optional `AssistantPage` + legacy **Executive Command Center**. The routed `/dashboard` uses the shared saved-plan `TodayPage` regardless of this addon; it no longer runs the independent directive/capacity warning engine.
 - `agent` — Hidden legacy AgentDeskPage (`/agent`). The former pre-MCP schedule is removed; see **Agent audit trail** below.
 - `memory` — MemoryPage (`/memory`). RAG over `memory_chunks` via `memory-sync` + `memory-ask` Edge Functions. OpenAI embeddings + chat; cited answers link back to notes/tasks/calendar.
 
@@ -468,7 +486,7 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Prep blocks:** meetings with `prep_required` get a 15-min suggested block on the timeline (`meetingLifecycle.PREP_BLOCK_MINUTES`) unless an open linked task exists; prep gaps suggest slot time at block start.
 - **Linked tasks:** `tasks.linked_event_id` ties prep/follow-up tasks to calendar events; create via debrief modal, schedule follow-up modal, gap actions, or `EventLinkedTasks` in event edit.
 - **Delegation chase:** idle days use `last_chased_at` when set, else `updated_at`; gaps fire at 5+ days (warning) / 14+ (critical). Snooze writes `chase_snoozed_until` (+7d). “Chase again” only updates `last_chased_at` so staleness resets without touching task content.
-- **Task estimates:** `estimated_minutes` null → 30m default in capacity/timeline; explicit values size timed blocks and unscheduled work debt. Overcommit gap fires when planned work exceeds remaining time until 5pm by ≥30m.
+- **Task estimates (legacy Assistant):** `estimated_minutes` null → 30m default. Capacity unions overlapping meeting intervals and counts a suggested task slot only once, not again as an untimed gap. Waiting work and old timed deadlines do not become today's timeline. The primary Today view uses the saved focus queue instead of a speculative capacity warning.
 - **Focus stack (Phase E slice 1):** `ExecutiveFocusStack` on the dashboard fills the gap below NOW/gaps. Merges `profiles.focus_queue` (user order + `snoozedUntil` hide-until dates) with `buildPrioritizedWork()` (critical/urgent/due-today). Reorder teaches priority; **pin to #1** (rank badge or pin control) or **Tomorrow** sets `due_date` to tomorrow, clears `due_time`, and snoozes the item off today's stack. Same **Tomorrow** action appears on `untimed_today` gaps in **I need from you**.
 - **Decision queue (Phase E):** `ExecutiveDecisionQueue` / `DecisionInsightCard` (shared with `/assistant` Decisions tab) surfaces top `decisions` insights from `generateBriefing()`. Stale note action items get **one row each** (`actionTarget: { kind: 'action', noteId, line }`). **Do today** (primary) sets due today, pins to focus stack #1 (`commitRefToFocusToday`), clears snooze, bumps priority for reschedule offenders; works for tasks and note action lines via `lib/commitWorkToday.ts`.
 - **Evening close-out (Phase F):** `ExecutiveEveningCloseout` activates when `directive.now.kind === 'wind_down'` (after 5pm). Shows done-today count, carry-forward list, tomorrow #1 from focus stack, and **Push rest to tomorrow** bulk action.

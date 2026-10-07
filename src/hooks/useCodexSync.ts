@@ -62,56 +62,62 @@ export function useCodexSync(userId: string | undefined) {
       const recentActions = (data ?? []) as RecentAction[];
       const newestActionId = recentActions[0]?.id ?? null;
 
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-        latestActionIdRef.current = newestActionId;
-        return;
-      }
-
-      if (newestActionId === latestActionIdRef.current) return;
+      const firstCheck = !initializedRef.current;
+      if (!firstCheck && newestActionId === latestActionIdRef.current) return;
 
       const previousIndex = latestActionIdRef.current
         ? recentActions.findIndex((action) => action.id === latestActionIdRef.current)
         : -1;
-      const missedCursor = latestActionIdRef.current !== null && previousIndex === -1;
+      const missedCursor = firstCheck || latestActionIdRef.current !== null && previousIndex === -1;
       const changedActions = previousIndex >= 0
         ? recentActions.slice(0, previousIndex)
         : recentActions;
       const changedKinds = new Set(changedActions.map((action) => action.kind));
-
-      latestActionIdRef.current = newestActionId;
+      const refreshTasks = missedCursor || [...changedKinds].some((kind) => TASK_ACTIONS.has(kind));
+      const refreshNotes = missedCursor || ['note_create', 'note_append', 'note_triage', 'note_scratch', 'calendar_sync', 'notebook_merge'].some((kind) => changedKinds.has(kind));
+      const refreshNotebooks = missedCursor || changedKinds.has('notebook_merge');
+      const refreshWorkstreams = missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream');
+      const refreshProfile = missedCursor || changedKinds.has('focus_reorder') || changedKinds.has('calendar_sync');
+      const refreshCalendar = missedCursor || changedKinds.has('calendar_sync');
 
       const refreshes: Promise<void>[] = [useAgentStore.getState().fetchAll(userId)];
-      if (missedCursor || [...changedKinds].some((kind) => TASK_ACTIONS.has(kind))) {
+      if (refreshTasks) {
         refreshes.push(useTasksStore.getState().fetchAll(userId));
       }
-      if (
-        missedCursor ||
-        changedKinds.has('note_create') ||
-        changedKinds.has('note_append') ||
-        changedKinds.has('note_triage') ||
-        changedKinds.has('note_scratch') ||
-        changedKinds.has('calendar_sync') ||
-        changedKinds.has('notebook_merge')
-      ) {
+      if (refreshNotes) {
         refreshes.push(useNotesStore.getState().fetchAll(userId));
       }
-      if (missedCursor || changedKinds.has('notebook_merge')) {
+      if (refreshNotebooks) {
         refreshes.push(useNotebooksStore.getState().fetchAll(userId));
       }
-      if (missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream')) {
+      if (refreshWorkstreams) {
         refreshes.push(useWorkstreamsStore.getState().fetchAll(userId));
       }
-      if (missedCursor || changedKinds.has('focus_reorder') || changedKinds.has('calendar_sync')) {
+      if (refreshProfile) {
         refreshes.push(useProfileStore.getState().fetchProfile(userId));
       }
-      if (missedCursor || changedKinds.has('calendar_sync')) {
+      if (refreshCalendar) {
         const { fromIso, toIso } = eventsFetchIsoRange(useProfileStore.getState().profile?.timezone);
         refreshes.push(useEventsStore.getState().fetchRange(userId, fromIso, toIso));
         refreshes.push(useMeetingDebriefStore.getState().fetchRange(userId, fromIso, toIso));
       }
 
       await Promise.all(refreshes);
+      const refreshError = useAgentStore.getState().error
+        || (refreshTasks ? useTasksStore.getState().error : null)
+        || (refreshNotes ? useNotesStore.getState().error : null)
+        || (refreshNotebooks ? useNotebooksStore.getState().error : null)
+        || (refreshWorkstreams ? useWorkstreamsStore.getState().error : null)
+        || (refreshProfile ? useProfileStore.getState().error : null)
+        || (refreshCalendar ? useEventsStore.getState().error || useMeetingDebriefStore.getState().error : null);
+      if (refreshError) {
+        console.warn('Codex sync refresh failed; keeping the cursor for retry:', refreshError);
+        return;
+      }
+      initializedRef.current = true;
+      latestActionIdRef.current = newestActionId;
+    } catch (error) {
+      console.warn('Codex sync refresh failed; will retry:', error);
     } finally {
       checkingRef.current = false;
     }

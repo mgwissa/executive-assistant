@@ -12,11 +12,13 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Expose-Headers': 'WWW-Authenticate',
 };
 
+const PLAN_CAPTURE_GUIDANCE = ' The saved focus queue and context.dayPlan are the daily plan. Persist explicit meeting choices and context questions with brief_write in today\'s morning brief.stats.dayPlan, not just prose. dayPlan.meetingChoices contains {meetings: [{eventId,title,startAt,endAt}, {eventId,title,startAt,endAt}], selectedEventId}; use exact occurrence snapshots. This records attendance intent only, never modifies Outlook invitations. dayPlan.questions contains at most three {id,prompt,taskId?,status: "open"|"resolved"} entries. Use stable question IDs; mark answered questions resolved and save confirmed task context. Do not repeat resolved questions unless relevant facts change. Omitted decision fields survive briefing reruns; [] explicitly clears a field. Keep declined or deferred work out of the focus queue and never treat overdue backlog as today\'s planned workload.';
+
 const TOOLS = [
   {
     name: 'get_workspace_context',
     title: 'Get executive-assistant context',
-    description: 'Refresh the published Outlook calendar, then read the current user\'s schedule, tasks, focus plan, notes, briefs, audited activity, and due check-ins. Calendar refresh requires workspace:write permission; read-only connections receive saved events. Check calendarSync.status, lastSyncedAt, coverage, and calendarWindow.truncated before planning: an unverified or incomplete calendar never means free time. Call this first for a morning conversation, including "good morning".',
+    description: 'Refresh the published Outlook calendar, then read the current user\'s schedule, tasks, focus plan, notes, briefs, audited activity, and due check-ins. Calendar refresh requires workspace:write permission; read-only connections receive saved events. Check calendarSync.status, lastSyncedAt, coverage, and calendarWindow.truncated before planning: an unverified or incomplete calendar never means free time. Call this first for a morning conversation, including "good morning".' + PLAN_CAPTURE_GUIDANCE,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -37,7 +39,7 @@ const TOOLS = [
   {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete including explicit priority changes, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. Priority is independent of deadlines, review dates, and focus order; never automatically escalate it. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks or rewrite existing note content.',
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete including explicit priority changes, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. Priority is independent of deadlines, review dates, and focus order; never automatically escalate it. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks or rewrite existing note content.' + PLAN_CAPTURE_GUIDANCE,
     inputSchema: {
       type: 'object',
       properties: {
@@ -82,6 +84,18 @@ const TOOLS = [
               workstreamId: { type: 'string', format: 'uuid' },
               assigned: { type: 'boolean' },
               dedupeKey: { type: 'string' },
+              brief: {
+                type: 'object',
+                description: 'For brief_write: kind, brief_date, body, and stats. Put saved decisions in stats.dayPlan; omitted decisions are preserved.',
+                properties: {
+                  kind: { type: 'string', enum: ['morning', 'evening'] },
+                  brief_date: { type: 'string', format: 'date' },
+                  body: { type: 'string', minLength: 1, maxLength: 20000 },
+                  stats: { type: 'object', additionalProperties: true },
+                },
+                required: ['kind', 'brief_date', 'body'],
+                additionalProperties: false,
+              },
             },
             additionalProperties: true,
           },
@@ -198,7 +212,7 @@ Deno.serve(async (req) => {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'Executive Assistant', version: '1.0.0' },
-      instructions: 'Use get_workspace_context to understand the real schedule and work context. It first attempts an audited Outlook refresh when the connection has write access. Inspect calendarSync and calendarWindow.truncated: stale, missing, failed, or incomplete calendar data never establishes free time. When the user begins a morning conversation, even with only "good morning", call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Flag calendar uncertainty in the plan. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.',
+      instructions: 'Use get_workspace_context to understand the real schedule and work context. It first attempts an audited Outlook refresh when the connection has write access. Inspect calendarSync and calendarWindow.truncated: stale, missing, failed, or incomplete calendar data never establishes free time. When the user begins a morning conversation, even with only "good morning", call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Flag calendar uncertainty in the plan. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.' + PLAN_CAPTURE_GUIDANCE,
     });
   }
   if (method === 'ping') return rpcResult(id, {});

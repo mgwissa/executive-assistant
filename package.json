@@ -11,6 +11,7 @@
     "test:tasks": "node --experimental-strip-types --test tests/task-actions.test.mjs",
     "test:workstreams": "node --experimental-strip-types --test tests/workstream-actions.test.mjs",
     "test:calendar": "node --experimental-strip-types --test tests/calendar-sync.test.mjs",
+    "test:plan": "node --experimental-strip-types --test tests/day-plan.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
