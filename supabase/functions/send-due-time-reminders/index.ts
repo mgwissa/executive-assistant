@@ -83,6 +83,7 @@ async function processProfile(
     .select('id, title, due_date, due_time')
     .eq('user_id', profile.user_id)
     .eq('done', false)
+    .is('deleted_at', null)
     .eq('due_date', todayLocal)
     .not('due_time', 'is', null)
     .is('reminder_sent_at', null);
@@ -131,6 +132,7 @@ async function processProfile(
       .from('tasks')
       .update({ reminder_sent_at: now.toISOString() })
       .eq('id', task.id)
+      .is('deleted_at', null)
       .is('reminder_sent_at', null);
     if (markErr) {
       console.error(`reminder mark failed task ${task.id}:`, markErr.message);

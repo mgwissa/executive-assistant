@@ -7,6 +7,8 @@ import { parsePriorityInTitle, parsePriorityPrefix } from '../lib/priority';
 import type { TaskPriority } from '../lib/priority';
 import type { Task } from '../types';
 import { randomUUID } from '../lib/uuid';
+import { sameTaskForTrash } from '../lib/taskTrash';
+import { useProfileStore } from './useProfileStore';
 
 export type CreateTaskOptions = {
   priority?: TaskPriority;
@@ -19,6 +21,7 @@ export type CreateTaskOptions = {
 
 type TasksState = {
   tasks: Task[];
+  trashedTasks: Task[];
   loading: boolean;
   error: string | null;
 
@@ -38,14 +41,17 @@ type TasksState = {
   snoozeChase: (id: string, untilIso: string) => Promise<void>;
   recordChase: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<boolean>;
+  restoreTask: (id: string) => Promise<boolean>;
   clear: () => void;
 };
 
 const DESC_DEBOUNCE_MS = 500;
 const descTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const descWrites = new Map<string, Promise<void>>();
 
 export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
+  trashedTasks: [],
   loading: false,
   error: null,
 
@@ -61,7 +67,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set({ loading: false, error: error.message });
       return;
     }
-    set({ tasks: data ?? [], loading: false });
+    set({
+      tasks: (data ?? []).filter((task) => !task.deleted_at),
+      trashedTasks: (data ?? []).filter((task) => !!task.deleted_at)
+        .sort((a, b) => (b.deleted_at ?? '').localeCompare(a.deleted_at ?? '')),
+      loading: false,
+    });
   },
 
   createTask: async (userId, title, options) => {
@@ -88,6 +99,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       user_id: userId,
       title: cleanTitle,
       done: false,
+      deleted_at: null,
+      restored_at: null,
       priority,
       priority_set_at: now,
       due_date,
@@ -256,15 +269,17 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (existing) clearTimeout(existing);
     descTimers.set(
       id,
-      setTimeout(async () => {
+      setTimeout(() => {
         descTimers.delete(id);
         if (id.startsWith('tmp-')) return;
-        const { error } = await supabase
-          .from('tasks')
-          .update({ description })
-          .eq('id', id);
-        if (error) set({ error: error.message });
-        else scheduleMemoryIndex('task', id);
+        const write = (async () => {
+          const { error } = await supabase.from('tasks').update({ description })
+            .eq('id', id).is('deleted_at', null);
+          if (error) set({ error: error.message });
+          else scheduleMemoryIndex('task', id);
+        })();
+        descWrites.set(id, write);
+        void write.finally(() => { if (descWrites.get(id) === write) descWrites.delete(id); });
       }, DESC_DEBOUNCE_MS),
     );
   },
@@ -392,22 +407,55 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   deleteTask: async (id) => {
     const task = get().tasks.find((t) => t.id === id);
+    if (!task) return false;
     const label = task?.title?.trim();
-    const prompt = label ? `Delete “${label}”?` : 'Delete this task?';
+    const prompt = `Move “${label}” to Trash? You can restore it from Work. Nothing is permanently deleted.`;
     if (!window.confirm(prompt)) return false;
-
-    const prev = get().tasks;
-    set({ tasks: prev.filter((t) => t.id !== id) });
-    if (id.startsWith('tmp-')) return true;
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (descTimers.has(id)) await new Promise((resolve) => setTimeout(resolve, DESC_DEBOUNCE_MS + 50));
+    if (id.startsWith('tmp-') || descTimers.has(id)) {
+      set({ error: 'Wait for this task to finish saving, then try again.' });
+      return false;
+    }
+    await descWrites.get(id);
+    const { data: stored, error: readError } = await supabase.from('tasks').select('*')
+      .eq('id', id).eq('user_id', task.user_id).maybeSingle();
+    const visible = get().tasks.find((t) => t.id === id);
+    if (readError || !stored || !visible || !sameTaskForTrash(visible, stored)) {
+      await get().fetchAll(task.user_id);
+      set({ error: readError?.message ?? 'Task changed or is still saving. Review its refreshed contents before moving it to Trash.' });
+      return false;
+    }
+    const { error } = await supabase.rpc('set_task_trashed', {
+      p_task_id: id, p_trashed: true, p_expected_updated_at: stored.updated_at,
+    });
     if (error) {
-      set({ tasks: prev, error: error.message });
+      set({ error: error.message });
       return false;
     }
     scheduleMemoryDelete('task', id);
+    await Promise.all([get().fetchAll(task.user_id), useProfileStore.getState().fetchProfile(task.user_id)]);
     return true;
   },
 
-  clear: () => set({ tasks: [], loading: false, error: null }),
+  restoreTask: async (id) => {
+    const task = get().trashedTasks.find((t) => t.id === id);
+    if (!task) return false;
+    const { error } = await supabase.rpc('set_task_trashed', {
+      p_task_id: id, p_trashed: false, p_expected_updated_at: task.updated_at,
+    });
+    if (error) {
+      set({ error: error.message });
+      return false;
+    }
+    scheduleMemoryIndex('task', id);
+    await Promise.all([get().fetchAll(task.user_id), useProfileStore.getState().fetchProfile(task.user_id)]);
+    return true;
+  },
+
+  clear: () => {
+    for (const timer of descTimers.values()) clearTimeout(timer);
+    descTimers.clear();
+    set({ tasks: [], trashedTasks: [], loading: false, error: null });
+  },
 }));
 

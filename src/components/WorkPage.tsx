@@ -69,6 +69,9 @@ export function WorkPage() {
   const profile = useProfileStore((state) => state.profile);
   const updateProfile = useProfileStore((state) => state.updateProfile);
   const tasks = useTasksStore((state) => state.tasks);
+  const trashedTasks = useTasksStore((state) => state.trashedTasks);
+  const restoreTask = useTasksStore((state) => state.restoreTask);
+  const taskError = useTasksStore((state) => state.error);
   const tasksLoading = useTasksStore((state) => state.loading);
   const createTask = useTasksStore((state) => state.createTask);
   const toggleDone = useTasksStore((state) => state.toggleDone);
@@ -77,6 +80,7 @@ export function WorkPage() {
   const setActiveNote = useNotesStore((state) => state.setActive);
   const updateNote = useNotesStore((state) => state.updateNote);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const timezone = profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const todayIso = formatInTimeZone(new Date(), timezone, 'yyyy-MM-dd');
@@ -183,6 +187,7 @@ export function WorkPage() {
         </Card>
 
         <div className="space-y-8">
+          {taskError ? <p role="alert" className="text-sm text-red-600 dark:text-red-400">{taskError}</p> : null}
           {buckets.map((bucket) => (
             <WorkSection
               key={bucket.id}
@@ -233,6 +238,29 @@ export function WorkPage() {
             onOpen={setSelectedTaskId}
             onReopen={(id) => void toggleDone(id, false)}
           />
+          <details className="rounded-xl border border-border bg-surface-raised p-4">
+            <summary className="cursor-pointer font-semibold text-text">Trash ({trashedTasks.length})</summary>
+            <p className="mt-2 text-sm text-text-muted">Tasks here are excluded from work, reminders and search. Restore keeps their context and links, without adding them to Focus. No automatic purge is enabled.</p>
+            {trashedTasks.length === 0 ? <p className="mt-4 text-sm text-text-subtle">Trash is empty.</p> : (
+              <ul className="mt-4 divide-y divide-border">
+                {trashedTasks.map((task) => (
+                  <li key={task.id} className="flex items-start justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-text">{task.title}</p>
+                      <p className="mt-1 text-xs text-text-muted">Moved to Trash {task.deleted_at ? formatInTimeZone(task.deleted_at, timezone, 'MMM d, yyyy · h:mm a') : ''}{task.done ? ' · Previously completed' : ''}</p>
+                      {task.description ? <details className="mt-2 text-sm text-text-muted"><summary className="cursor-pointer">Preserved context</summary><p className="mt-2 whitespace-pre-wrap break-words">{task.description}</p></details> : null}
+                    </div>
+                    <button type="button" disabled={restoringId !== null} onClick={async () => {
+                      setRestoringId(task.id);
+                      try { await restoreTask(task.id); } finally { setRestoringId(null); }
+                    }} className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-sunken disabled:opacity-50" aria-label={`Restore ${task.title}`}>
+                      {restoringId === task.id ? 'Restoring…' : 'Restore'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
         </div>
       </div>
 

@@ -78,6 +78,8 @@ Supabase OAuth grant.
   note index and linked excerpts, briefings, and recent audited activity.
 - `search_notes`: performs a bounded search when the normal context does not
   contain enough detail.
+- `list_trashed_tasks`: explicit Trash review only; returns 50 owned task references
+  and a `nextOffset` while `hasMore` is true. Trash is not an active-work backlog.
 - `apply_workspace_actions`: creates/updates/completes tasks, reorders the focus
   queue, creates notes, appends explicitly approved context to existing notes,
   marks meeting notes triaged or reopened, moves ordinary notes into or out of
@@ -89,7 +91,7 @@ Every mutation creates an `agent_runs` row and an `agent_actions` row per
 applied change. Ordinary edits remain reversible. `notebook_merge` is the narrow
 exception: it preserves every section and note in the destination before it
 removes the empty private source notebook, but the source container is not
-automatically recreated by Undo. The endpoint cannot delete tasks or arbitrarily
+automatically recreated by Undo. The endpoint cannot permanently delete tasks or arbitrarily
 rewrite existing BlockNote documents. A `note_append` action
 accepts `noteId` and `content`; content may use headings, paragraphs, bullets,
 and numbered items. It preserves existing blocks and refuses concurrent edits.
@@ -105,6 +107,31 @@ For explicitly approved consolidation, `notebook_merge` requires exact
 `sourceNotebookId` and `destinationNotebookId` values returned by context. Both
 must be private notebooks owned by the authenticated user; shared notebooks and
 notebooks with active invites are refused.
+
+### Recoverable task deletion (migration 054)
+
+An explicit request to delete an unambiguously identified standalone task permits
+`task_delete` with `taskId`, the exact `expectedUpdatedAt` from fresh context, and
+a stable `dedupeKey`. This moves the row to Trash; it is not completion or permanent
+deletion. `task_restore` uses the same fields from `list_trashed_tasks`. Only one
+Trash/Restore action is allowed per request. Never infer cleanup from age or silently
+restore dropped work. No note, notebook, calendar, ADO or bulk-deletion API is added.
+
+Data, focus-reference removal, and the complete audit snapshot commit atomically
+through `apply_task_trash_action`. UI actions use owner-only `set_task_trashed`.
+Activity Undo uses `undo_agent_task_lifecycle_action` with current-state checks; a
+changed task is refused, not overwritten. Restore preserves IDs, context, dates and
+relationships, does not re-pin focus, and suppresses replay of past timed reminders.
+The lifecycle audit stores raw DB rows under `before.task` / `after.task`, alongside
+the associated `focus_queue` snapshots. Old permanent-deletion logs require manual
+recovery review, not blind reinsertion. No purge or retention expiry is enabled.
+
+Apply `2026-10-19_054_task_trash.sql` first. Then deploy the frontend, `codex-api`,
+`executive-assistant-mcp`, `memory-sync`, `send-daily-digest`,
+`send-due-time-reminders`, and `send-task-escalation`. Refresh MCP discovery.
+Normal task context and operational readers exclude Trash. The vector-search
+function also filters trashed tasks to guard against in-flight indexing.
+Run `npm run test:trash`, the existing test suites, lint, and build before release.
 
 ### Explicit task priority
 

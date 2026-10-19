@@ -37,9 +37,17 @@ const TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: 'list_trashed_tasks',
+    title: 'List recoverable task Trash',
+    description: 'Read up to 50 owned tasks in Trash, only when reviewing deletions or preparing an explicitly requested restore. Follow nextOffset while hasMore is true; concurrent Trash changes can shift pages. Do not treat these tasks as active work or restore them automatically. Normal workspace context excludes Trash.',
+    inputSchema: { type: 'object', properties: { offset: { type: 'integer', minimum: 0, maximum: 10000 } }, additionalProperties: false },
+    securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: 'apply_workspace_actions',
     title: 'Apply audited workspace changes',
-    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete including explicit priority changes, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. Priority is independent of deadlines, review dates, and focus order; never automatically escalate it. notebook_merge preserves every section and note before removing the empty source notebook. It cannot delete tasks or rewrite existing note content.' + PLAN_CAPTURE_GUIDANCE,
+    description: 'Apply one or more narrow, audited changes after agreeing them with the user. Supports task create/update/complete including explicit priority changes, task_delete (recoverable Trash only), task_restore, focus reorder, note creation, appending approved context, marking meeting notes triaged or reopened, moving ordinary notes into or out of Scratch, merging one private owned notebook into another, creating workstreams, assigning or unassigning notes to workstreams, and briefing writes. Trash/Restore require an explicit user request, exact taskId and expectedUpdatedAt from a fresh read; at most one lifecycle action per request. Ask if the target is ambiguous; never delete merely stale work or perform inferred bulk cleanup. Delete retains the task and links, atomically audits it, and removes focus references. Restore does not re-pin. Permanent deletion, purging, deletion of notes/notebooks/calendar/ADO items and arbitrary note rewrites are unsupported. Priority is independent of dates and focus; never automatically escalate it. notebook_merge preserves every section and note before removing the empty source notebook.' + PLAN_CAPTURE_GUIDANCE,
     inputSchema: {
       type: 'object',
       properties: {
@@ -55,6 +63,7 @@ const TOOLS = [
             properties: {
               kind: { type: 'string' },
               taskId: { type: 'string', format: 'uuid' },
+              expectedUpdatedAt: { type: 'string', format: 'date-time', description: 'Required for task_delete/task_restore: exact updated_at from a fresh workspace/Trash read. A changed version is refused; review it before retrying.' },
               task: {
                 type: 'object',
                 description: 'For task_create. Priority defaults to normal when omitted; set it only when explicitly requested.',
@@ -227,6 +236,8 @@ Deno.serve(async (req) => {
     payload = { action: 'context' };
   } else if (toolName === 'search_notes') {
     payload = { action: 'notes.search', query: args.query };
+  } else if (toolName === 'list_trashed_tasks') {
+    payload = { action: 'tasks.trash', offset: args.offset };
   } else if (toolName === 'apply_workspace_actions') {
     payload = { action: 'mutate', summary: args.summary, actions: args.actions };
   } else {

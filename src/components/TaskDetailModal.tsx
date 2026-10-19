@@ -40,6 +40,8 @@ function TaskDetailModalBody({
   const renameTask = useTasksStore((state) => state.renameTask);
   const toggleDone = useTasksStore((state) => state.toggleDone);
   const deleteTask = useTasksStore((state) => state.deleteTask);
+  const taskError = useTasksStore((state) => state.error);
+  const [trashing, setTrashing] = useState(false);
   const events = useEventsStore((s) => s.events);
   const profileTz = useProfileStore((s) => s.profile?.timezone);
 
@@ -257,20 +259,22 @@ function TaskDetailModalBody({
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                void deleteTask(t.id).then((deleted) => {
-                  if (deleted) onClose();
-                });
+              disabled={trashing}
+              onClick={async () => {
+                publishNotes();
+                setTrashing(true);
+                try { if (await deleteTask(t.id)) onClose(); } finally { setTrashing(false); }
               }}
               className="btn-ghost h-8 w-8 p-0 text-red-600 hover:bg-red-600/10 dark:text-red-300"
-              aria-label="Delete task"
-              title="Delete task"
+              aria-label="Move task to Trash"
+              title="Move task to Trash (recoverable)"
             >
               <TrashIcon className="h-4 w-4" />
             </button>
           </div>
         </div>
 
+        {taskError ? <p role="alert" className="px-6 py-2 text-sm text-red-600 dark:text-red-400">{taskError}</p> : null}
         <div className="space-y-2 border-b border-border px-6 py-4">
           <p className="text-sm font-medium text-text">Tags</p>
           <TaskTagEditor

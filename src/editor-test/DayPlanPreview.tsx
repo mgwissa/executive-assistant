@@ -15,7 +15,7 @@ if (!import.meta.env.DEV) throw new Error('The plan fixture is development-only.
 const timezone = 'America/New_York';
 const now = new Date().toISOString();
 const date = formatInTimeZone(new Date(), timezone, 'yyyy-MM-dd');
-const commonTask = { user_id: 'preview', done: false, priority: 'normal', priority_set_at: now,
+const commonTask = { user_id: 'preview', done: false, deleted_at: null, restored_at: null, priority: 'normal', priority_set_at: now,
   due_date: null, review_date: null, due_time: null, reminder_sent_at: null, linked_event_id: null,
   description: 'Sample task context only.', waiting_on: null, chase_snoozed_until: null, last_chased_at: null,
   estimated_minutes: null, tags: [], reschedule_count: 0, created_at: now, updated_at: now };

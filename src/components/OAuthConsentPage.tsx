@@ -109,7 +109,7 @@ export function OAuthConsentPage() {
                 <li>Create notes, append approved context, triage meeting notes, save briefings, and consolidate private notebooks after you explicitly approve it.</li>
                 <li>Create workstreams and add or remove note links without changing the notes themselves.</li>
               </ul>
-              <p className="mt-3 text-xs text-text-subtle">It cannot delete tasks or change the legacy priority field. Applied changes appear in Codex activity and remain undoable where supported.</p>
+              <p className="mt-3 text-xs text-text-subtle">Write access includes explicit task edits and recoverable Trash/Restore, not permanent deletion. Applied changes appear in Activity and remain undoable where supported.</p>
             </div>
 
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -23,6 +23,7 @@ export const AGENT_ACTION_KINDS = [
   'task_update',
   'task_complete',
   'task_delete',
+  'task_restore',
   'focus_reorder',
   'chase_logged',
   'memory_write',
@@ -134,10 +135,9 @@ export function parseColumnPatch(raw: unknown): ColumnPatch | null {
  * testable in isolation and readable in one place.
  */
 export type UndoPlan =
+  | { op: 'undo_task_lifecycle_action'; actionId: string }
   | { op: 'undo_workstream_action'; actionId: string }
-  | { op: 'delete_task'; taskId: string }
   | { op: 'patch_task'; taskId: string; patch: ColumnPatch }
-  | { op: 'restore_task'; row: ColumnPatch }
   | { op: 'patch_profile'; patch: ColumnPatch }
   | { op: 'delete_memory'; key: string }
   | { op: 'restore_memory'; key: string; row: ColumnPatch }
@@ -191,10 +191,10 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
     }
     // The task did not exist beforehand, so reversing means removing it.
     case 'task_create': {
-      if (target.type !== 'task') {
+      if (target.type !== 'task' || !action.id) {
         return { reason: 'Missing the task reference needed to undo this' };
       }
-      return { op: 'delete_task', taskId: target.id };
+      return { op: 'undo_task_lifecycle_action', actionId: action.id };
     }
 
     // `before` holds the prior value of exactly the columns that were written.
@@ -210,12 +210,13 @@ export function planUndo(action: AgentActionLike): UndoPlan | UndoRefusal {
       return { op: 'patch_task', taskId: target.id, patch: before };
     }
 
-    // `before` holds the whole deleted row, so it can be re-inserted.
-    case 'task_delete': {
-      if (!before || typeof before.id !== 'string') {
-        return { reason: 'The deleted task was not recorded in full' };
+    // Lifecycle snapshots are checked and reversed atomically in the database.
+    case 'task_delete':
+    case 'task_restore': {
+      if (!action.id || !isRecord(action.target) || action.target.recoverable !== true) {
+        return { reason: 'Legacy permanent deletion requires manual recovery review' };
       }
-      return { op: 'restore_task', row: before };
+      return { op: 'undo_task_lifecycle_action', actionId: action.id };
     }
 
     case 'focus_reorder': {
@@ -306,7 +307,8 @@ export const ACTION_KIND_META: Record<
   task_create: { label: 'Created', accent: 'green' },
   task_update: { label: 'Changed', accent: 'amber' },
   task_complete: { label: 'Closed', accent: 'green' },
-  task_delete: { label: 'Deleted', accent: 'red' },
+  task_delete: { label: 'Moved to Trash', accent: 'red' },
+  task_restore: { label: 'Restored', accent: 'green' },
   focus_reorder: { label: 'Reordered focus', accent: 'brand' },
   chase_logged: { label: 'Chase drafted', accent: 'blue' },
   memory_write: { label: 'Learned', accent: 'purple' },

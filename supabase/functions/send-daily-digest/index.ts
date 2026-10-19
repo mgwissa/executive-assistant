@@ -473,7 +473,8 @@ async function processProfile(
     .from('tasks')
     .select('id, title, priority, due_date, waiting_on, reschedule_count, priority_set_at, updated_at')
     .eq('user_id', profile.user_id)
-    .eq('done', false);
+    .eq('done', false)
+    .is('deleted_at', null);
   if (tasksErr) throw tasksErr;
   const tasks = (openTasks ?? []) as Task[];
 

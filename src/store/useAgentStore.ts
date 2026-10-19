@@ -8,7 +8,6 @@ import type {
   AgentMemory,
   AgentRun,
   ProfileUpdate,
-  TaskInsert,
   TaskUpdate,
 } from '../types';
 import { useProfileStore } from './useProfileStore';
@@ -49,10 +48,6 @@ function asTaskUpdate(patch: Record<string, unknown>): TaskUpdate {
   return patch as unknown as TaskUpdate;
 }
 
-function asTaskInsert(row: Record<string, unknown>): TaskInsert {
-  return row as unknown as TaskInsert;
-}
-
 function asProfileUpdate(patch: Record<string, unknown>): ProfileUpdate {
   return patch as unknown as ProfileUpdate;
 }
@@ -77,24 +72,23 @@ function asNoteUpdate(patch: Record<string, unknown>): {
 
 async function executeUndo(userId: string, plan: UndoPlan): Promise<string | null> {
   switch (plan.op) {
+    case 'undo_task_lifecycle_action': {
+      const { error } = await supabase.rpc('undo_agent_task_lifecycle_action', { p_action_id: plan.actionId });
+      return error?.message ?? null;
+    }
     case 'undo_workstream_action': {
       const { error } = await supabase.rpc('undo_agent_workstream_action', { p_action_id: plan.actionId });
       return error?.message ?? null;
     }
-    case 'delete_task': {
-      const { error } = await supabase.from('tasks').delete().eq('id', plan.taskId);
-      return error?.message ?? null;
-    }
     case 'patch_task': {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('tasks')
         .update(asTaskUpdate(plan.patch))
-        .eq('id', plan.taskId);
-      return error?.message ?? null;
-    }
-    case 'restore_task': {
-      const { error } = await supabase.from('tasks').insert(asTaskInsert(plan.row));
-      return error?.message ?? null;
+        .eq('id', plan.taskId)
+        .is('deleted_at', null)
+        .select('id')
+        .maybeSingle();
+      return error?.message ?? (data ? null : 'Task is unavailable or in Trash; restore it before reviewing this edit');
     }
     case 'patch_profile': {
       const { error } = await supabase
@@ -232,6 +226,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       return false;
     }
 
+    if (plan.op === 'undo_task_lifecycle_action') {
+      await Promise.all([get().fetchAll(userId), useTasksStore.getState().fetchAll(userId), useProfileStore.getState().fetchProfile(userId)]);
+      set({ undoingId: null });
+      return true;
+    }
     if (plan.op === 'undo_workstream_action') {
       // The transaction already updated the audit record; do not mark it twice.
       await Promise.all([get().fetchAll(userId), useWorkstreamsStore.getState().fetchAll(userId)]);

@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
     .from('tasks')
     .select('id, user_id, title, due_date, priority, done')
     .eq('id', taskId)
+    .is('deleted_at', null)
     .maybeSingle();
   if (taskErr) {
     return new Response(JSON.stringify({ error: taskErr.message }), {

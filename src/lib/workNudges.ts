@@ -53,10 +53,13 @@ export function tasksDueForNudge(
 ): Task[] {
   return tasks
     .filter((t) => {
-      if (t.done) return false;
+      if (t.done || t.deleted_at) return false;
       if (!t.due_date || t.due_date !== todayIso) return false;
       const dueTime = normalizeDueTime(t.due_time);
       if (!dueTime) return false;
+      // A restore must not replay an old scheduled nudge. New future times still work.
+      if (t.restored_at && t.reminder_sent_at &&
+        Date.parse(t.reminder_sent_at) <= Date.parse(t.restored_at)) return false;
       if (dueTime > localTimeHm) return false;
       if (isNudgeShown(t.id, todayIso)) return false;
       if (isNudgeSnoozed(t.id, nowMs)) return false;

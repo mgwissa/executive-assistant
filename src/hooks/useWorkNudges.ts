@@ -176,6 +176,16 @@ export function useWorkNudges() {
   }, [profile, inAppEnabled, browserEnabled, tasks, presentNudge]);
 
   useEffect(() => {
+    const activeTasks = new Set(tasks.filter(task => !task.done && !task.deleted_at).map(task => task.id));
+    for (const id of activeRef.current) {
+      if (!activeTasks.has(id)) {
+        dismissToast(`work-nudge-${id}`);
+        activeRef.current.delete(id);
+      }
+    }
+  }, [tasks, dismissToast]);
+
+  useEffect(() => {
     scan();
     const interval = window.setInterval(scan, NUDGE_POLL_MS);
     return () => window.clearInterval(interval);

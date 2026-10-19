@@ -312,7 +312,7 @@ to `codex-api`; neither function calls a model or polls.
   creation priority defaults to normal; updates preserve it unless supplied.
   `priority_set_at` is server-managed, changes only with the priority, and is
   audited/restored with it. Same-priority requests are no-ops; no automatic
-  escalation, date changes, or focus reordering. No task deletion or arbitrary
+  escalation, date changes, or focus reordering. No permanent task deletion or arbitrary
   rich-note rewrite. Run `npm run test:tasks` for validation, owner/write-scope,
   audit rollback, dedupe, Undo, and date-independence regressions. No migration;
   deploy `codex-api` and `executive-assistant-mcp`, then refresh MCP tool discovery.
@@ -528,3 +528,30 @@ Optional addon `memory` — ask questions across indexed notes, open tasks, and 
 - **Learned something** non-obvious this session that isn't already in here → write it down. One line is enough.
 
 Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is the goal.
+
+## Recoverable task Trash (October 19, 2026)
+
+- Migration `2026-10-19_054_task_trash.sql` adds `tasks.deleted_at` and `restored_at`.
+  `useTasksStore.tasks` contains only active rows; `trashedTasks` is separate and shown
+  in Work's collapsible Trash section. No purge, expiry or permanent-delete UI/API.
+- Delete now means move to Trash. Keep task IDs, context, dates, completion status,
+  time-entry links and routine links. Direct authenticated hard-delete and lifecycle
+  column writes are revoked; normal edits cannot affect trashed rows.
+- Owner UI calls `set_task_trashed`; MCP calls service-only `apply_task_trash_action`
+  with a verified owned write connection/run. Exact task ID and a fresh
+  `expectedUpdatedAt` are required. MCP accepts one lifecycle action per request.
+- Trash/Restore atomically audit full raw task and focus snapshots in
+  `before.task` / `after.task` and `before.focus_queue` / `after.focus_queue`.
+  Both remove stale focus references; Restore does not re-pin or replay past timed
+  reminders. Activity Undo is owner-only, atomic and conflict-checked through
+  `undo_agent_task_lifecycle_action`, also used to undo task creation safely.
+  Legacy permanent-deletion logs require manual review rather than reinsertion.
+- Normal context, digests, reminders, escalation and memory indexing exclude Trash.
+  Migration 054 also filters task vector-search results; deletion clears derived
+  task chunks in the same transaction. `list_trashed_tasks` is a separate paginated
+  explicit-review tool, not part of the morning backlog. Never infer deletion from
+  staleness or restore dropped work without the owner's explicit request.
+- Deploy migration before frontend, `codex-api`, `executive-assistant-mcp`,
+  `memory-sync`, `send-daily-digest`, `send-due-time-reminders`, and
+  `send-task-escalation`; refresh tool discovery. `npm run test:trash` uses isolated
+  PostgreSQL/PGlite, not production. `trash-preview.html` is dev-only sample data.

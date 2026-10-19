@@ -4,7 +4,7 @@
  * Auth uses Supabase OAuth access tokens issued to MCP clients. The token's
  * verified user and client_id claims identify both the workspace owner and the
  * agent connection. This endpoint is deliberately narrower than the dormant
- * scheduled agent: no polling, task deletion, automatic priority escalation, or
+ * scheduled agent: no polling, permanent deletion, automatic priority escalation, or
  * arbitrary rich-note rewriting.
  */
 
@@ -50,6 +50,7 @@ type MutationInput = {
   effects?: unknown;
   dedupeKey?: unknown;
   taskId?: unknown;
+  expectedUpdatedAt?: unknown;
   task?: unknown;
   patch?: unknown;
   taskIds?: unknown;
@@ -297,6 +298,22 @@ async function mutate(
 ): Promise<MutationResult> {
   const userId = principal.userId;
   const kind = input.kind;
+  if (kind === 'task_delete' || kind === 'task_restore') {
+    const taskId = str(input.taskId);
+    const expected = str(input.expectedUpdatedAt);
+    if (!taskId || !expected || !Number.isFinite(Date.parse(expected))) {
+      return { ok: false, kind, error: 'Exact taskId and expectedUpdatedAt from a fresh task read are required' };
+    }
+    const { data, error } = await admin.rpc('apply_task_trash_action', {
+      p_user_id: userId, p_run_id: runId, p_connection_id: principal.connectionId,
+      p_actor_name: principal.actorName, p_input: input,
+    });
+    if (error) return { ok: false, kind, error: error.message };
+    if (!isRecord(data) || data.ok !== true || data.kind !== kind || typeof data.targetId !== 'string') {
+      return { ok: false, kind, error: 'Unexpected Trash response; check Activity before retrying' };
+    }
+    return data as MutationResult;
+  }
   if (kind === 'workstream_create' || kind === 'note_workstream') {
     const { data, error } = await admin.rpc('apply_agent_workstream_action', {
       p_user_id: userId,
@@ -365,6 +382,7 @@ async function mutate(
       .select('*')
       .eq('id', taskId)
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .maybeSingle();
     if (readError || !row) return { ok: false, kind, error: readError?.message ?? 'task not found' };
     if ('priority' in patchResult) {
@@ -385,12 +403,17 @@ async function mutate(
     if (patchResult.due_time && !effectiveDueDate) {
       return { ok: false, kind, error: 'due_time requires due_date' };
     }
-    const { error: updateError } = await admin
+    const { data: updated, error: updateError } = await admin
       .from('tasks')
       .update(patchResult)
       .eq('id', taskId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('updated_at', row.updated_at)
+      .is('deleted_at', null)
+      .select('id')
+      .maybeSingle();
     if (updateError) return { ok: false, kind, error: updateError.message };
+    if (!updated) return { ok: false, kind, error: 'Task changed or moved to Trash; refresh before editing' };
     const logged = await logAction(admin, principal, runId, input, {
       target: { type: 'task', id: taskId },
       before,
@@ -453,6 +476,7 @@ async function mutate(
         .select('id')
         .eq('user_id', userId)
         .eq('done', false)
+        .is('deleted_at', null)
         .in('id', taskIds);
       if (error) return { ok: false, kind, error: error.message };
       if ((owned ?? []).length !== taskIds.length) return { ok: false, kind, error: 'focus contains an unknown or completed task' };
@@ -917,7 +941,7 @@ async function mutate(
       }
       const taskIds = [...new Set(plan.questions.flatMap((question) => question.taskId ? [question.taskId] : []))];
       if (taskIds.length) {
-        const { data: owned, error } = await admin.from('tasks').select('id').eq('user_id', userId).in('id', taskIds);
+        const { data: owned, error } = await admin.from('tasks').select('id').eq('user_id', userId).is('deleted_at', null).in('id', taskIds);
         if (error) return { ok: false, kind, error: error.message };
         if ((owned ?? []).length !== taskIds.length) return { ok: false, kind, error: 'day plan contains an unknown task' };
       }
@@ -965,7 +989,7 @@ async function buildContext(admin: SupabaseClient, userId: string, calendarSync:
   const doneSince = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
   const [tasksRes, eventsRes, notebooksRes, sectionsRes, notesRes, workstreamsRes, noteWorkstreamsRes, actionsRes, briefsRes] = await Promise.all([
-    admin.from('tasks').select('*').eq('user_id', userId).or(`done.eq.false,updated_at.gte.${doneSince}`).order('updated_at', { ascending: false }).limit(400),
+    admin.from('tasks').select('*').eq('user_id', userId).is('deleted_at', null).or(`done.eq.false,updated_at.gte.${doneSince}`).order('updated_at', { ascending: false }).limit(400),
     admin.from('events').select('*').eq('user_id', userId).is('outlook_cancelled_at', null).gte('start_at', windowStart).lte('start_at', windowEnd).order('start_at').limit(1000),
     admin.from('notebooks').select('id,name,position').eq('user_id', userId).order('position'),
     admin.from('sections').select('id,notebook_id,name,position').eq('user_id', userId).order('position'),
@@ -976,6 +1000,7 @@ async function buildContext(admin: SupabaseClient, userId: string, calendarSync:
     admin.from('agent_briefs').select('id,kind,brief_date,body,stats,created_at').eq('user_id', userId).order('brief_date', { ascending: false }).limit(14),
   ]);
 
+  if (tasksRes.error) throw new Error('Could not read tasks; do not treat the work inventory as empty.');
   if (eventsRes.error) throw new Error('Could not read calendar events; do not treat the schedule as empty.');
   const events = eventsRes.data ?? [];
   const eventIds = new Set(events.map((event) => event.id));
@@ -1149,7 +1174,7 @@ Deno.serve(async (req) => {
 
   const action = str(body.action) ?? 'context';
   try {
-    if ((action === 'context' || action === 'notes.search') && !principal.scopes.includes('context:read')) {
+    if (['context', 'notes.search', 'tasks.trash'].includes(action) && !principal.scopes.includes('context:read')) {
       return jsonResponse({ error: 'Connection cannot read workspace context' }, 403);
     }
     if (action === 'mutate' && !principal.scopes.includes('workspace:write')) {
@@ -1165,9 +1190,26 @@ Deno.serve(async (req) => {
       if (!query || query.length < 2) return jsonResponse({ error: 'query must contain at least 2 characters' }, 400);
       return jsonResponse({ ok: true, notes: await searchNotes(admin, principal.userId, query) });
     }
+    if (action === 'tasks.trash') {
+      const offset = body.offset ?? 0;
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0 || offset > 10000) {
+        return jsonResponse({ error: 'offset must be an integer from 0 to 10000' }, 400);
+      }
+      const { data, error } = await admin.from('tasks')
+        .select('id,title,done,deleted_at,updated_at').eq('user_id', principal.userId)
+        .not('deleted_at', 'is', null).order('deleted_at', { ascending: false }).order('id')
+        .range(offset, offset + 50);
+      if (error) return jsonResponse({ error: error.message }, 500);
+      return jsonResponse({ ok: true, tasks: (data ?? []).slice(0, 50),
+        hasMore: (data ?? []).length > 50, nextOffset: (data ?? []).length > 50 ? offset + 50 : null,
+        instruction: 'Trash only: excluded from active planning. Restore only at the user\'s explicit request using this updated_at as expectedUpdatedAt.' });
+    }
     if (action === 'mutate') {
       const raw = Array.isArray(body.actions) ? body.actions : [];
       if (raw.length === 0 || raw.length > 25) return jsonResponse({ error: 'actions must contain 1–25 entries' }, 400);
+      if (raw.filter((entry) => isRecord(entry) && ['task_delete', 'task_restore'].includes(String(entry.kind))).length > 1) {
+        return jsonResponse({ error: 'Trash or restore one explicitly identified task per request' }, 400);
+      }
       const { data: run, error: runError } = await admin
         .from('agent_runs')
         .insert({

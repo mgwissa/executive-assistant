@@ -17,9 +17,10 @@ const previousPriorityAt = '2026-09-08T19:23:10.375Z';
 const priorities = ['critical', 'urgent', 'high', 'normal', 'low'];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
-function setup({ task = {}, scopes = ['workspace:write'], revoked = false, validUser = true, failAudit = false, failTaskWrite = false } = {}) {
+function setup({ task = {}, scopes = ['workspace:write'], revoked = false, validUser = true, failAudit = false, failTaskWrite = false, rpcResult = null } = {}) {
   const original = {
     id: 'task', user_id: 'owner', title: 'Build Strikeouts report', done: false,
+    deleted_at: null, restored_at: null,
     priority: 'normal', priority_set_at: previousPriorityAt,
     due_date: null, due_time: null, review_date: null,
     reminder_sent_at: null, description: 'Preserve the report requirements.',
@@ -32,18 +33,26 @@ function setup({ task = {}, scopes = ['workspace:write'], revoked = false, valid
       auth_kind: 'oauth', name: 'Test agent', scopes, revoked_at: revoked ? now : null }],
   };
   const writes = [];
+  const rpcCalls = [];
   let handler;
   let serial = 0;
   const db = {
+    async rpc(name, args) {
+      rpcCalls.push({ name, args: clone(args) });
+      return rpcResult ?? { data: { ok: true, kind: args.p_input.kind, targetId: args.p_input.taskId, actionId: 'lifecycle-audit' }, error: null };
+    },
     auth: { getUser: async () => ({ data: { user: validUser ? { id: 'owner' } : null }, error: validUser ? null : { message: 'Invalid token' } }) },
     from(table) {
       assert.ok(table in tables, `Unexpected table: ${table}`);
       let op = 'select';
       let values;
       const filters = [];
+      const nonNull = [];
+      const orders = [];
+      let bounds;
       let columns = '*';
       const execute = () => {
-        const rows = tables[table].filter(row => filters.every(([key, value]) => row[key] === value));
+        const rows = tables[table].filter(row => filters.every(([key, value]) => row[key] === value) && nonNull.every(key => row[key] != null));
         if (op !== 'select') writes.push({ table, op, values: clone(values ?? {}), filters: clone(filters) });
         if (op === 'insert' && table === 'agent_actions' && failAudit) return { data: null, error: { message: 'Audit unavailable' } };
         if (op === 'update' && table === 'tasks' && failTaskWrite) return { data: null, error: { message: 'Task write failed' } };
@@ -57,12 +66,25 @@ function setup({ task = {}, scopes = ['workspace:write'], revoked = false, valid
         } else if (op === 'delete') {
           tables[table] = tables[table].filter(row => !rows.includes(row));
         }
+        if (op === 'select') {
+          result.sort((a, b) => {
+            for (const [key, ascending] of orders) {
+              const comparison = String(a[key]).localeCompare(String(b[key]));
+              if (comparison) return ascending ? comparison : -comparison;
+            }
+            return 0;
+          });
+          if (bounds) result = result.slice(bounds[0], bounds[1] + 1);
+        }
         return { data: result.map(row => columns === '*' ? clone(row) : Object.fromEntries(columns.split(',').map(key => [key, row[key]]))), error: null };
       };
       const query = {
         select(value) { columns = value; return query; },
         eq(key, value) { filters.push([key, value]); return query; },
         is(key, value) { filters.push([key, value]); return query; },
+        not(key, operator, value) { assert.equal(operator, 'is'); assert.equal(value, null); nonNull.push(key); return query; },
+        order(key, { ascending = true } = {}) { orders.push([key, ascending]); return query; },
+        range(start, end) { bounds = [start, end]; return query; },
         insert(value) { op = 'insert'; values = value; return query; },
         update(value) { op = 'update'; values = value; return query; },
         delete() { op = 'delete'; return query; },
@@ -85,7 +107,14 @@ function setup({ task = {}, scopes = ['workspace:write'], revoked = false, valid
   });
   const token = `test.${Buffer.from(JSON.stringify({ client_id: 'client' })).toString('base64url')}.test`;
   return {
-    original, tables, writes, db,
+    original, tables, writes, db, rpcCalls,
+    async request(body) {
+      const response = await handler(new Request('https://test.invalid/codex-api', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      }));
+      return { status: response.status, ...await response.json() };
+    },
     async apply(action, { authenticated = true } = {}) {
       const response = await handler(new Request('https://test.invalid/codex-api', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(authenticated ? { Authorization: `Bearer ${token}` } : {}) },
@@ -254,4 +283,79 @@ test('MCP discovery advertises priority for create/update and keeps unrelated pa
   }
   assert.match(tool.description, /explicit priority changes/);
   assert.doesNotMatch(tool.description, /cannot.*change legacy priority/);
+  assert.ok(tools.some(t => t.name === 'list_trashed_tasks' && t.annotations.readOnlyHint));
+  assert.equal(fields.expectedUpdatedAt.format, 'date-time');
+  assert.match(tool.description, /Permanent deletion/);
+});
+
+test('Trash and Restore delegate to the atomic RPC with verified identity, never body-supplied identity', async () => {
+  const app = setup();
+  for (const kind of ['task_delete','task_restore']) {
+    const response = await app.apply({ kind, taskId:'task', expectedUpdatedAt:now, userId:'other' });
+    assert.equal(response.results[0].ok,true);
+    const call = app.rpcCalls.at(-1);
+    assert.equal(call.name,'apply_task_trash_action');
+    assert.equal(call.args.p_user_id,'owner');
+    assert.equal(call.args.p_connection_id,'connection');
+    assert.equal(call.args.p_input.kind,kind);
+  }
+  assert.equal(app.writes.filter(w=>w.table==='tasks').length,0);
+});
+
+test('lifecycle requests require a fresh explicit version and write scope; errors are surfaced', async () => {
+  for (const expectedUpdatedAt of [undefined,null,'not-a-date']) {
+    const app = setup();
+    const response = await app.apply({kind:'task_delete',taskId:'task',expectedUpdatedAt});
+    assert.equal(response.results[0].ok,false);
+    assert.equal(app.rpcCalls.length,0);
+  }
+  const readOnly = setup({scopes:['context:read']});
+  assert.equal((await readOnly.apply({kind:'task_delete',taskId:'task',expectedUpdatedAt:now})).status,403);
+  assert.equal(readOnly.rpcCalls.length,0);
+  const failure = setup({rpcResult:{data:null,error:{message:'Task changed since it was read'}}});
+  const response = await failure.apply({kind:'task_delete',taskId:'task',expectedUpdatedAt:now});
+  assert.equal(response.results[0].ok,false);
+  assert.match(response.results[0].error,/changed since/);
+});
+
+test('ordinary MCP edits cannot change or revive a task in Trash', async () => {
+  const app = setup({task:{deleted_at:now}});
+  const response = await app.apply({kind:'task_update',taskId:'task',patch:{title:'Revived',deleted_at:null}});
+  assert.equal(response.results[0].ok,false);
+  assert.equal(app.writes.filter(w=>w.table==='tasks').length,0);
+});
+
+test('Trash inventory is owned, paginated, read-scoped and excludes active tasks', async () => {
+  const app = setup({ scopes: ['context:read'] });
+  for (let i = 0; i < 51; i += 1) app.tables.tasks.push({ ...app.original,
+    id: `trash-${String(i).padStart(3, '0')}`, deleted_at: now, updated_at: now });
+  app.tables.tasks.push({ ...app.original, id: 'foreign-trash', user_id: 'other', deleted_at: now });
+  const first = await app.request({ action: 'tasks.trash', userId: 'other' });
+  assert.equal(first.status, 200);
+  assert.equal(first.tasks.length, 50);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.nextOffset, 50);
+  assert.equal(first.tasks[0].id, 'trash-000');
+  assert.ok(first.tasks.every(task => task.deleted_at && !('description' in task)));
+  const second = await app.request({ action: 'tasks.trash', offset: first.nextOffset });
+  assert.equal(second.tasks.length, 1);
+  assert.equal(second.hasMore, false);
+  assert.equal(second.nextOffset, null);
+  for (const offset of [-1, 1.5, '50', 10001]) {
+    assert.equal((await app.request({ action: 'tasks.trash', offset })).status, 400);
+  }
+  assert.equal((await setup().request({ action: 'tasks.trash' })).status, 403);
+  assert.equal(app.writes.filter(write => write.table !== 'agent_connections').length, 0);
+});
+
+test('multiple lifecycle targets are refused before creating a run or writing anything', async () => {
+  const app = setup();
+  const result = await app.request({ action: 'mutate', actions: [
+    { kind: 'task_delete', taskId: 'task', expectedUpdatedAt: now },
+    { kind: 'task_restore', taskId: 'another-task', expectedUpdatedAt: now },
+  ] });
+  assert.equal(result.status, 400);
+  assert.match(result.error, /one explicitly identified task/);
+  assert.equal(app.writes.filter(write => write.table !== 'agent_connections').length, 0);
+  assert.equal(app.rpcCalls.length, 0);
 });

@@ -142,6 +142,7 @@ async function indexTask(admin: SupabaseClient, userId: string, taskId: string):
     .select('id, title, description, waiting_on, priority, due_date, done, tags, updated_at')
     .eq('id', taskId)
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!task) {
@@ -225,7 +226,8 @@ async function fullSync(
     .from('tasks')
     .select('id')
     .eq('user_id', userId)
-    .eq('done', false);
+    .eq('done', false)
+    .is('deleted_at', null);
   if (tasksErr) throw new Error(tasksErr.message);
   for (const t of tasks ?? []) {
     chunkCount += await indexTask(admin, userId, t.id);

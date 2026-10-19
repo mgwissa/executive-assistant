@@ -254,6 +254,8 @@ export type Database = {
           user_id: string;
           title: string;
           done: boolean;
+          deleted_at: string | null;
+          restored_at: string | null;
           priority: string;
           priority_set_at: string;
           due_date: string | null;
@@ -276,6 +278,8 @@ export type Database = {
           user_id: string;
           title: string;
           done?: boolean;
+          deleted_at?: string | null;
+          restored_at?: string | null;
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
@@ -298,6 +302,8 @@ export type Database = {
           user_id?: string;
           title?: string;
           done?: boolean;
+          deleted_at?: string | null;
+          restored_at?: string | null;
           priority?: string;
           priority_set_at?: string;
           due_date?: string | null;
@@ -879,6 +885,14 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      set_task_trashed: {
+        Args: { p_task_id: string; p_trashed: boolean; p_expected_updated_at: string };
+        Returns: Json;
+      };
+      undo_agent_task_lifecycle_action: {
+        Args: { p_action_id: string };
+        Returns: undefined;
+      };
       apply_outlook_calendar_snapshot: {
         Args: {
           p_user_id: string; p_connection_id: string | null; p_expected_url: string;

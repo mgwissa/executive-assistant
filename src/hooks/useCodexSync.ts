@@ -19,6 +19,7 @@ const TASK_ACTIONS = new Set([
   'task_update',
   'task_complete',
   'task_delete',
+  'task_restore',
   'chase_logged',
 ]);
 
@@ -77,7 +78,7 @@ export function useCodexSync(userId: string | undefined) {
       const refreshNotes = missedCursor || ['note_create', 'note_append', 'note_triage', 'note_scratch', 'calendar_sync', 'notebook_merge'].some((kind) => changedKinds.has(kind));
       const refreshNotebooks = missedCursor || changedKinds.has('notebook_merge');
       const refreshWorkstreams = missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream');
-      const refreshProfile = missedCursor || changedKinds.has('focus_reorder') || changedKinds.has('calendar_sync');
+      const refreshProfile = missedCursor || ['focus_reorder', 'calendar_sync', 'task_delete', 'task_restore'].some((kind) => changedKinds.has(kind));
       const refreshCalendar = missedCursor || changedKinds.has('calendar_sync');
 
       const refreshes: Promise<void>[] = [useAgentStore.getState().fetchAll(userId)];
