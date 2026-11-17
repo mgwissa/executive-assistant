@@ -22,6 +22,7 @@ import { TaskQuickAddForm } from './TaskQuickAddForm';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
 import { EmptyState } from './ui/EmptyState';
+import { WhoopPanel } from './WhoopPanel';
 
 function SavedBriefCard({ brief, loading, evening = false }: { brief: AgentBrief | null; loading: boolean; evening?: boolean }) {
   const [expanded, setExpanded] = useState(false);
@@ -107,7 +108,7 @@ export function TodayPage() {
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">{formatInTimeZone(now, timezone, 'EEEE, MMMM d')}</p>
-            <h1 className="mt-1 text-2xl font-medium tracking-tight text-text sm:text-3xl">One thing at a time.</h1>
+            <h1 className="mt-1 text-2xl font-medium tracking-tight text-text sm:text-3xl">Today’s focus</h1>
           </div>
           <button type="button" className="btn-ghost text-xs" onClick={() => navigate(viewPath('tasks'))}>
             {today.summary.dueTodayCount} due today · {today.summary.overdueCount} past deadlines
@@ -154,6 +155,7 @@ export function TodayPage() {
         </section>
 
         <SavedBriefCard brief={morningBrief} loading={briefsLoading} />
+        {user ? <WhoopPanel key={`whoop-${user.id}`} userId={user.id} timezone={timezone} compact /> : null}
 
         {today.focus.length > 1 ? <section className="mt-6" aria-labelledby="up-next-heading">
           <div className="mb-3 flex items-center justify-between gap-2">

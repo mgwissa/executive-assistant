@@ -227,8 +227,8 @@ test('Codex sync refreshes on first observation and retries a failed refresh', a
   }).outputText;
   const calls = new Map();
   const stores = {};
-  for (const name of ['Agent', 'Notes', 'Notebooks', 'Profile', 'Tasks', 'Workstreams', 'Events', 'MeetingDebrief']) {
-    const state = { error: null, profile: { timezone: 'America/New_York' }, fetchAll: async () => {}, fetchProfile: async () => {}, fetchRange: async () => {} };
+  for (const name of ['Agent', 'Notes', 'Notebooks', 'Profile', 'Tasks', 'Workstreams', 'Events', 'MeetingDebrief', 'EmailReview', 'SitemapReview']) {
+    const state = { error: null, userId: 'owner', savingId: null, profile: { timezone: 'America/New_York' }, fetchAll: async () => {}, fetchProfile: async () => {}, fetchRange: async () => {} };
     for (const method of ['fetchAll', 'fetchProfile', 'fetchRange']) state[method] = async () => calls.set(name, (calls.get(name) ?? 0) + 1);
     stores[`use${name}Store`] = { getState: () => state };
   }
@@ -249,7 +249,7 @@ test('Codex sync refreshes on first observation and retries a failed refresh', a
   assert.equal(calls.get('Tasks'), 1);
   assert.equal(calls.get('Profile'), 1);
   assert.equal(calls.get('Events'), 1);
-  for (const [name, kind] of [['Tasks', 'task_update'], ['Notes', 'note_append'], ['Workstreams', 'note_workstream'], ['MeetingDebrief', 'calendar_sync']]) {
+  for (const [name, kind] of [['Tasks', 'task_update'], ['Notes', 'note_append'], ['Workstreams', 'note_workstream'], ['MeetingDebrief', 'calendar_sync'], ['EmailReview', 'email_review_intake'], ['SitemapReview', 'note_create']]) {
     actions = [{ id: `new-${name}`, kind }, ...actions];
     const state = stores[`use${name}Store`].getState();
     state.error = 'Failed refresh';
@@ -261,6 +261,14 @@ test('Codex sync refreshes on first observation and retries a failed refresh', a
     clock += 2000; poll(); await flush();
     assert.equal(calls.get(name), attempts + 1, 'successful cursor should avoid unchanged polling reloads');
   }
+  actions = [{ id: 'during-owner-review', kind: 'email_review_intake' }, ...actions];
+  stores.useEmailReviewStore.getState().savingId = 'case';
+  const attempts = calls.get('EmailReview');
+  clock += 2000; poll(); await flush();
+  assert.equal(calls.get('EmailReview'), attempts, 'a review save must not race a refresh');
+  stores.useEmailReviewStore.getState().savingId = null;
+  clock += 2000; poll(); await flush();
+  assert.equal(calls.get('EmailReview'), attempts + 1, 'deferred sync must retain its cursor and retry');
 });
 
 test('MCP discovery exposes the same saved-plan capture contract', async () => {
@@ -286,4 +294,7 @@ test('MCP discovery exposes the same saved-plan capture contract', async () => {
   assert.match(apply.description, /Omitted decision fields survive/);
   assert.equal(apply.inputSchema.properties.actions.items.properties.brief.properties.stats.type, 'object');
   assert.match(tools.find(tool => tool.name === 'get_workspace_context').description, /context.dayPlan/);
+  assert.equal(tools.find(tool => tool.name === 'get_email_review_context').annotations.readOnlyHint, true);
+  assert.equal(apply.inputSchema.properties.actions.items.properties.intake.properties.mailbox.enum[0], 'hello@autofinder.com');
+  assert.equal(apply.inputSchema.properties.actions.items.properties.cases.items.properties.review_status, undefined);
 });

@@ -29,6 +29,7 @@ function setup({ task = {}, scopes = ['workspace:write'], revoked = false, valid
   const tables = {
     tasks: [clone(original), { ...clone(original), id: 'foreign-task', user_id: 'other' }],
     agent_actions: [], agent_runs: [],
+    email_review_cases: [], email_review_intakes: [],
     agent_connections: [{ id: 'connection', user_id: 'owner', oauth_client_id: 'client',
       auth_kind: 'oauth', name: 'Test agent', scopes, revoked_at: revoked ? now : null }],
   };
@@ -85,6 +86,7 @@ function setup({ task = {}, scopes = ['workspace:write'], revoked = false, valid
         not(key, operator, value) { assert.equal(operator, 'is'); assert.equal(value, null); nonNull.push(key); return query; },
         order(key, { ascending = true } = {}) { orders.push([key, ascending]); return query; },
         range(start, end) { bounds = [start, end]; return query; },
+        limit(count) { bounds = [0, count - 1]; return query; },
         insert(value) { op = 'insert'; values = value; return query; },
         update(value) { op = 'update'; values = value; return query; },
         delete() { op = 'delete'; return query; },
@@ -358,4 +360,32 @@ test('multiple lifecycle targets are refused before creating a run or writing an
   assert.match(result.error, /one explicitly identified task/);
   assert.equal(app.writes.filter(write => write.table !== 'agent_connections').length, 0);
   assert.equal(app.rpcCalls.length, 0);
+});
+
+test('email intake delegates atomically with verified principal and write scope', async () => {
+  const app = setup({ rpcResult: { data: { ok: true, kind: 'email_review_intake', targetId: 'receipt', actionId: 'audit' }, error: null } });
+  const payload = { kind: 'email_review_intake', dedupeKey: 'email-test', intake: { mailbox: 'hello@autofinder.com' }, cases: [], userId: 'foreign' };
+  assert.equal((await app.apply(payload)).status, 200);
+  const [call] = app.rpcCalls;
+  assert.equal(call.name, 'apply_agent_email_review_intake');
+  assert.equal(call.args.p_user_id, 'owner'); assert.equal(call.args.p_connection_id, 'connection');
+  assert.equal(call.args.p_input.userId, 'foreign'); // untrusted payload never selects the principal
+  assert.equal((await setup({ scopes: ['context:read'] }).apply(payload)).status, 403);
+  const failure = setup({ rpcResult: { data: null, error: { message: 'Audit rolled back' } } });
+  assert.equal((await failure.apply(payload)).results[0].ok, false);
+});
+
+test('saved email context is owned, paginated and read-scoped, never a mailbox operation', async () => {
+  const app = setup({ scopes: ['context:read'] });
+  for (let i = 0; i < 51; i++) app.tables.email_review_cases.push({ id: `case-${String(i).padStart(3,'0')}`, user_id: 'owner', received_at: now });
+  app.tables.email_review_cases.push({ id: 'foreign', user_id: 'other', received_at: now });
+  app.tables.email_review_intakes.push({ id: 'complete', user_id: 'owner', created_at: now, covered_through: now, complete: true });
+  const first = await app.request({ action: 'email.review', userId: 'other' });
+  assert.equal(first.status, 200); assert.equal(first.cases.length, 50); assert.equal(first.hasMore, true);
+  assert.equal(first.lastCompleteIntake.id, 'complete');
+  const second = await app.request({ action: 'email.review', offset: first.nextOffset });
+  assert.equal(second.cases.length, 1); assert.equal(second.hasMore, false); assert.equal(second.nextOffset, null);
+  assert.equal((await setup().request({ action: 'email.review' })).status, 403);
+  assert.equal((await app.request({ action: 'email.review', offset: -1 })).status, 400);
+  assert.equal(app.writes.filter(w => w.table !== 'agent_connections').length, 0);
 });

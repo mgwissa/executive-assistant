@@ -40,3 +40,9 @@ verify_jwt = false
 
 [functions.agent-connections]
 verify_jwt = false
+
+# Owner session validation, single-use WHOOP state and cron-secret validation
+# are enforced inside the function. OAuth returns to Profile; only the same
+# verified EA owner can complete the code exchange. MCP cannot manage WHOOP.
+[functions.whoop]
+verify_jwt = false
