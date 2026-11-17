@@ -1,3 +1,6 @@
+import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+
 /** Saved, owner-only evidence. This module never fetches or modifies a website. */
 export const SITEMAP_SOURCE = 'https://autofinder.com/sitemap.xml';
 export const SITEMAP_RECORD_MARKER = '<!-- autofinder-sitemap-review:v1 -->';
@@ -17,6 +20,24 @@ export type SitemapRun = SitemapRecord & {
 export type SitemapReviewModel = {
   runs: SitemapRun[]; currentUrls: string[]; checkpoint: SitemapRun | null; warnings: string[];
 };
+
+/** A scoreboard for verified captures, never an assumption about unobserved days. */
+export function sitemapChangeStreak(model: SitemapReviewModel, timezone: string) {
+  const verified = (run: SitemapRun) => run.complete && run.verified && !run.problems.length;
+  const checkpoint = model.checkpoint;
+  if (!checkpoint || !verified(checkpoint)) return null;
+  const through = Date.parse(checkpoint.checkedAtUtc);
+  const history = model.runs.filter(run => verified(run) && Date.parse(run.checkedAtUtc) <= through);
+  const changed = history.filter(run => run.kind === 'comparison' && ((run.addedCount ?? 0) > 0 || (run.removedCount ?? 0) > 0))
+    .sort((a, b) => Date.parse(b.checkedAtUtc) - Date.parse(a.checkedAtUtc))[0];
+  const baseline = history.filter(run => run.kind === 'baseline')
+    .sort((a, b) => Date.parse(a.checkedAtUtc) - Date.parse(b.checkedAtUtc))[0];
+  const start = changed ?? baseline;
+  if (!start) return null;
+  const day = (value: string) => parseISO(formatInTimeZone(new Date(value), timezone, 'yyyy-MM-dd'));
+  return { days: differenceInCalendarDays(day(checkpoint.checkedAtUtc), day(start.checkedAtUtc)),
+    sinceUtc: start.checkedAtUtc, throughUtc: checkpoint.checkedAtUtc, fromBaseline: !changed };
+}
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const count = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100_000;
 const iso = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));

@@ -657,3 +657,7 @@ Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is 
   `sitemap-review-preview.html` uses fictional data with no account/site access.
   The owner approved local implementation with the GitHub issue deferred;
   source availability does not mean the feature has been deployed.
+- The small days-since-last-change scoreboard sits below Refresh saved reports.
+  It counts profile-timezone calendar days through the last verified capture,
+  resets only on verified additions/removals, and labels baseline-started streaks.
+  Failed checks do not silently extend the streak. No SQL or provider writes.
