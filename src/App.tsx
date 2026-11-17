@@ -13,6 +13,8 @@ import { ResetPassword } from './components/ResetPassword';
 import { TimeTrackingPage } from './components/TimeTrackingPage';
 import { UsefulLinksPage } from './components/UsefulLinksPage';
 import { Editor } from './components/Editor';
+import { EmailReviewPage } from './components/EmailReviewPage';
+import { SitemapReviewPage } from './components/SitemapReviewPage';
 import { BookIcon, ChevronRightIcon } from './components/icons';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
@@ -44,6 +46,8 @@ import { useTimeProjectsStore } from './store/useTimeProjectsStore';
 import { useUsefulLinksStore } from './store/useUsefulLinksStore';
 import { useWeeklyRoutineStore } from './store/useWeeklyRoutineStore';
 import { useWorkstreamsStore } from './store/useWorkstreamsStore';
+import { useEmailReviewStore } from './store/useEmailReviewStore';
+import { useSitemapReviewStore } from './store/useSitemapReviewStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -144,6 +148,8 @@ function Shell() {
   const clearAgent = useAgentStore((s) => s.clear);
   const fetchWorkstreams = useWorkstreamsStore((s) => s.fetchAll);
   const clearWorkstreams = useWorkstreamsStore((s) => s.clear);
+  const clearEmailReview = useEmailReviewStore((s) => s.clear);
+  const clearSitemapReview = useSitemapReviewStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -164,6 +170,8 @@ function Shell() {
       clearNotebooks();
       clearNotes();
       clearWorkstreams();
+      clearEmailReview();
+      clearSitemapReview();
       clearSharing();
       clearProfile();
       clearTasks();
@@ -186,6 +194,8 @@ function Shell() {
     clearNotes,
     fetchWorkstreams,
     clearWorkstreams,
+    clearEmailReview,
+    clearSitemapReview,
     clearSharing,
     fetchProfile,
     clearProfile,
@@ -301,6 +311,10 @@ export default function App() {
   const { session, loading, init } = useAuthStore();
 
   useEffect(() => {
+    if (!loading && !session) useEmailReviewStore.getState().clear();
+  }, [loading, session]);
+
+  useEffect(() => {
     init();
   }, [init]);
 
@@ -349,6 +363,8 @@ export default function App() {
         <Route path="tasks" element={<WorkPage />} />
         <Route path="owed" element={<OwedToMePage />} />
         <Route path="notes" element={<NotesView />} />
+        <Route path="email-review" element={<EmailReviewPage />} />
+        <Route path="sitemap-review" element={<SitemapReviewPage />} />
         <Route path="activity" element={<AgentDeskPage activityOnly />} />
         <Route
           path="time"

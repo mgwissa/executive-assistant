@@ -13,6 +13,7 @@ import { refreshOutlookCalendar, type CalendarSyncResult } from '../_shared/outl
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { localDateString } from '../_shared/datetime.ts';
 import { mergeBriefStats, parseDayPlan } from '../_shared/dayPlan.ts';
+import { readWhoopContext, whoopDiscovery } from '../_shared/whoopContext.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -38,7 +39,7 @@ type JsonRecord = Record<string, unknown>;
 
 type AgentPrincipal = {
   userId: string;
-  connectionId: string | null;
+  connectionId: string;
   actorName: string;
   scopes: string[];
 };
@@ -60,6 +61,7 @@ type MutationInput = {
   workstreamId?: unknown;
   assigned?: unknown;
   triaged?: unknown;
+  scratch?: unknown;
   sectionId?: unknown;
   sourceNotebookId?: unknown;
   destinationNotebookId?: unknown;
@@ -67,6 +69,8 @@ type MutationInput = {
   linkedEventId?: unknown;
   linkedOccurrenceStartAt?: unknown;
   brief?: unknown;
+  intake?: unknown;
+  cases?: unknown;
 };
 
 type MutationResult = {
@@ -298,6 +302,17 @@ async function mutate(
 ): Promise<MutationResult> {
   const userId = principal.userId;
   const kind = input.kind;
+  if (kind === 'email_review_intake') {
+    const { data, error } = await admin.rpc('apply_agent_email_review_intake', {
+      p_user_id: userId, p_run_id: runId, p_connection_id: principal.connectionId,
+      p_actor_name: principal.actorName, p_input: input,
+    });
+    if (error) return { ok: false, kind, error: error.message };
+    if (!isRecord(data) || data.ok !== true || data.kind !== kind || typeof data.targetId !== 'string') {
+      return { ok: false, kind, error: 'Unexpected email intake receipt; check Activity before retrying' };
+    }
+    return data as MutationResult;
+  }
   if (kind === 'task_delete' || kind === 'task_restore') {
     const taskId = str(input.taskId);
     const expected = str(input.expectedUpdatedAt);
@@ -344,7 +359,7 @@ async function mutate(
     const title = str(source.title);
     if (!title || title.length > 200) return { ok: false, kind, error: 'task.title must be 1–200 characters' };
     const patchResult = taskPatch(source);
-    if ('error' in patchResult) return { ok: false, kind, error: patchResult.error };
+    if ('error' in patchResult) return { ok: false, kind, error: String(patchResult.error) };
     const now = new Date().toISOString();
     if (patchResult.due_time && !patchResult.due_date) {
       return { ok: false, kind, error: 'due_time requires due_date' };
@@ -375,7 +390,7 @@ async function mutate(
     const taskId = str(input.taskId);
     if (!taskId) return { ok: false, kind, error: 'taskId is required' };
     const patchResult = kind === 'task_complete' ? { done: true } : taskPatch(input.patch);
-    if ('error' in patchResult) return { ok: false, kind, error: patchResult.error };
+    if ('error' in patchResult) return { ok: false, kind, error: String(patchResult.error) };
     if (Object.keys(patchResult).length === 0) return { ok: false, kind, error: 'nothing writable in patch' };
     const { data: row, error: readError } = await admin
       .from('tasks')
@@ -980,7 +995,7 @@ async function mutate(
   return { ok: false, kind, error: `unsupported mutation kind "${kind}"` };
 }
 
-async function buildContext(admin: SupabaseClient, userId: string, calendarSync: CalendarSyncResult) {
+async function buildContext(admin: SupabaseClient, userId: string, calendarSync: CalendarSyncResult, connectionId: string | null = null) {
   const { data: profile } = await admin.from('profiles').select('*').eq('user_id', userId).maybeSingle();
   const timezone = (profile?.timezone as string | null) ?? 'UTC';
   const now = new Date();
@@ -1059,6 +1074,9 @@ async function buildContext(admin: SupabaseClient, userId: string, calendarSync:
     today,
     timezone,
     calendarSync,
+    personalContext: { whoop: await whoopDiscovery(admin, userId, connectionId) },
+    emailReview: { mailbox: 'hello@autofinder.com', tool: 'get_email_review_context',
+      instruction: 'Saved customer cases, decisions and complete-source checkpoints live in Email review. Read this ledger before a separately authorized mailbox intake. No sending, drafts, suppression, automatic tasks or mailbox changes.' },
     calendarWindow: { from: windowStart, to: windowEnd, truncated: events.length === 1000 },
     checkIn: {
       localTime: clock.label,
@@ -1174,7 +1192,7 @@ Deno.serve(async (req) => {
 
   const action = str(body.action) ?? 'context';
   try {
-    if (['context', 'notes.search', 'tasks.trash'].includes(action) && !principal.scopes.includes('context:read')) {
+    if (['context', 'personal.context', 'notes.search', 'tasks.trash', 'email.review'].includes(action) && !principal.scopes.includes('context:read')) {
       return jsonResponse({ error: 'Connection cannot read workspace context' }, 403);
     }
     if (action === 'mutate' && !principal.scopes.includes('workspace:write')) {
@@ -1183,12 +1201,37 @@ Deno.serve(async (req) => {
 
     if (action === 'context') {
       const calendarSync = await refreshOutlookCalendar(admin, principal.userId, principal);
-      return jsonResponse({ ok: true, context: await buildContext(admin, principal.userId, calendarSync) });
+      return jsonResponse({ ok: true, context: await buildContext(admin, principal.userId, calendarSync, principal.connectionId) });
+    }
+    if (action === 'personal.context') {
+      const whoop = await readWhoopContext(admin, principal.userId, principal.connectionId);
+      return whoop ? jsonResponse({ ok:true,personalContext:{whoop} })
+        : jsonResponse({ error:'The owner has not shared private personal context with this connection.' },403);
     }
     if (action === 'notes.search') {
       const query = str(body.query);
       if (!query || query.length < 2) return jsonResponse({ error: 'query must contain at least 2 characters' }, 400);
       return jsonResponse({ ok: true, notes: await searchNotes(admin, principal.userId, query) });
+    }
+    if (action === 'email.review') {
+      const offset = body.offset ?? 0;
+      if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0 || offset > 10000) {
+        return jsonResponse({ error: 'offset must be an integer from 0 to 10000' }, 400);
+      }
+      const [cases, latest, checkpoint] = await Promise.all([
+        admin.from('email_review_cases').select('*').eq('user_id', principal.userId)
+          .order('received_at', { ascending: false }).order('id').range(offset, offset + 50),
+        admin.from('email_review_intakes').select('*').eq('user_id', principal.userId)
+          .order('created_at', { ascending: false }).order('id').limit(1).maybeSingle(),
+        admin.from('email_review_intakes').select('*').eq('user_id', principal.userId).eq('complete', true)
+          .order('covered_through', { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const error = cases.error ?? latest.error ?? checkpoint.error;
+      if (error) return jsonResponse({ error: 'Email review coverage unavailable: ' + error.message }, 500);
+      return jsonResponse({ ok: true, mailbox: 'hello@autofinder.com', cases: (cases.data ?? []).slice(0, 50),
+        hasMore: (cases.data ?? []).length > 50, nextOffset: (cases.data ?? []).length > 50 ? offset + 50 : null,
+        latestIntake: latest.data, lastCompleteIntake: checkpoint.data,
+        instruction: 'Saved evidence, not a live inbox. Follow every hasMore page. Preserve human decisions; a changed source_version requires review but does not erase them. An empty page or unavailable replies never proves handling. Partial runs do not advance the checkpoint. Only hello@autofinder.com may be monitored; no send/draft/mailbox mutation or automatic tasks.' });
     }
     if (action === 'tasks.trash') {
       const offset = body.offset ?? 0;

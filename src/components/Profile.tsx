@@ -30,6 +30,7 @@ import { BellIcon, BrainIcon, CalendarIcon, CheckSquareIcon, SparklesIcon, UserI
 import { Card } from './ui/Card';
 import { IconBadge } from './ui/IconBadge';
 import { AgentConnectionsSection } from './AgentConnectionsSection';
+import { WhoopPanel } from './WhoopPanel';
 
 export function Profile() {
   const user = useAuthStore((s) => s.user);
@@ -68,6 +69,7 @@ export function Profile() {
           />
 
           {user && <AgentConnectionsSection />}
+          {user && <WhoopPanel key={`whoop-${user.id}`} userId={user.id} timezone={profile?.timezone ?? 'America/New_York'} />}
 
           {user && profile && (
             <PriorityEscalationSection

@@ -9,6 +9,8 @@ const titles: Record<string, string> = {
   owed: 'Owed to me',
   tasks: 'Work',
   notes: 'Notes',
+  'email-review': 'Email review',
+  'sitemap-review': 'Sitemap review',
   profile: 'Profile',
   time: 'Time tracking',
   routine: 'Weekly routine',
@@ -18,6 +20,8 @@ const titles: Record<string, string> = {
 const subtitles: Record<string, string> = {
   dashboard: 'Your schedule, context, and concerns for the day.',
   notes: 'Capture scratch, triage meetings, and promote durable context into your library.',
+  'email-review': 'Customer requests, source evidence, and your handling decisions.',
+  'sitemap-review': 'Saved URL additions, removals, and sitemap coverage.',
   tasks: 'Commitments, real deadlines, and review dates.',
   calendar: 'Today, this week, and beyond.',
   owed: "Tasks you're waiting on from other people.",

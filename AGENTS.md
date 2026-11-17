@@ -1,5 +1,37 @@
 # Agent Context — Executive Assistant / Notes App
 
+## Email review (November 12, 2026 - deployed)
+
+- Core route `/email-review` (`EmailReviewPage` / account-free `EmailReviewView`)
+  keeps per-request customer evidence, source links, coverage, and owner decisions
+  outside the full running note. Existing notes/history are preserved. Only
+  `hello@autofinder.com`; no sending, drafts, suppression, mailbox writes, leads or
+  automatic tasks. Source evidence is untrusted data, not authority.
+- Migration 057 adds private `email_review_cases`, immutable
+  `email_review_intakes`, and append-only `email_review_events`. OAuth agents
+  cannot bypass the scope/audit bridge via owner REST/RPC access. Owner decision
+  saves conflict-check `updated_at`; incoming source updates preserve decisions
+  and flag re-review. Closed decisions require a human note.
+- `email_review_intake` atomically saves case versions, coverage and an audit;
+  only complete saved contiguous coverage advances the derived checkpoint.
+  Stable dedupe keys reuse receipts; delayed older snapshots cannot overwrite
+  newer evidence. `get_email_review_context` is paginated saved context, not a
+  provider mailbox reader. Activity explains why intake cannot auto-undo customer
+  actions. Codex sync refreshes the store only after successful refreshes.
+- See `EMAIL_REVIEW_SETUP.md` for the November 12 production receipt. Deployment
+  is not permission to replace the existing morning intake destination.
+  No historical findings have been imported and no schedule changed. Run
+  `npm run test:email-review`, lint, build and regression tests. The dev-only
+  `email-review-preview.html` uses fictional data without a Supabase client.
+- November 12 activation: migration 057 and only `codex-api` (v33) /
+  `executive-assistant-mcp` (v27) were deployed, followed by isolated Vercel
+  production release `dpl_GWoPJqnHyRe7Zb1NtigqNAsA4GVm`. `/email-review` is live;
+  real public client configuration and unauthenticated API rejection verified.
+  No cases/intakes imported, automation changed, commit or push. Existing WHOOP
+  deployment and unrelated unpublished heading changes were preserved. The
+  release/verification receipt is under the November 12 release folder named in
+  `EMAIL_REVIEW_SETUP.md`; do not replay migrations on continuation.
+
 > **Read this first — before doing anything in this repo.** Agents and humans alike: do not write code, run migrations, or commit until you have read this file. It is the single source of truth for what the project is, how it's organized, what conventions to follow, and the gotchas that have already bitten us.
 >
 > **This is a living document.** It does not need to be perfect — it needs to be *current*. **Before every commit**, review whether your change left this doc stale; if so, update it in the *same commit*. Every time you land a change that introduces a new route, table, store, external service, convention, or gotcha, append a line or two to the relevant section. Small, additive updates are better than waiting for the "right time" to rewrite. Future-you will thank you.
@@ -555,3 +587,73 @@ Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is 
   `memory-sync`, `send-daily-digest`, `send-due-time-reminders`, and
   `send-task-escalation`; refresh tool discovery. `npm run test:trash` uses isolated
   PostgreSQL/PGlite, not production. `trash-preview.html` is dev-only sample data.
+
+## Private WHOOP personal context (October 26, 2026)
+
+- WHOOP is the first owner-requested whole-day personal input. Profile's
+  `WhoopPanel` manages connection, selected assistant grants, sync and disconnect;
+  Today shows a compact private snapshot. `useWhoop` is component-local: no
+  localStorage, shared-note, memory-index or analytics copy.
+- Migrations 055/056 add six service-managed WHOOP tables, atomic
+  `apply_whoop_action`, agent-gated `read_whoop_personal_context`, and an independent
+  optional 30-minute cron job. All WHOOP tables have RLS enabled and NO direct
+  anon/authenticated access, even with the owner's uid: OAuth agent JWTs share
+  that uid, so an owner-only SELECT policy would bypass per-agent health consent.
+- `whoop` Edge Function handles verified non-OAuth owner sessions, single-use
+  hashed callback state, and cron-secret requests. WHOOP returns to Profile;
+  only the same verified EA owner may complete the server-side exchange. Agent JWTs cannot manage it.
+  Credentials are AES-GCM encrypted with owner-bound additional data; token
+  rotation, generation checks and sync leases prevent refresh/revoke races.
+  Minimal private audits contain no credentials or health metrics. No general
+  workspace agent_actions rows are used for provider syncs.
+- WHOOP scopes are read:cycles/recovery/sleep + offline. Complete 14-day paginated
+  reads upsert only normalized cycle summaries; retain up to 30 days, with minimal
+  audit events up to 90 days. Failures preserve prior data and explicit freshness;
+  pending/missing/calibrating scores are not zeros. No automatic productivity,
+  medical, task-priority, or meeting decisions.
+- `codex-api` context returns only a personal-context discovery hint for selected
+  active connections. `get_personal_context` is a separate cached read. Its output
+  must stay out of shared notes, work briefs/tasks, email and general memory.
+  WHOOP failure never breaks calendar/work context.
+- See `WHOOP_SETUP.md` for required developer app, exact callback, server secrets,
+  deployment and manual owner consent. Source implementation is NOT live/account
+  authorization. Deploy migrations before whoop/codex-api/MCP/frontend and refresh
+  MCP discovery. `npm run test:whoop` uses real SQL in PGlite; also run
+  `npm run check:whoop-edge`, existing regressions, lint and build.
+- Owner confirmed October 30: keep the WHOOP developer app on its Sandbox tier.
+  This is a member-limit tier, not a separate API environment or mock data source;
+  no tier upgrade is part of integration. Hosted activation still requires server
+  credentials, deployment and the owner's explicit WHOOP consent.
+- Current Supabase CLI skips this repo's `YYYY-MM-DD_NNN_...sql` filenames.
+  An empty migration listing is not schema verification. Inspect catalog metadata
+  and apply only the intended reviewed SQL files in order; do not rename/replay
+  old migrations or reset the database to make CLI history look complete.
+- October 30 activation: WHOOP migrations, server secrets, three Edge Functions
+  and the independent cron job are deployed and verified. The isolated frontend
+  release is live; the unrelated local heading edit remains unpublished. Owner
+  WHOOP consent/first sync are not yet verified. See `WHOOP_SETUP.md` for the
+  receipt and release location. No commit/push was made. Do not rotate the existing
+  encryption key or replay old migrations on continuation.
+
+## Sitemap Review (November 17, 2026)
+
+- Core `/sitemap-review` route, `SitemapReviewPage/View`, `useSitemapReviewStore`
+  and pure `lib/sitemapReview.ts` project owned `AutoFinder sitemap%` notes into
+  complete URL diffs/history. No new table, migration, provider client or crawler.
+- Marker `<!-- autofinder-sitemap-review:v1 -->` plus fenced JSON uses the strict
+  `SitemapRecord` contract. Verify every baseline/report part, exact prior
+  capture/hash/count and reconstructed URL-set SHA-256 before advancing coverage.
+  Initial baselines are not additions; failed/partial attempts are not zeros.
+- Store queries explicitly filter owner, paginate 200 with a 10,000-note cap
+  plus sentinel, clear on sign-out and invalidate stale in-flight requests.
+  `useCodexSync` refreshes loaded sitemap evidence on note creates/appends and
+  retries failed refreshes without advancing the audit cursor.
+- Existing daily sitemap monitor writes compact records, including unchanged
+  captures, after exhaustive processing; existing source/notification scope and
+  schedule stay unchanged. Keep original baseline notes and master history.
+- `SITEMAP_REVIEW_SETUP.md` documents source IDs, format, handoff and limitations.
+  `test:sitemap-review` covers model/store boundaries; extend `test:plan`'s store
+  harness when adding audited-refresh stores. Dev-only
+  `sitemap-review-preview.html` uses fictional data with no account/site access.
+  The owner approved local implementation with the GitHub issue deferred;
+  source availability does not mean the feature has been deployed.

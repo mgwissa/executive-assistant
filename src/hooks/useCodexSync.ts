@@ -6,6 +6,8 @@ import { useNotebooksStore } from '../store/useNotebooksStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useTasksStore } from '../store/useTasksStore';
 import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
+import { useEmailReviewStore } from '../store/useEmailReviewStore';
+import { useSitemapReviewStore } from '../store/useSitemapReviewStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
@@ -80,6 +82,12 @@ export function useCodexSync(userId: string | undefined) {
       const refreshWorkstreams = missedCursor || changedKinds.has('workstream_create') || changedKinds.has('note_workstream');
       const refreshProfile = missedCursor || ['focus_reorder', 'calendar_sync', 'task_delete', 'task_restore'].some((kind) => changedKinds.has(kind));
       const refreshCalendar = missedCursor || changedKinds.has('calendar_sync');
+      const refreshEmailReview = (missedCursor || changedKinds.has('email_review_intake'))
+        && useEmailReviewStore.getState().userId === userId;
+      const refreshSitemapReview = (missedCursor || changedKinds.has('note_create') || changedKinds.has('note_append'))
+        && useSitemapReviewStore.getState().userId === userId;
+      // Don't advance the audit cursor over a skipped refresh during an owner save.
+      if (refreshEmailReview && useEmailReviewStore.getState().savingId) return;
 
       const refreshes: Promise<void>[] = [useAgentStore.getState().fetchAll(userId)];
       if (refreshTasks) {
@@ -97,6 +105,8 @@ export function useCodexSync(userId: string | undefined) {
       if (refreshProfile) {
         refreshes.push(useProfileStore.getState().fetchProfile(userId));
       }
+      if (refreshEmailReview) refreshes.push(useEmailReviewStore.getState().fetchAll(userId));
+      if (refreshSitemapReview) refreshes.push(useSitemapReviewStore.getState().fetchAll(userId));
       if (refreshCalendar) {
         const { fromIso, toIso } = eventsFetchIsoRange(useProfileStore.getState().profile?.timezone);
         refreshes.push(useEventsStore.getState().fetchRange(userId, fromIso, toIso));
@@ -109,6 +119,8 @@ export function useCodexSync(userId: string | undefined) {
         || (refreshNotes ? useNotesStore.getState().error : null)
         || (refreshNotebooks ? useNotebooksStore.getState().error : null)
         || (refreshWorkstreams ? useWorkstreamsStore.getState().error : null)
+        || (refreshEmailReview ? useEmailReviewStore.getState().error : null)
+        || (refreshSitemapReview ? useSitemapReviewStore.getState().error : null)
         || (refreshProfile ? useProfileStore.getState().error : null)
         || (refreshCalendar ? useEventsStore.getState().error || useMeetingDebriefStore.getState().error : null);
       if (refreshError) {

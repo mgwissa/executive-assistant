@@ -1,3 +1,13 @@
+import type { WhoopConnection, WhoopCycle } from '../../supabase/functions/_shared/whoop';
+import type { EmailReviewCase, EmailReviewEvent, EmailReviewIntake } from '../../supabase/functions/_shared/emailReview';
+
+type WhoopConnectionRow = WhoopConnection & {
+  user_id:string; generation:string; granted_scopes:string[]; revoked_at:string | null;
+  lease_token:string | null; lease_until:string | null; updated_at:string;
+};
+type WhoopCycleRow = { user_id:string; cycle_id:number; cycle_start:string; summary:WhoopCycle; synced_at:string };
+type PrivateTable<Row, RequiredKeys extends keyof Row> = { Row:Row; Insert:Pick<Row,RequiredKeys> & Partial<Row>; Update:Partial<Row> };
+
 export type Json =
   | string
   | number
@@ -9,6 +19,15 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      email_review_cases: PrivateTable<EmailReviewCase, 'user_id' | 'message_id' | 'request_key' | 'source_version'>;
+      email_review_intakes: PrivateTable<EmailReviewIntake, 'user_id' | 'run_key' | 'covered_from' | 'covered_through' | 'complete'>;
+      email_review_events: PrivateTable<EmailReviewEvent, 'user_id' | 'case_id' | 'kind' | 'after'>;
+      whoop_connections: PrivateTable<WhoopConnectionRow,'user_id'>;
+      whoop_credentials: PrivateTable<{user_id:string;encrypted_tokens:string;updated_at:string},'user_id'|'encrypted_tokens'>;
+      whoop_oauth_states: PrivateTable<{state_hash:string;user_id:string;generation:string;connection_ids:string[];expires_at:string},'state_hash'|'user_id'|'generation'|'expires_at'>;
+      whoop_cycle_summaries: PrivateTable<WhoopCycleRow,keyof WhoopCycleRow>;
+      whoop_agent_access: PrivateTable<{user_id:string;agent_connection_id:string;granted_at:string},'user_id'|'agent_connection_id'>;
+      whoop_audit_events: PrivateTable<{id:string;user_id:string;kind:string;created_at:string},'user_id'|'kind'>;
       notebooks: {
         Row: {
           id: string;
@@ -885,6 +904,17 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      apply_agent_email_review_intake: {
+        Args: { p_user_id: string; p_run_id: string; p_connection_id: string; p_actor_name: string; p_input: Json };
+        Returns: Json;
+      };
+      review_email_case: {
+        Args: { p_case_id: string; p_expected_updated_at: string; p_status: string; p_decision_note: string };
+        Returns: EmailReviewCase;
+      };
+      apply_whoop_action: { Args:{p_user_id:string | null;p_action:string;p_payload?:Json}; Returns:Json };
+      read_whoop_personal_context: { Args:{p_user_id:string;p_connection_id:string;p_metadata_only?:boolean}; Returns:Json };
+      cleanup_whoop_storage: { Args:Record<string,never>; Returns:undefined };
       set_task_trashed: {
         Args: { p_task_id: string; p_trashed: boolean; p_expected_updated_at: string };
         Returns: Json;
