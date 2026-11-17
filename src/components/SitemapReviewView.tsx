@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatInTimeZone } from 'date-fns-tz';
-import { SITEMAP_SOURCE, sitemapRunMarkdown } from '../lib/sitemapReview';
+import { SITEMAP_SOURCE, sitemapChangeStreak, sitemapRunMarkdown } from '../lib/sitemapReview';
 import type { SitemapReviewModel, SitemapRun } from '../lib/sitemapReview';
 import { EmptyState } from './ui/EmptyState';
 
@@ -29,6 +29,7 @@ export function SitemapReviewView({ model, timezone, loading, error, truncated, 
   const selected = model.runs.find(r => r.runId === selectedId) ?? model.runs[0] ?? null;
   const latest = model.runs[0];
   const checkpoint = model.checkpoint;
+  const streak = sitemapChangeStreak(model, timezone);
   const uncertain = !!error || truncated || model.warnings.length > 0 || !!latest && !verified(latest);
   const history = model.runs.filter(r => historyFilter === 'all' || historyFilter === 'changes'
     && r.kind === 'comparison' && !!((r.addedCount ?? 0) + (r.removedCount ?? 0)) || historyFilter === 'incomplete' && !verified(r));
@@ -45,7 +46,14 @@ export function SitemapReviewView({ model, timezone, loading, error, truncated, 
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-muted">Every added and removed URL, with the saved evidence behind each check. This panel does not change the website.</p>
           <a className="mt-2 inline-block break-all text-xs text-brand-700 underline dark:text-brand-300" href={SITEMAP_SOURCE} target="_blank" rel="noopener noreferrer">{SITEMAP_SOURCE}</a>
         </div>
-        <button type="button" className="btn-ghost shrink-0" onClick={onRefresh} disabled={loading}>{loading ? 'Loading saved reports…' : 'Refresh saved reports'}</button>
+        <div className="flex w-full flex-col items-start gap-3 sm:w-auto sm:items-end">
+          <button type="button" className="btn-ghost shrink-0" onClick={onRefresh} disabled={loading}>{loading ? 'Loading saved reports…' : 'Refresh saved reports'}</button>
+          <section className="rounded-lg border border-dashed border-border bg-surface-raised px-4 py-3 text-left sm:text-right" aria-label="Days since last change">
+            <p className="text-xs font-medium text-text-muted">Days since last change</p>
+            <output className="mt-2 block font-mono text-3xl font-semibold leading-none tabular-nums text-brand-700 dark:text-brand-300" aria-label="Day count">{streak?.days ?? '—'}</output>
+            <p className="mt-2 text-xs text-text-subtle">{streak ? <>{streak.fromBaseline ? 'Since tracking began' : 'Since last detected change'}<br />Through {formatInTimeZone(new Date(streak.throughUtc), timezone, 'MMM d, yyyy')}</> : 'Awaiting a verified check'}</p>
+          </section>
+        </div>
       </header>
 
       <section className="rounded-xl border border-border bg-surface-raised p-4 sm:p-5" aria-label="Saved sitemap coverage">

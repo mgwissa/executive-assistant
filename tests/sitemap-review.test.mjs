@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { buildSitemapReviewModel, formatSitemapRecord, isSitemapPageUrl, parseSitemapRecord, sitemapRunMarkdown, sitemapUrlHash, SITEMAP_RECORD_MARKER, SITEMAP_SOURCE } from '../src/lib/sitemapReview.ts';
+import { buildSitemapReviewModel, formatSitemapRecord, isSitemapPageUrl, parseSitemapRecord, sitemapChangeStreak, sitemapRunMarkdown, sitemapUrlHash, SITEMAP_RECORD_MARKER, SITEMAP_SOURCE } from '../src/lib/sitemapReview.ts';
 
 const first = '2026-11-16T21:29:22Z';
 const second = '2026-11-17T14:10:13Z';
@@ -69,6 +69,46 @@ test('no-change captures are real checks, not fabricated URL additions', async (
   assert.equal(model.checkpoint.checkedAtUtc, second);
   assert.equal(model.runs[0].verified, true);
   assert.deepEqual(model.currentUrls, [a, b].sort());
+});
+
+test('days-since-change starts at the baseline without inventing an earlier change', async () => {
+  const f = await fixture();
+  const unchanged = { ...f.comparison, runId: 'unchanged', addedUrls: [], removedUrls: [], addedCount: 0, removedCount: 0, hash: f.baseline.hash };
+  const model = await buildSitemapReviewModel([...f.notes, recordNote(unchanged)]);
+  assert.deepEqual(sitemapChangeStreak(model, 'America/New_York'), {
+    days: 1, sinceUtc: first, throughUtc: second, fromBaseline: true,
+  });
+  assert.equal(sitemapChangeStreak({ ...model, checkpoint: null }, 'America/New_York'), null);
+});
+
+test('a verified addition or removal resets the sign; unchanged checks extend it', async () => {
+  const f = await fixture();
+  const model = await buildSitemapReviewModel([...f.notes, recordNote(f.comparison)]);
+  assert.equal(sitemapChangeStreak(model, 'America/New_York').days, 0);
+  assert.equal(sitemapChangeStreak(model, 'America/New_York').fromBaseline, false);
+  const unchanged = { ...f.comparison, runId: 'later-unchanged', checkedAtUtc: '2026-11-20T12:30:00Z', previousAtUtc: second,
+    previousHash: f.comparison.hash, addedCount: 0, removedCount: 0, addedUrls: [], removedUrls: [] };
+  const extended = await buildSitemapReviewModel([...f.notes, recordNote(f.comparison), recordNote(unchanged)]);
+  assert.equal(sitemapChangeStreak(extended, 'America/New_York').days, 3);
+  const failed = { ...unchanged, runId: 'failed', kind: 'attempt', complete: false, checkedAtUtc: '2026-11-23T12:30:00Z',
+    hash: null, urlCount: null, addedCount: null, removedCount: null, httpStatus: 503 };
+  const partial = await buildSitemapReviewModel([...f.notes, recordNote(f.comparison), recordNote(unchanged), recordNote(failed)]);
+  assert.deepEqual(sitemapChangeStreak(partial, 'America/New_York'), sitemapChangeStreak(extended, 'America/New_York'));
+});
+
+test('streak counts calendar days in the profile timezone, including DST and midnight', async () => {
+  const f = await fixture();
+  const baseline = { ...f.baseline, checkedAtUtc: '2026-03-07T17:00:00Z' };
+  const unchanged = { ...f.comparison, runId: 'dst', checkedAtUtc: '2026-03-08T16:00:00Z', previousAtUtc: baseline.checkedAtUtc,
+    hash: baseline.hash, addedCount: 0, removedCount: 0, addedUrls: [], removedUrls: [] };
+  const model = await buildSitemapReviewModel([f.baselinePart, recordNote(baseline), recordNote(unchanged)]);
+  assert.equal(sitemapChangeStreak(model, 'America/New_York').days, 1, '23-hour DST day still counts as one calendar day');
+  baseline.checkedAtUtc = '2026-11-18T04:59:00Z';
+  unchanged.checkedAtUtc = '2026-11-18T05:01:00Z';
+  unchanged.previousAtUtc = baseline.checkedAtUtc;
+  const midnight = await buildSitemapReviewModel([f.baselinePart, recordNote(baseline), recordNote(unchanged)]);
+  assert.equal(sitemapChangeStreak(midnight, 'America/New_York').days, 1);
+  assert.equal(sitemapChangeStreak(midnight, 'UTC').days, 0);
 });
 
 test('case, query strings, escaped characters and trailing slashes remain exact', async () => {
