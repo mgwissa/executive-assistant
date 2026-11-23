@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RefinementsView } from '../components/RefinementsView';
+import { refinementProgressKey } from '../lib/refinementProgress';
+import type { RefinementProgressRow, RefinementProgressStatus, RefinementProgressTarget } from '../lib/refinementProgress';
 import type { RefinementRecord, RefinementReviewModel } from '../lib/refinementReview';
 import '../index.css';
 
@@ -69,6 +71,26 @@ function Preview() {
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [sourceMessage, setSourceMessage] = useState('');
+  const [progress, setProgress] = useState<Record<string, RefinementProgressRow>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [failProgressSave, setFailProgressSave] = useState(false);
+  const [progressUnavailable, setProgressUnavailable] = useState(false);
+  const changeProgress = (target: RefinementProgressTarget, status: RefinementProgressStatus) => {
+    if (savingKey !== null) return;
+    const key = refinementProgressKey(target);
+    setSavingKey(key);
+    setProgressError(null);
+    // Simulate a confirmed save. This fixture never writes to a provider or account.
+    window.setTimeout(() => {
+      if (failProgressSave) setProgressError('Simulated progress save failed. Your previous status is unchanged.');
+      else setProgress(previous => ({ ...previous, [key]: {
+        user_id: 'fictional-preview-owner', note_id: target.noteId, source_id: target.sourceId,
+        item_kind: target.itemKind, item_id: target.itemId, status, updated_at: new Date().toISOString(),
+      } }));
+      setSavingKey(null);
+    }, 500);
+  };
   const visibleModel = showEmpty ? empty : partial ? { ...model,
     meetings: model.meetings.map((meeting, index) => index !== 0 || !meeting.record ? meeting : { ...meeting,
       record: { ...meeting.record, source: { ...meeting.record.source, transcriptionComplete: false, lastTimestamp: '18:05' } } }),
@@ -78,15 +100,22 @@ function Preview() {
   return <div className="flex h-dvh flex-col bg-surface text-text">
     <div className="flex flex-wrap items-center gap-2 border-b border-border-strong bg-surface-sunken px-4 py-2 text-sm">
       <strong>FICTIONAL SAMPLE · local UI only</strong>
+      <span>Progress changes stay in this demo.</span>
       <button type="button" className="btn-ghost text-sm" onClick={() => document.documentElement.classList.toggle('dark')}>Light / dark</button>
       <button type="button" className="btn-ghost text-sm" onClick={() => setPartial(value => !value)}>Toggle partial transcript</button>
       <button type="button" className="btn-ghost text-sm" onClick={() => setError(value => value ? null : 'Simulated connection failure')}>Toggle load failure</button>
       <button type="button" className="btn-ghost text-sm" onClick={() => setShowEmpty(value => !value)}>Toggle empty state</button>
       <button type="button" className="btn-ghost text-sm" onClick={() => setTruncated(value => !value)}>Toggle partial history</button>
+      <button type="button" className="btn-ghost text-sm" aria-pressed={failProgressSave} disabled={savingKey !== null} onClick={() => setFailProgressSave(value => !value)}>Toggle progress save failure</button>
+      <button type="button" className="btn-ghost text-sm" aria-pressed={progressUnavailable} disabled={savingKey !== null} onClick={() => setProgressUnavailable(value => !value)}>Toggle progress unavailable</button>
+      <button type="button" className="btn-ghost text-sm" disabled={savingKey !== null} onClick={() => { setProgress({}); setProgressError(null); }}>Reset demo progress</button>
       <span role="status" aria-live="polite">{sourceMessage}</span>
     </div>
     <div className="min-h-0 flex-1"><RefinementsView model={visibleModel} timezone="America/New_York" loading={false} error={error} truncated={truncated}
-      loadedAt={reviewedAt} onRefresh={() => setError(null)} onOpenNote={() => setSourceMessage('Preview only: the selected source note would open in Notes.')} /></div>
+      loadedAt={reviewedAt} onRefresh={() => setError(null)} onOpenNote={() => setSourceMessage('Preview only: the selected source note would open in Notes.')}
+      progress={progress} progressReady={!progressUnavailable} progressLoading={false} savingKey={savingKey}
+      progressError={progressUnavailable ? 'Simulated progress loading failure. Meeting evidence remains available.' : progressError}
+      onProgressChange={changeProgress} /></div>
   </div>;
 }
 

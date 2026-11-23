@@ -14,6 +14,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { localDateString } from '../_shared/datetime.ts';
 import { mergeBriefStats, parseDayPlan } from '../_shared/dayPlan.ts';
 import { readWhoopContext, whoopDiscovery } from '../_shared/whoopContext.ts';
+import { readRefinementProgress } from '../_shared/refinementProgress.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -1075,6 +1076,7 @@ async function buildContext(admin: SupabaseClient, userId: string, calendarSync:
     timezone,
     calendarSync,
     personalContext: { whoop: await whoopDiscovery(admin, userId, connectionId) },
+    refinementProgress: await readRefinementProgress(admin, userId),
     emailReview: { mailbox: 'hello@autofinder.com', tool: 'get_email_review_context',
       instruction: 'Saved customer cases, decisions and complete-source checkpoints live in Email review. Read this ledger before a separately authorized mailbox intake. No sending, drafts, suppression, automatic tasks or mailbox changes.' },
     calendarWindow: { from: windowStart, to: windowEnd, truncated: events.length === 1000 },
@@ -1211,7 +1213,10 @@ Deno.serve(async (req) => {
     if (action === 'notes.search') {
       const query = str(body.query);
       if (!query || query.length < 2) return jsonResponse({ error: 'query must contain at least 2 characters' }, 400);
-      return jsonResponse({ ok: true, notes: await searchNotes(admin, principal.userId, query) });
+      const [notes, refinementProgress] = await Promise.all([
+        searchNotes(admin, principal.userId, query), readRefinementProgress(admin, principal.userId),
+      ]);
+      return jsonResponse({ ok: true, notes, refinementProgress });
     }
     if (action === 'email.review') {
       const offset = body.offset ?? 0;

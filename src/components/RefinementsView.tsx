@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { formatInTimeZone } from 'date-fns-tz';
 import { refinementStoryUrl } from '../lib/refinementReview';
+import { refinementProgressKey } from '../lib/refinementProgress';
+import type { RefinementProgressRow, RefinementProgressStatus, RefinementProgressTarget } from '../lib/refinementProgress';
 import type { RefinementAction, RefinementMeeting, RefinementReviewModel, RefinementStory } from '../lib/refinementReview';
 import { BookIcon, CalendarIcon, CheckSquareIcon, NoteIcon, RefreshIcon, SearchIcon } from './icons';
 import { Badge } from './ui/Badge';
@@ -17,9 +19,16 @@ type Props = {
   loadedAt: string | null;
   onRefresh: () => void;
   onOpenNote?: (noteId: string) => void;
+  progress?: Record<string, RefinementProgressRow>;
+  progressReady?: boolean;
+  progressLoading?: boolean;
+  progressError?: string | null;
+  savingKey?: string | null;
+  onProgressChange?: (target: RefinementProgressTarget, status: RefinementProgressStatus) => void;
 };
 
 type Tab = 'followups' | 'stories' | 'notes';
+type ProgressFilter = 'active' | 'completed' | 'all';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'followups', label: 'Your follow-ups' },
   { id: 'stories', label: 'Stories' },
@@ -67,11 +76,56 @@ function Evidence({ text }: { text: string }) {
   </details> : null;
 }
 
+type CardProgress = {
+  target: RefinementProgressTarget;
+  status: RefinementProgressStatus;
+  ready: boolean;
+  loading: boolean;
+  savingKey: string | null;
+  onChange?: (target: RefinementProgressTarget, status: RefinementProgressStatus) => void;
+};
+
+function ProgressControls({ target, status, ready, loading, savingKey, onChange, title }: CardProgress & { title: string }) {
+  const inputId = useId();
+  const saving = savingKey === refinementProgressKey(target);
+  const disabled = !ready || savingKey !== null || !onChange;
+  return <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4" aria-busy={saving}>
+    <div className="flex flex-wrap items-center gap-2">
+      <label htmlFor={status === 'complete' ? undefined : inputId} className="text-sm font-medium text-text-muted">Your progress</label>
+      {status === 'complete' ? <Badge variant="success">Complete</Badge> : <select id={inputId} aria-label={`Your progress for ${title}`} className="input min-h-10 w-auto text-sm" value={status} disabled={disabled}
+        onChange={event => onChange?.(target, event.target.value as RefinementProgressStatus)}>
+        <option value="not_started">Not started</option>
+        <option value="in_progress">In progress</option>
+      </select>}
+    </div>
+    <button type="button" className="btn-ghost min-h-10 text-sm" disabled={disabled} aria-label={`${status === 'complete' ? 'Reopen' : 'Mark complete'}: ${title}`}
+      onClick={() => onChange?.(target, status === 'complete' ? 'not_started' : 'complete')}>
+      {saving ? 'Saving…' : status === 'complete' ? 'Reopen' : 'Mark complete'}
+    </button>
+    {!ready && <p className="w-full text-sm text-text-muted">{loading ? 'Loading your saved progress…' : 'Progress is not available yet.'}</p>}
+  </div>;
+}
+
+function meetingTargets(meeting: RefinementMeeting | null): RefinementProgressTarget[] {
+  const record = meeting?.record;
+  if (!meeting || !record) return [];
+  return [
+    ...record.actions.map(action => ({ noteId: meeting.noteId, sourceId: record.sourceId, itemKind: 'action' as const, itemId: action.id })),
+    ...record.stories.map(story => ({ noteId: meeting.noteId, sourceId: record.sourceId, itemKind: 'story' as const, itemId: story.id })),
+  ];
+}
+
+function progressCounts(targets: RefinementProgressTarget[], progress: Record<string, RefinementProgressRow>) {
+  const complete = targets.filter(target => progress[refinementProgressKey(target)]?.status === 'complete').length;
+  const inProgress = targets.filter(target => progress[refinementProgressKey(target)]?.status === 'in_progress').length;
+  return { total: targets.length, active: targets.length - complete, complete, inProgress };
+}
+
 const actionLabels: Record<RefinementAction['status'], string> = {
   follow_up: 'Follow-up', decision: 'Decision', delegated: 'With the team', done: 'Recorded done',
 };
 
-function ActionCard({ action }: { action: RefinementAction }) {
+function ActionCard({ action, progress }: { action: RefinementAction; progress?: CardProgress }) {
   return <article className="rounded-xl border border-border bg-surface-raised p-4 sm:p-5">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Badge variant={action.status === 'done' ? 'success' : action.status === 'delegated' ? 'blue' : action.status === 'decision' ? 'purple' : 'amber'}>{actionLabels[action.status]}</Badge>
@@ -80,6 +134,7 @@ function ActionCard({ action }: { action: RefinementAction }) {
     <h4 className="mt-3 text-base font-semibold leading-snug text-text">{action.title}</h4>
     <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-text-muted">{action.nextAction}</p>
     <Evidence text={action.evidence} />
+    {progress && <ProgressControls {...progress} title={action.title} />}
   </article>;
 }
 
@@ -88,7 +143,7 @@ const storyLabels: Record<RefinementStory['disposition'], string> = {
   new_story: 'New story proposal', verify: 'Verify current item',
 };
 
-function StoryCard({ story, reviewedAt, timezone }: { story: RefinementStory; reviewedAt: string; timezone: string }) {
+function StoryCard({ story, reviewedAt, timezone, progress }: { story: RefinementStory; reviewedAt: string; timezone: string; progress?: CardProgress }) {
   const [copyStatus, setCopyStatus] = useState<{ error: boolean; message: string } | null>(null);
   const url = story.workItemId === undefined ? null : refinementStoryUrl(story.workItemId);
   const description = story.description?.trim() ? story.description : null;
@@ -117,6 +172,7 @@ function StoryCard({ story, reviewedAt, timezone }: { story: RefinementStory; re
         <span>As of {savedTime(reviewedAt, timezone)}</span>
       </div>}
       <Evidence text={story.evidence} />
+      {progress && <ProgressControls {...progress} title={story.title} />}
     </div>
     {description || acceptanceCriteria ? <div className="border-t border-border bg-surface-sunken/60 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
@@ -152,10 +208,12 @@ function MeetingSources({ meeting, timezone }: { meeting: RefinementMeeting; tim
   </details>;
 }
 
-export function RefinementsView({ model, timezone, loading, error, truncated, loadedAt, onRefresh, onOpenNote }: Props) {
+export function RefinementsView({ model, timezone, loading, error, truncated, loadedAt, onRefresh, onOpenNote,
+  progress = {}, progressReady = false, progressLoading = false, progressError = null, savingKey = null, onProgressChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>('followups');
+  const [progressFilter, setProgressFilter] = useState<ProgressFilter>('active');
   const instanceId = useId();
   const history = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -166,9 +224,24 @@ export function RefinementsView({ model, timezone, loading, error, truncated, lo
   }, [model.meetings, query]);
   const selected = history.find(meeting => meeting.noteId === selectedId) ?? history[0] ?? null;
   const record = selected?.record;
-  const ownActions = record?.actions.filter(action => action.status !== 'delegated') ?? [];
-  const delegatedActions = record?.actions.filter(action => action.status === 'delegated') ?? [];
-  const selectMeeting = (meeting: RefinementMeeting) => { setSelectedId(meeting.noteId); setTab('followups'); };
+  const targets = meetingTargets(selected);
+  const selectedCounts = progressCounts(targets, progress);
+  const currentCounts = progressCounts(targets.filter(target => target.itemKind === (tab === 'stories' ? 'story' : 'action')), progress);
+  const controlsFor = (itemKind: RefinementProgressTarget['itemKind'], itemId: string): CardProgress | undefined => {
+    if (!selected || !record) return undefined;
+    const target = { noteId: selected.noteId, sourceId: record.sourceId, itemKind, itemId };
+    return { target, status: progress[refinementProgressKey(target)]?.status ?? 'not_started', ready: progressReady,
+      loading: progressLoading, savingKey, onChange: onProgressChange };
+  };
+  const matchesProgress = (itemKind: RefinementProgressTarget['itemKind'], itemId: string) => {
+    if (!progressReady || progressFilter === 'all') return true;
+    const complete = controlsFor(itemKind, itemId)?.status === 'complete';
+    return progressFilter === 'completed' ? complete : !complete;
+  };
+  const ownActions = record?.actions.filter(action => action.status !== 'delegated' && matchesProgress('action', action.id)) ?? [];
+  const delegatedActions = record?.actions.filter(action => action.status === 'delegated' && matchesProgress('action', action.id)) ?? [];
+  const visibleStories = record?.stories.filter(story => matchesProgress('story', story.id)) ?? [];
+  const selectMeeting = (meeting: RefinementMeeting) => { setSelectedId(meeting.noteId); setTab('followups'); setProgressFilter('active'); };
   const tabCount = (id: Tab) => !record ? null : id === 'followups' ? record.actions.length : id === 'stories' ? record.stories.length : null;
 
   return <div className="h-full overflow-y-auto bg-surface px-3 py-4 sm:p-6">
@@ -186,6 +259,7 @@ export function RefinementsView({ model, timezone, loading, error, truncated, lo
       </header>
 
       {error && <div role="alert" className="rounded-xl border border-border-strong bg-surface-sunken p-4 text-sm leading-relaxed text-text"><p className="font-medium">Saved reviews could not be refreshed.</p><p className="mt-1">{error}</p>{model.meetings.length > 0 && <p className="mt-1 text-text-muted">Previously loaded meetings remain visible.</p>}</div>}
+      {progressError && <div role="alert" className="rounded-xl border border-border-strong bg-surface-sunken p-4 text-sm leading-relaxed text-text"><p className="font-medium">Your progress needs attention.</p><p className="mt-1">{progressError}</p></div>}
       {truncated && <p role="alert" className="rounded-xl border border-border-strong bg-surface-sunken p-4 text-sm leading-relaxed text-text">Only part of the saved meeting history was loaded. Search and counts cover the loaded reviews.</p>}
       {model.warnings.length > 0 && <details className="rounded-xl border border-border-strong bg-surface-sunken p-4 text-sm text-text"><summary className="w-fit cursor-pointer rounded font-medium focus-ring">Some saved review details need attention</summary><ul className="mt-3 list-inside list-disc space-y-2 leading-relaxed text-text-muted">{model.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
 
@@ -216,6 +290,10 @@ export function RefinementsView({ model, timezone, loading, error, truncated, lo
                 <h3 className="mt-3 text-xl font-semibold leading-snug tracking-tight text-text sm:text-2xl">{selected.title}</h3>
                 {record ? <p className="mt-3 text-base leading-relaxed text-text-muted">{record.summary}</p> : <p className="mt-3 text-base leading-relaxed text-text-muted">This earlier recap is preserved in its original form. Open Meeting notes to read it.</p>}
                 {record && !record.source.transcriptionComplete && <div className="mt-4"><Badge variant="warning">Partial supplied transcript</Badge></div>}
+                {record && selectedCounts.total > 0 && <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-sunken px-3 py-3 text-sm">
+                  <span className="font-medium text-text">Your progress across this meeting</span>
+                  <output aria-live="polite" className="tabular-nums text-text-muted">{progressReady ? `${selectedCounts.complete} of ${selectedCounts.total} complete${selectedCounts.inProgress ? ` · ${selectedCounts.inProgress} in progress` : ''}` : progressLoading ? 'Loading saved progress…' : 'Saved progress unavailable'}</output>
+                </div>}
               </header>
               <div className="flex flex-wrap gap-1 border-t border-border bg-surface-sunken/50 p-2" role="tablist" aria-label="Refinement details">{TABS.map(item => <button key={item.id} type="button" id={`${instanceId}-tab-${item.id}`} role="tab" aria-selected={tab === item.id} aria-controls={`${instanceId}-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1}
                 onKeyDown={event => {
@@ -229,15 +307,22 @@ export function RefinementsView({ model, timezone, loading, error, truncated, lo
                 onClick={() => setTab(item.id)} className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-ring sm:px-4 ${tab === item.id ? 'bg-surface-raised text-text shadow-card ring-1 ring-border' : 'text-text-muted hover:bg-surface-raised hover:text-text'}`}>{item.label}{tabCount(item.id) !== null && <span className="rounded bg-surface-sunken px-1.5 py-0.5 tabular-nums text-text-muted">{tabCount(item.id)}</span>}</button>)}</div>
             </div>
 
+            {record && tab !== 'notes' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-3 sm:px-4">
+              <div className="flex flex-wrap gap-1" role="group" aria-label="Filter items by your progress">{([
+                ['active', 'Active', currentCounts.active], ['completed', 'Completed', currentCounts.complete], ['all', 'All', currentCounts.total],
+              ] as const).map(([value, label, count]) => <button key={value} type="button" className={progressFilter === value ? 'btn-primary text-sm' : 'btn-ghost text-sm'} aria-pressed={progressFilter === value} disabled={!progressReady} onClick={() => setProgressFilter(value)}>{label} <span className="ml-1 tabular-nums opacity-75">{progressReady ? count : '—'}</span></button>)}</div>
+              <p className="text-sm text-text-muted">{progressReady ? 'Your saved progress' : progressLoading ? 'Loading progress; showing saved items' : 'Showing saved items; progress unavailable'}</p>
+            </div>}
+
             <div id={`${instanceId}-panel-${tab}`} role="tabpanel" aria-labelledby={`${instanceId}-tab-${tab}`} tabIndex={0} className="min-w-0 rounded-xl focus-ring">
               {tab === 'followups' && (record ? <div className="space-y-5">
-                {ownActions.length > 0 && <section aria-label="Follow-ups and decisions"><div className="mb-3 flex items-center gap-2"><CheckSquareIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" /><h4 className="text-base font-semibold text-text">Follow-ups and decisions</h4></div><div className="space-y-3">{ownActions.map(action => <ActionCard key={`${selected.noteId}-${action.id}`} action={action} />)}</div></section>}
-                {delegatedActions.length > 0 && <section aria-label="Follow-ups with the team"><h4 className="mb-3 text-base font-semibold text-text">With the team</h4><div className="space-y-3">{delegatedActions.map(action => <ActionCard key={`${selected.noteId}-${action.id}`} action={action} />)}</div></section>}
-                {record.actions.length === 0 && <div className="rounded-xl border border-border bg-surface-raised"><EmptyState title="No follow-ups recorded" message="This saved review has no separate follow-up items. Its recap and decisions remain available in Meeting notes." /></div>}
+                {ownActions.length > 0 && <section aria-label="Follow-ups and decisions"><div className="mb-3 flex items-center gap-2"><CheckSquareIcon className="h-4 w-4 text-text-subtle" aria-hidden="true" /><h4 className="text-base font-semibold text-text">Follow-ups and decisions</h4></div><div className="space-y-3">{ownActions.map(action => <ActionCard key={`${selected.noteId}-${action.id}`} action={action} progress={controlsFor('action', action.id)} />)}</div></section>}
+                {delegatedActions.length > 0 && <section aria-label="Follow-ups with the team"><h4 className="mb-3 text-base font-semibold text-text">With the team</h4><div className="space-y-3">{delegatedActions.map(action => <ActionCard key={`${selected.noteId}-${action.id}`} action={action} progress={controlsFor('action', action.id)} />)}</div></section>}
+                {ownActions.length + delegatedActions.length === 0 && <div className="rounded-xl border border-border bg-surface-raised"><EmptyState title={record.actions.length === 0 ? 'No follow-ups recorded' : progressFilter === 'completed' ? 'No completed follow-ups yet' : 'All follow-ups are complete'} message={record.actions.length === 0 ? 'This saved review has no separate follow-up items. Its recap and decisions remain available in Meeting notes.' : 'Use All to review every follow-up and reopen an item when needed.'} action={record.actions.length > 0 ? <button type="button" className="btn-ghost" onClick={() => setProgressFilter('all')}>Show all follow-ups</button> : undefined} /></div>}
               </div> : <div className="rounded-xl border border-border bg-surface-raised"><EmptyState title="This meeting has an earlier recap" message="A separate follow-up list has not been saved for this note. Read the original recap to see its context." action={<button type="button" className="btn-ghost" onClick={() => setTab('notes')}>Read meeting notes</button>} /></div>)}
 
               {tab === 'stories' && (record ? <div className="space-y-4">
-                {record.stories.length > 0 ? record.stories.map(story => <StoryCard key={`${selected.noteId}-${story.id}`} story={story} reviewedAt={record.reviewedAt} timezone={timezone} />) : <div className="rounded-xl border border-border bg-surface-raised"><EmptyState icon={<BookIcon className="h-5 w-5" />} title="No story changes recorded" message="This saved review has no separate story-change entries. Read Meeting notes for the full recap." /></div>}
+                {visibleStories.length > 0 ? visibleStories.map(story => <StoryCard key={`${selected.noteId}-${story.id}`} story={story} reviewedAt={record.reviewedAt} timezone={timezone} progress={controlsFor('story', story.id)} />) : <div className="rounded-xl border border-border bg-surface-raised"><EmptyState icon={<BookIcon className="h-5 w-5" />} title={record.stories.length === 0 ? 'No story changes recorded' : progressFilter === 'completed' ? 'No completed stories yet' : 'All story follow-ups are complete'} message={record.stories.length === 0 ? 'This saved review has no separate story-change entries. Read Meeting notes for the full recap.' : 'Use All to review every story follow-up and reopen an item when needed.'} action={record.stories.length > 0 ? <button type="button" className="btn-ghost" onClick={() => setProgressFilter('all')}>Show all stories</button> : undefined} /></div>}
               </div> : <div className="rounded-xl border border-border bg-surface-raised"><EmptyState title="No separate story breakdown" message="This earlier note is available as a recap. No story drafts have been extracted into this view." action={<button type="button" className="btn-ghost" onClick={() => setTab('notes')}>Read meeting notes</button>} /></div>)}
 
               {tab === 'notes' && <div className="space-y-4">

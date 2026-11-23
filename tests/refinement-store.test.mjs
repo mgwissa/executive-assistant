@@ -204,3 +204,17 @@ for (const outcome of ['success', 'error']) {
     assert.deepEqual(snapshot(store), newest);
   });
 }
+
+
+test('a malformed success response preserves saved meeting history instead of resetting it', async () => {
+  for (const malformed of [null, undefined, {}, 'not-an-array']) {
+    let fail = false;
+    const { store } = loadStore(async () => ({ data: fail ? malformed : [note('preserved-meeting')], error: null }));
+    await store.getState().fetchAll('owner-a');
+    const before = normalize(store.getState().model), loadedAt = store.getState().loadedAt;
+    fail = true; await store.getState().fetchAll('owner-a');
+    assert.deepEqual(normalize(store.getState().model), before);
+    assert.equal(store.getState().loadedAt, loadedAt);
+    assert.match(store.getState().error, /incomplete/);
+  }
+});

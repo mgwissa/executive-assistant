@@ -30,6 +30,7 @@ export const useRefinementsStore = create<State>((set, get) => ({
           .range(offset, offset === MAX_NOTES ? offset : offset + PAGE_SIZE - 1);
         if (request !== generation) return;
         if (error) throw error;
+        if (!Array.isArray(data)) throw new Error('Saved refinement response was incomplete. Refresh before making changes.');
         if (offset === MAX_NOTES) { truncated = !!data?.length; break; }
         notes.push(...(data ?? []));
         if ((data?.length ?? 0) < PAGE_SIZE) break;

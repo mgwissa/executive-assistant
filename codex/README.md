@@ -297,3 +297,25 @@ If the agent's sandbox cannot write Git metadata, the owner can run
 approval. It stages only this change's listed files, refuses an existing staged
 index or newer remote main, and stops on errors. A successful push starts the
 existing Vercel/GitHub deployments; it does not itself establish they succeeded.
+
+### Refinement progress (migration 058)
+
+The owner tracks refinement follow-ups and story updates in `/refinements` with
+Not started, In progress and Complete, and can reopen completed items. These
+human decisions live separately from transcript evidence and recorded ADO state.
+The app never publishes an ADO change or completes a linked task as a side effect.
+
+`get_workspace_context` and `search_notes` return `refinementProgress` with saved
+items and explicit availability/completeness metadata. Match `source_id`,
+`item_kind` and `item_id`; a note ID is only a source anchor. Keep same-outcome IDs
+stable across rereviews. Complete items remain out of follow-up proposals;
+`not_started` is an explicit reopen. If progress is unavailable or truncated,
+missing rows are unknown: do not infer permission to replay completed intake.
+
+There is no agent progress-write tool. The UI uses owner-only
+`set_refinement_progress`, with version conflicts requiring a refresh. OAuth
+agents cannot use direct table access or this owner RPC; the bridge has SELECT
+only. Apply `2026-11-23_058_refinement_progress.sql` before deploying the frontend,
+`codex-api` and `executive-assistant-mcp`. Refresh tool discovery after deployment.
+Run `npm run test:refinements`, the calendar/task/plan regressions, Edge type-checks,
+lint and build. Local fixtures never use live accounts or provider writes.

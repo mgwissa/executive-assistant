@@ -6,6 +6,7 @@ type RpcId = string | number | null;
 
 const OAUTH_SCOPES = ['openid', 'email', 'profile'] as const;
 const PERSONAL_GUIDANCE = ' If context.personalContext.whoop.available is true, call get_personal_context during the owner\'s morning or whole-day planning. This is separately shared, sensitive personal context: keep it out of work briefings, shared notes, tasks, emails and general memory. Present actual cycle dates, freshness and unscored/calibrating states. Ask how the owner feels; scores do not determine productivity or medical fitness and never automatically change tasks or meetings.';
+const REFINEMENT_PROGRESS_GUIDANCE = ' Saved refinementProgress is owner progress, separate from transcript evidence. Match the exact source_id, item_kind and item_id: owner progress overrides the recorded source status for planning, complete items stay out of follow-ups, and not_started is an explicit reopen. Preserve progress across note edits and source rereviews. When available or complete is false, or truncated is true, missing progress is unknown: do not assume not_started or replay recorded work. Progress does not complete linked tasks, change ADO, establish delivery or authorize an agent to change owner progress.';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -19,7 +20,7 @@ const TOOLS = [
   {
     name: 'get_workspace_context',
     title: 'Get executive-assistant context',
-    description: 'Refresh the published Outlook calendar, then read the current user\'s schedule, tasks, focus plan, notes, briefs, audited activity, and due check-ins. Calendar refresh requires workspace:write permission; read-only connections receive saved events. Check calendarSync.status, lastSyncedAt, coverage, and calendarWindow.truncated before planning: an unverified or incomplete calendar never means free time. Call this first for a morning conversation, including "good morning".' + PLAN_CAPTURE_GUIDANCE + PERSONAL_GUIDANCE,
+    description: 'Refresh the published Outlook calendar, then read the current user\'s schedule, tasks, focus plan, notes, briefs, audited activity, and due check-ins. Calendar refresh requires workspace:write permission; read-only connections receive saved events. Check calendarSync.status, lastSyncedAt, coverage, and calendarWindow.truncated before planning: an unverified or incomplete calendar never means free time. Call this first for a morning conversation, including "good morning".' + PLAN_CAPTURE_GUIDANCE + PERSONAL_GUIDANCE + REFINEMENT_PROGRESS_GUIDANCE,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     securitySchemes: [{ type: 'oauth2', scopes: OAUTH_SCOPES }],
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -35,7 +36,7 @@ const TOOLS = [
   {
     name: 'search_notes',
     title: 'Search workspace notes',
-    description: 'Search the current user’s notes and return bounded matching content. Use this when the normal workspace context does not contain enough detail.',
+    description: 'Search the current user’s notes and return bounded matching content plus separately saved refinementProgress. Use this when the normal workspace context does not contain enough detail.' + REFINEMENT_PROGRESS_GUIDANCE,
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string', minLength: 2, description: 'Text to find in note titles and content.' } },
@@ -261,7 +262,7 @@ Deno.serve(async (req) => {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: 'Executive Assistant', version: '1.0.0' },
-      instructions: 'Use get_workspace_context to understand the real schedule and work context. It first attempts an audited Outlook refresh when the connection has write access. Inspect calendarSync and calendarWindow.truncated: stale, missing, failed, or incomplete calendar data never establishes free time. When the user begins a morning conversation, even with only "good morning", call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Flag calendar uncertainty in the plan. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.' + PLAN_CAPTURE_GUIDANCE + PERSONAL_GUIDANCE,
+      instructions: 'Use get_workspace_context to understand the real schedule and work context. It first attempts an audited Outlook refresh when the connection has write access. Inspect calendarSync and calendarWindow.truncated: stale, missing, failed, or incomplete calendar data never establishes free time. When the user begins a morning conversation, even with only "good morning", call get_workspace_context before replying. If context.checkIn.pendingChecks contains morning_brief, complete the morning briefing and focus refresh first; the greeting is sufficient initiation and needs no separate confirmation. Flag calendar uncertainty in the plan. Treat other changes as recommendations agreed with the user. Use apply_workspace_actions only for explicit, narrow changes; every applied change is audited, and ordinary edits are reversible in the app where supported. notebook_merge requires explicit approval because it removes the empty source container after preserving its contents.' + PLAN_CAPTURE_GUIDANCE + PERSONAL_GUIDANCE + REFINEMENT_PROGRESS_GUIDANCE,
     });
   }
   if (method === 'ping') return rpcResult(id, {});

@@ -666,8 +666,8 @@ Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is 
 
 - Core `/refinements` route (`RefinementsPage` / account-free `RefinementsView`)
   brings reviewed meetings, explicit follow-ups, proposed story changes and source
-  notes together. This is a read-only projection, with copyable draft fields and
-  verified ADO links; it does not create tasks or publish to ADO.
+  notes together. Source evidence is a read-only projection, with copyable draft
+  fields and verified ADO links; it does not create tasks or publish to ADO.
 - Existing owned refinement notes remain authoritative and keep their notebook
   placement/content. A final `<!-- executive-assistant-refinement:v1 -->` fenced
   JSON record supplies the structured breakdown; legacy notes remain recap-only.
@@ -675,7 +675,39 @@ Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is 
   decisions, uncertainty, source fingerprints and ownership qualifications.
 - `useRefinementsStore` owner-filters and paginates notes, bounds loading at 10,000
   plus a sentinel, invalidates stale requests and clears on sign-out. Audited note
-  writes refresh loaded refinement evidence; errors retain the sync cursor. No
-  new table, migration, provider connector or schedule is required.
+  writes refresh loaded refinement evidence; errors retain the sync cursor.
+  Source review does not require a provider connector or schedule.
 - Run `npm run test:refinements`, `npm run test:plan`, lint and build. Fictional
   preview fixtures remain dev-only; real meeting/customer data is never bundled.
+
+- Migration `2026-11-23_058_refinement_progress.sql` adds owner decisions in
+  `refinement_item_progress`, keyed by user/source/item-kind/item-id. Note IDs only
+  anchor an owned source note; duplicate notes and rereviews preserve the stable
+  progress identity; deleting an anchor note clears only the nullable note link,
+  never the saved decision. Keep source/item IDs stable for the same outcome; materially
+  different work needs a new item ID. Removing an item from a review does not
+  reset its saved progress, and hidden old items do not count toward that review.
+- `useRefinementProgressStore` persists Not started / In progress / Complete via
+  owner-only `set_refinement_progress`, with raw timestamp conflict checks,
+  confirmed-save UI, complete/reopen and active/completed/all filters. Source
+  done/disposition/ADO fields never imply owner completion. Progress never changes
+  a linked task or ADO item. No progress notes, automatic task creation or resets.
+- Direct table writes and OAuth owner-session impersonation are denied. Service
+  access is SELECT only through the existing scope-gated context bridge. Context
+  and note-search responses expose bounded `refinementProgress` coverage; agents
+  match the exact source/item-kind/item-id and respect completed/reopened work.
+  Unavailable or incomplete progress never authorizes replaying source actions.
+- Apply only migration 058 before publishing the updated frontend, `codex-api`
+  and `executive-assistant-mcp`, then refresh tool discovery. Existing migrations
+  and all schedules stay untouched. Until activation, source reviews still load
+  and progress controls explain unavailable persistence. `test:refinements` now
+  includes real PostgreSQL/PGlite authorization and conflict tests, the actual
+  store and rendered view, and the bridge read contract. Also run `test:calendar`,
+  `test:tasks`, `test:plan`, Edge type-checks, lint and build for bridge changes.
+
+- November 23 activation: migration 058 and only `codex-api` /
+  `executive-assistant-mcp` were applied/deployed. Catalog verification confirmed
+  owner-only writes, scoped bridge reads, RLS and nullable SET NULL note anchors;
+  connected note-search readback returned an available, complete progress ledger.
+  No progress decisions were fabricated for testing. Do not replay migration 058
+  on continuation; inspect its saved schema instead.

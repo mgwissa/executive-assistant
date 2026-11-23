@@ -50,6 +50,7 @@ import { useWorkstreamsStore } from './store/useWorkstreamsStore';
 import { useEmailReviewStore } from './store/useEmailReviewStore';
 import { useSitemapReviewStore } from './store/useSitemapReviewStore';
 import { useRefinementsStore } from './store/useRefinementsStore';
+import { useRefinementProgressStore } from './store/useRefinementProgressStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -153,6 +154,7 @@ function Shell() {
   const clearEmailReview = useEmailReviewStore((s) => s.clear);
   const clearSitemapReview = useSitemapReviewStore((s) => s.clear);
   const clearRefinements = useRefinementsStore((s) => s.clear);
+  const clearRefinementProgress = useRefinementProgressStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -176,6 +178,7 @@ function Shell() {
       clearEmailReview();
       clearSitemapReview();
       clearRefinements();
+      clearRefinementProgress();
       clearSharing();
       clearProfile();
       clearTasks();
@@ -201,6 +204,7 @@ function Shell() {
     clearEmailReview,
     clearSitemapReview,
     clearRefinements,
+    clearRefinementProgress,
     clearSharing,
     fetchProfile,
     clearProfile,
@@ -319,6 +323,7 @@ export default function App() {
     if (!loading && !session) {
       useEmailReviewStore.getState().clear();
       useRefinementsStore.getState().clear();
+      useRefinementProgressStore.getState().clear();
     }
   }, [loading, session]);
 

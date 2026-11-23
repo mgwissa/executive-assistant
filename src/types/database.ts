@@ -1,5 +1,6 @@
 import type { WhoopConnection, WhoopCycle } from '../../supabase/functions/_shared/whoop';
 import type { EmailReviewCase, EmailReviewEvent, EmailReviewIntake } from '../../supabase/functions/_shared/emailReview';
+import type { RefinementProgressRow } from '../lib/refinementProgress';
 
 type WhoopConnectionRow = WhoopConnection & {
   user_id:string; generation:string; granted_scopes:string[]; revoked_at:string | null;
@@ -19,6 +20,7 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      refinement_item_progress: PrivateTable<RefinementProgressRow & { created_at: string }, 'user_id' | 'note_id' | 'source_id' | 'item_kind' | 'item_id'>;
       email_review_cases: PrivateTable<EmailReviewCase, 'user_id' | 'message_id' | 'request_key' | 'source_version'>;
       email_review_intakes: PrivateTable<EmailReviewIntake, 'user_id' | 'run_key' | 'covered_from' | 'covered_through' | 'complete'>;
       email_review_events: PrivateTable<EmailReviewEvent, 'user_id' | 'case_id' | 'kind' | 'after'>;
@@ -904,6 +906,11 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      set_refinement_progress: {
+        Args: { p_note_id: string; p_source_id: string; p_item_kind: string; p_item_id: string;
+          p_status: string; p_expected_updated_at: string | null };
+        Returns: RefinementProgressRow;
+      };
       apply_agent_email_review_intake: {
         Args: { p_user_id: string; p_run_id: string; p_connection_id: string; p_actor_name: string; p_input: Json };
         Returns: Json;
