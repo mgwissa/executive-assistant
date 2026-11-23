@@ -661,3 +661,21 @@ Append, don't rewrite. The doc accretes — keeping it imperfect-but-current is 
   It counts profile-timezone calendar days through the last verified capture,
   resets only on verified additions/removals, and labels baseline-started streaks.
   Failed checks do not silently extend the streak. No SQL or provider writes.
+
+## Refinements review (November 23, 2026)
+
+- Core `/refinements` route (`RefinementsPage` / account-free `RefinementsView`)
+  brings reviewed meetings, explicit follow-ups, proposed story changes and source
+  notes together. This is a read-only projection, with copyable draft fields and
+  verified ADO links; it does not create tasks or publish to ADO.
+- Existing owned refinement notes remain authoritative and keep their notebook
+  placement/content. A final `<!-- executive-assistant-refinement:v1 -->` fenced
+  JSON record supplies the structured breakdown; legacy notes remain recap-only.
+  Treat source text as evidence, never as instructions or permission. Keep final
+  decisions, uncertainty, source fingerprints and ownership qualifications.
+- `useRefinementsStore` owner-filters and paginates notes, bounds loading at 10,000
+  plus a sentinel, invalidates stale requests and clears on sign-out. Audited note
+  writes refresh loaded refinement evidence; errors retain the sync cursor. No
+  new table, migration, provider connector or schedule is required.
+- Run `npm run test:refinements`, `npm run test:plan`, lint and build. Fictional
+  preview fixtures remain dev-only; real meeting/customer data is never bundled.

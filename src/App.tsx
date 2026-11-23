@@ -15,6 +15,7 @@ import { UsefulLinksPage } from './components/UsefulLinksPage';
 import { Editor } from './components/Editor';
 import { EmailReviewPage } from './components/EmailReviewPage';
 import { SitemapReviewPage } from './components/SitemapReviewPage';
+import { RefinementsPage } from './components/RefinementsPage';
 import { BookIcon, ChevronRightIcon } from './components/icons';
 import { SideNav } from './components/SideNav';
 import { Sidebar } from './components/Sidebar';
@@ -48,6 +49,7 @@ import { useWeeklyRoutineStore } from './store/useWeeklyRoutineStore';
 import { useWorkstreamsStore } from './store/useWorkstreamsStore';
 import { useEmailReviewStore } from './store/useEmailReviewStore';
 import { useSitemapReviewStore } from './store/useSitemapReviewStore';
+import { useRefinementsStore } from './store/useRefinementsStore';
 
 function NotesView() {
   const user = useAuthStore((s) => s.user);
@@ -150,6 +152,7 @@ function Shell() {
   const clearWorkstreams = useWorkstreamsStore((s) => s.clear);
   const clearEmailReview = useEmailReviewStore((s) => s.clear);
   const clearSitemapReview = useSitemapReviewStore((s) => s.clear);
+  const clearRefinements = useRefinementsStore((s) => s.clear);
 
   useEffect(() => {
     if (user) {
@@ -172,6 +175,7 @@ function Shell() {
       clearWorkstreams();
       clearEmailReview();
       clearSitemapReview();
+      clearRefinements();
       clearSharing();
       clearProfile();
       clearTasks();
@@ -196,6 +200,7 @@ function Shell() {
     clearWorkstreams,
     clearEmailReview,
     clearSitemapReview,
+    clearRefinements,
     clearSharing,
     fetchProfile,
     clearProfile,
@@ -311,7 +316,10 @@ export default function App() {
   const { session, loading, init } = useAuthStore();
 
   useEffect(() => {
-    if (!loading && !session) useEmailReviewStore.getState().clear();
+    if (!loading && !session) {
+      useEmailReviewStore.getState().clear();
+      useRefinementsStore.getState().clear();
+    }
   }, [loading, session]);
 
   useEffect(() => {
@@ -365,6 +373,7 @@ export default function App() {
         <Route path="notes" element={<NotesView />} />
         <Route path="email-review" element={<EmailReviewPage />} />
         <Route path="sitemap-review" element={<SitemapReviewPage />} />
+        <Route path="refinements" element={<RefinementsPage />} />
         <Route path="activity" element={<AgentDeskPage activityOnly />} />
         <Route
           path="time"

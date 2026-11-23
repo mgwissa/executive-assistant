@@ -7,6 +7,7 @@ export type View =
   | 'notes'
   | 'email-review'
   | 'sitemap-review'
+  | 'refinements'
   | 'owed'
   | 'tasks'
   | 'profile'
@@ -26,6 +27,7 @@ export const VIEW_PATHS: Record<View, string> = {
   notes: '/notes',
   'email-review': '/email-review',
   'sitemap-review': '/sitemap-review',
+  refinements: '/refinements',
   profile: '/profile',
   time: '/time',
   routine: '/routine',
@@ -44,6 +46,7 @@ const PATH_TO_VIEW: Record<string, View> = {
   '/notes': 'notes',
   '/email-review': 'email-review',
   '/sitemap-review': 'sitemap-review',
+  '/refinements': 'refinements',
   '/profile': 'profile',
   '/time': 'time',
   '/routine': 'routine',

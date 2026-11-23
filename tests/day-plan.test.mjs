@@ -227,7 +227,7 @@ test('Codex sync refreshes on first observation and retries a failed refresh', a
   }).outputText;
   const calls = new Map();
   const stores = {};
-  for (const name of ['Agent', 'Notes', 'Notebooks', 'Profile', 'Tasks', 'Workstreams', 'Events', 'MeetingDebrief', 'EmailReview', 'SitemapReview']) {
+  for (const name of ['Agent', 'Notes', 'Notebooks', 'Profile', 'Tasks', 'Workstreams', 'Events', 'MeetingDebrief', 'EmailReview', 'SitemapReview', 'Refinements']) {
     const state = { error: null, userId: 'owner', savingId: null, profile: { timezone: 'America/New_York' }, fetchAll: async () => {}, fetchProfile: async () => {}, fetchRange: async () => {} };
     for (const method of ['fetchAll', 'fetchProfile', 'fetchRange']) state[method] = async () => calls.set(name, (calls.get(name) ?? 0) + 1);
     stores[`use${name}Store`] = { getState: () => state };
@@ -249,8 +249,8 @@ test('Codex sync refreshes on first observation and retries a failed refresh', a
   assert.equal(calls.get('Tasks'), 1);
   assert.equal(calls.get('Profile'), 1);
   assert.equal(calls.get('Events'), 1);
-  for (const [name, kind] of [['Tasks', 'task_update'], ['Notes', 'note_append'], ['Workstreams', 'note_workstream'], ['MeetingDebrief', 'calendar_sync'], ['EmailReview', 'email_review_intake'], ['SitemapReview', 'note_create']]) {
-    actions = [{ id: `new-${name}`, kind }, ...actions];
+  for (const [name, kind] of [['Tasks', 'task_update'], ['Notes', 'note_append'], ['Workstreams', 'note_workstream'], ['MeetingDebrief', 'calendar_sync'], ['EmailReview', 'email_review_intake'], ['SitemapReview', 'note_create'], ['Refinements', 'note_create'], ['Refinements', 'note_append']]) {
+    actions = [{ id: `new-${name}-${kind}`, kind }, ...actions];
     const state = stores[`use${name}Store`].getState();
     state.error = 'Failed refresh';
     clock += 2000; poll(); await flush();

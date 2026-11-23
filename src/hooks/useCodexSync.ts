@@ -8,6 +8,7 @@ import { useTasksStore } from '../store/useTasksStore';
 import { useWorkstreamsStore } from '../store/useWorkstreamsStore';
 import { useEmailReviewStore } from '../store/useEmailReviewStore';
 import { useSitemapReviewStore } from '../store/useSitemapReviewStore';
+import { useRefinementsStore } from '../store/useRefinementsStore';
 import { useEventsStore } from '../store/useEventsStore';
 import { useMeetingDebriefStore } from '../store/useMeetingDebriefStore';
 import { eventsFetchIsoRange } from '../lib/eventQueries';
@@ -86,6 +87,8 @@ export function useCodexSync(userId: string | undefined) {
         && useEmailReviewStore.getState().userId === userId;
       const refreshSitemapReview = (missedCursor || changedKinds.has('note_create') || changedKinds.has('note_append'))
         && useSitemapReviewStore.getState().userId === userId;
+      const refreshRefinements = (missedCursor || changedKinds.has('note_create') || changedKinds.has('note_append'))
+        && useRefinementsStore.getState().userId === userId;
       // Don't advance the audit cursor over a skipped refresh during an owner save.
       if (refreshEmailReview && useEmailReviewStore.getState().savingId) return;
 
@@ -107,6 +110,7 @@ export function useCodexSync(userId: string | undefined) {
       }
       if (refreshEmailReview) refreshes.push(useEmailReviewStore.getState().fetchAll(userId));
       if (refreshSitemapReview) refreshes.push(useSitemapReviewStore.getState().fetchAll(userId));
+      if (refreshRefinements) refreshes.push(useRefinementsStore.getState().fetchAll(userId));
       if (refreshCalendar) {
         const { fromIso, toIso } = eventsFetchIsoRange(useProfileStore.getState().profile?.timezone);
         refreshes.push(useEventsStore.getState().fetchRange(userId, fromIso, toIso));
@@ -121,6 +125,7 @@ export function useCodexSync(userId: string | undefined) {
         || (refreshWorkstreams ? useWorkstreamsStore.getState().error : null)
         || (refreshEmailReview ? useEmailReviewStore.getState().error : null)
         || (refreshSitemapReview ? useSitemapReviewStore.getState().error : null)
+        || (refreshRefinements ? useRefinementsStore.getState().error : null)
         || (refreshProfile ? useProfileStore.getState().error : null)
         || (refreshCalendar ? useEventsStore.getState().error || useMeetingDebriefStore.getState().error : null);
       if (refreshError) {
